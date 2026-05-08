@@ -59,7 +59,7 @@ export const LandingAnimation = () => {
   }
 
   return (
-    <div className="fixed inset-0 -z-10">
+    <div className="absolute top-0 right-0 w-1/2 h-full">
       <Canvas
         camera={{ position: [0, 0, 6.5], fov: 42 }}
         gl={{ antialias: true, alpha: true }}
@@ -115,7 +115,7 @@ export const LandingAnimation = () => {
               </Float>
             ))}
           </group>
-        </Suspense >
+        </Suspense>
 
         <OrbitControls
           enableZoom={false}
@@ -123,8 +123,8 @@ export const LandingAnimation = () => {
           autoRotate
           autoRotateSpeed={0.2}
         />
-      </Canvas >
-    </div >
+      </Canvas>
+    </div>
   );
 };
 
