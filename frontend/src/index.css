@@ -9,6 +9,7 @@
   --color-primary:        #FFF;
   --color-bg:             #242F40;
   --color-bg-secondary:   #1d202e;
+  --color-muted: #9ca3af;
 
   --color-background:         oklch(1 0 0);
   --color-foreground:         oklch(0.145 0 0);
