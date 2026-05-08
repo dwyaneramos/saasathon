@@ -1,12 +1,6 @@
 import React, { Suspense, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
-import {
-  Float,
-  Line,
-  OrbitControls,
-  Text,
-  Billboard,
-} from "@react-three/drei";
+import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 
 const NODE_COUNT = 25;
@@ -40,7 +34,7 @@ const generateNodes = () => {
     position: new THREE.Vector3(
       (Math.random() - 0.5) * NETWORK_SIZE,
       (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE
+      (Math.random() - 0.5) * NETWORK_SIZE,
     ),
     label: LABELS[i % LABELS.length],
   }));
@@ -72,24 +66,12 @@ export const LandingAnimation = () => {
       >
         <ambientLight intensity={1.2} />
 
-        <pointLight
-          position={[0, 0, 5]}
-          intensity={12}
-          color="#ffffff"
-        />
+        <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
 
-        <pointLight
-          position={[-2, -2, -2]}
-          intensity={6}
-          color="#ffffff"
-        />
+        <pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
 
         <Suspense fallback={null}>
-          <group
-            ref={groupRef}
-            scale={1}
-            rotation={[0.1, 0, 0]}
-          >
+          <group ref={groupRef} scale={1} rotation={[0.1, 0, 0]}>
             {connections.map(([start, end], index) => (
               <Line
                 key={index}

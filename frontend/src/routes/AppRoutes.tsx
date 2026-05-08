@@ -1,23 +1,34 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Home from "../pages/Home";
-import Graph from "../pages/Graph";
-import Login from "../pages/Login";
-import Upload from "../pages/Upload";
-import ViewProfile from "../pages/ViewProfile";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "../context/AuthContext";
+import { ProtectedRoute } from "../components/ProtectedRoute";
 import Navbar from "../components/Navbar";
+import Login from "../pages/Login";
+import Register from "../pages/Register";
+import GraphPage from "../pages/Graph";
 import Landing from "../pages/Landing";
 
-const AppRoutes = () => (
-  <BrowserRouter>
-    <Navbar />
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/graph" element={<Graph />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/view-profile" element={<ViewProfile />} />
-      <Route path="/upload" element={<Upload />} />
-    </Routes>
-  </BrowserRouter>
-);
+function App() {
+	return (
+		<AuthProvider>
+			<Router>
+				<Navbar />
+				<Routes>
+					<Route path="/" element={<Landing />} />
+					<Route path="/login" element={<Login />} />
+					<Route path="/register" element={<Register />} />
 
-export default AppRoutes;
+					<Route
+						path="/graph"
+						element={
+							<ProtectedRoute>
+								<GraphPage />
+							</ProtectedRoute>
+						}
+					/>
+				</Routes>
+			</Router>
+		</AuthProvider>
+	);
+}
+
+export default App;

@@ -10,15 +10,17 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { useAuth } from "@/context/AuthContext";
 
-export default function Login() {
+export default function Register() {
 	const navigate = useNavigate();
 
 	// Form State
 	const [formData, setFormData] = useState({
+		firstName: "",
+		lastName: "",
 		email: "",
 		password: "",
+		repeatPassword: "",
 	});
 
 	// Error/Loading States
@@ -27,34 +29,42 @@ export default function Login() {
 
 	const handleChange = (e) => {
 		setFormData({ ...formData, [e.target.name]: e.target.value });
-		if (error) setError(""); // Clear error when typing
+		if (error) setError("");
 	};
-
-	const { login } = useAuth();
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		setIsLoading(true);
 
+		if (formData.password !== formData.repeatPassword) {
+			setError("Passwords do not match");
+			setIsLoading(false);
+			return;
+		}
+
 		try {
 			const response = await fetch(
-				"http://localhost:3000/api/v1/users/login",
+				"http://localhost:3000/api/v1/users/register",
 				{
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify(formData),
+					body: JSON.stringify({
+						firstName: formData.firstName,
+						lastName: formData.lastName,
+						email: formData.email,
+						password: formData.password,
+					}),
 				},
 			);
 
 			const data = await response.json();
 
 			if (response.ok) {
-				login(data.user, data.token);
-				navigate("/");
+				navigate("/login");
 			} else {
-				setError(data.error || data.message || "Invalid credentials");
+				setError(data.error || data.message || "Registration failed");
 			}
 		} catch (err) {
 			setError("Server connection failed");
@@ -64,13 +74,13 @@ export default function Login() {
 	};
 
 	return (
-		<div className="login-page min-h-screen flex flex-col">
+		<div className="register-page min-h-screen flex flex-col">
 			<main className="flex-1 flex items-center justify-center p-4">
 				<Card className="w-full max-w-md">
 					<CardHeader>
-						<CardTitle>Login to Kibi</CardTitle>
+						<CardTitle>Register to Kibi</CardTitle>
 						<CardDescription>
-							Sign in to your account
+							Create your account to get started
 						</CardDescription>
 						{error && (
 							<p className="text-sm text-red-500 mt-2">{error}</p>
@@ -79,6 +89,32 @@ export default function Login() {
 
 					<CardContent>
 						<form onSubmit={handleSubmit} className="space-y-4">
+							<div className="space-y-2">
+								<Label htmlFor="firstName">First Name</Label>
+								<Input
+									type="text"
+									id="firstName"
+									name="firstName"
+									placeholder="Enter your first name"
+									required
+									value={formData.firstName}
+									onChange={handleChange}
+								/>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="lastName">Last Name</Label>
+								<Input
+									type="text"
+									id="lastName"
+									name="lastName"
+									placeholder="Enter your last name"
+									required
+									value={formData.lastName}
+									onChange={handleChange}
+								/>
+							</div>
+
 							<div className="space-y-2">
 								<Label htmlFor="email">Email</Label>
 								<Input
@@ -105,6 +141,21 @@ export default function Login() {
 								/>
 							</div>
 
+							<div className="space-y-2">
+								<Label htmlFor="repeatPassword">
+									Repeat Password
+								</Label>
+								<Input
+									type="password"
+									id="repeatPassword"
+									name="repeatPassword"
+									placeholder="Confirm your password"
+									required
+									value={formData.repeatPassword}
+									onChange={handleChange}
+								/>
+							</div>
+
 							<div className="flex gap-2 pt-2">
 								<Button
 									type="button"
@@ -120,19 +171,9 @@ export default function Login() {
 									disabled={isLoading}
 									className="flex-1 !bg-bg-accent text-white"
 								>
-									{isLoading ? "Loading..." : "Login"}
+									{isLoading ? "Loading..." : "Register"}
 								</Button>
 							</div>
-
-							<p className="text-center text-xs text-muted-foreground mt-4">
-								Don't have an account?{" "}
-								<Link
-									to="/register"
-									className="text-primary hover:underline font-medium"
-								>
-									Register
-								</Link>
-							</p>
 						</form>
 					</CardContent>
 				</Card>
