@@ -58,6 +58,35 @@ router.post("/", (req: Request, res: Response, next: NextFunction) => {
   });
 });
 
+router.post("/multiple", (req: Request, res: Response, next: NextFunction) => {
+  upload.array("files")(req, res, (err) => {
+    if (err) {
+      next(err);
+      return;
+    }
+
+    if (!req.files || req.files.length === 0) {
+      res.status(400).json({
+        error:
+          "No files provided. Use multipart/form-data with field name 'files'.",
+      });
+      return;
+    }
+
+    const files = (req.files as Express.Multer.File[]).map((file) => ({
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+    }));
+
+    res.status(201).json({
+      message: `Successfully uploaded ${files.length} file(s).`,
+      files,
+      totalSize: files.reduce((sum, file) => sum + file.size, 0),
+    });
+  });
+});
+
 router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
