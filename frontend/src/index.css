@@ -2,7 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+
 @custom-variant dark (&:is(.dark *));
+
 @theme {
 	--color-primary: #fff;
 	--color-bg: #242f40;
