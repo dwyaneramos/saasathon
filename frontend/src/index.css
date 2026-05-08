@@ -7,12 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-graphite:       #363636;
-  --color-jet-black:      #242F40;
-  --color-bronze:  #CCA43B;
-  --color-agrey: #E5E5E5;
-  --color-white:          #FFFFFF;
-  --color-purp: #04091C;
+  --color-primary:       #FFF;
+  --color-bg:      #242F40;
+  --color-bg-secondary: #1d202e;
 }
 
 @theme inline {
