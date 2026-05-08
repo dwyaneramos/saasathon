@@ -9,7 +9,7 @@ import {
 
 export const Navbar = () => {
   return (
-    <div className="flex flex-row justify-between w-full bg-bg-secondary text-primary px-5 py-2">
+    <div className="flex flex-row justify-between w-full bg-bg-secondary text-primary px-5 border-b-2 border-primary py-4">
       <Link className="text-xl" to="/">
         Kibi
       </Link>

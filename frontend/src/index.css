@@ -6,9 +6,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-primary:        #FFF;
-  --color-bg:             #242F40;
-  --color-bg-secondary:   #1d202e;
+  --color-primary:       #242F40;
+  --color-primary: #1d202e;
+  --color-bg: #FFF;
+  --color-bg-secondary:   #FFF;
   --color-muted: #9ca3af;
 
   --color-background:         oklch(1 0 0);
