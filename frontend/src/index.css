@@ -24,6 +24,13 @@
 	--color-ring: oklch(0.708 0 0);
 	--radius: 0.625rem;
 }
+
+html,
+body {
+	font-family: "Inter", Arial, Helvetica, sans-serif;
+	font-size: 14px;
+}
+
 button {
 	@apply hover:opacity-80 cursor-pointer transition duration-300;
 }

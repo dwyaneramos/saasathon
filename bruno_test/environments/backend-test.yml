@@ -1,0 +1,4 @@
+name: backend-test
+variables:
+    - name: BASE_URL
+      value: http:localhost:3000/api/v1
