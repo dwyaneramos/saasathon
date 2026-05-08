@@ -1,5 +1,13 @@
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({
+	path: path.resolve(__dirname, "../../.env"),
+});
 
 import express, {
 	type Request,
@@ -7,6 +15,7 @@ import express, {
 	type NextFunction,
 } from "express";
 import apiRoutes from "./routes/index.js";
+import listEndpoints from "express-list-endpoints"; // npm install express-list-endpoints
 
 const app = express();
 const PORT = process.env.PORT || 3000;

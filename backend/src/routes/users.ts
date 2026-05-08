@@ -1,9 +1,10 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { z } from "zod";
-import { db } from "../db/index.js";
+import { getDb } from "../db/index.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { validate } from "../middleware/validate.js";
+import { registerSchema, loginSchema } from "../validation/user.js";
 import type { User, PublicUser } from "../types/user.js";
 
 const router = Router();
@@ -17,18 +18,15 @@ function signToken(userId: number) {
 	return jwt.sign({ userId }, process.env.JWT_SECRET!, { expiresIn: "7d" });
 }
 
-import { validate } from "../middleware/validate.js";
-import { registerSchema, loginSchema } from "../validation/user.js";
-
 router.post("/register", validate(registerSchema), async (req, res) => {
-	const { email, username, password } = req.body;
+	const { email, first_name, last_name, password } = req.body;
 	const password_hash = await bcrypt.hash(password, 12);
 
 	try {
-		const { rows } = await db.query<User>(
-			`INSERT INTO users (email, username, password_hash)
-       VALUES ($1, $2, $3) RETURNING *`,
-			[email, username, password_hash],
+		const { rows } = await getDb().query<User>(
+			`INSERT INTO users (email, first_name, last_name, password_hash)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+			[email, first_name, last_name, password_hash],
 		);
 
 		const token = signToken(rows[0].id);
@@ -36,7 +34,7 @@ router.post("/register", validate(registerSchema), async (req, res) => {
 	} catch (err: any) {
 		if (err.code === "23505") {
 			// unique violation
-			res.status(409).json({ error: "Email or username already taken" });
+			res.status(409).json({ error: "Email already taken" });
 			return;
 		}
 		throw err;
@@ -45,7 +43,7 @@ router.post("/register", validate(registerSchema), async (req, res) => {
 
 router.post("/login", validate(loginSchema), async (req, res) => {
 	const { email, password } = req.body;
-	const { rows } = await db.query<User>(
+	const { rows } = await getDb().query<User>(
 		"SELECT * FROM users WHERE email = $1",
 		[email],
 	);
@@ -63,9 +61,10 @@ router.post("/login", validate(loginSchema), async (req, res) => {
 });
 
 router.get("/me", requireAuth, async (req: AuthRequest, res) => {
-	const { rows } = await db.query<User>("SELECT * FROM users WHERE id = $1", [
-		req.userId,
-	]);
+	const { rows } = await getDb().query<User>(
+		"SELECT * FROM users WHERE id = $1",
+		[req.userId],
+	);
 
 	if (!rows[0]) {
 		res.status(404).json({ error: "User not found" });
