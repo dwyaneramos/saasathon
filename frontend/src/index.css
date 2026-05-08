@@ -1,29 +1,37 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+
+@import "tailwindcss";
+
+:root {
+	font-family: "Inter", sans-serif;
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-primary:        #FFF;
-  --color-bg:             #242F40;
-  --color-bg-secondary:   #1d202e;
+	--color-primary: #fff;
+	--color-bg: #242f40;
+	--color-bg-secondary: #1d202e;
 
-  --color-background:         oklch(1 0 0);
-  --color-foreground:         oklch(0.145 0 0);
-  --color-card:               oklch(1 0 0);
-  --color-card-foreground:    oklch(0.145 0 0);
-  --color-popover:            oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-muted:              oklch(0.97 0 0);
-  --color-muted-foreground:   oklch(0.556 0 0);
-  --color-border:             oklch(0.922 0 0);
-  --color-input:              oklch(0.922 0 0);
-  --color-ring:               oklch(0.708 0 0);
-  --radius:                   0.625rem;
+	--color-background: oklch(1 0 0);
+	--color-foreground: oklch(0.145 0 0);
+	--color-card: oklch(1 0 0);
+	--color-card-foreground: oklch(0.145 0 0);
+	--color-popover: oklch(1 0 0);
+	--color-popover-foreground: oklch(0.145 0 0);
+	--color-muted: oklch(0.97 0 0);
+	--color-muted-foreground: oklch(0.556 0 0);
+	--color-border: oklch(0.922 0 0);
+	--color-input: oklch(0.922 0 0);
+	--color-ring: oklch(0.708 0 0);
+	--radius: 0.625rem;
 }
 
 button {
-  @apply hover:opacity-80 cursor-pointer transition duration-300;
+	@apply hover:opacity-80 cursor-pointer transition duration-300;
 }
