@@ -3,7 +3,7 @@ import Navbar from "./components/Navbar";
 
 function App() {
   return (
-    <div>
+    <div className="bg-bg h-screen w-screen">
       <AppRoutes />
     </div>
   )
