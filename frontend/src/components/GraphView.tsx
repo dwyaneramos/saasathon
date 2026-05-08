@@ -99,7 +99,7 @@ const GraphView: React.FC<GraphViewProps> = ({ is2D }) => {
             <Line
               key={index}
               points={[getNodePosition(start), getNodePosition(end)]}
-              color="#ffffff"
+              color="#000000"
               transparent
               opacity={0.35}
               lineWidth={1}
@@ -117,8 +117,8 @@ const GraphView: React.FC<GraphViewProps> = ({ is2D }) => {
                   >
                     <sphereGeometry args={[0.035, 16, 16]} />
                     <meshStandardMaterial
-                      color={isSelected ? "blue" : "#ffffff"}
-                      emissive={isSelected ? "blue" : "#ffffff"}
+                      color={isSelected ? "blue" : "#000000"}
+                      emissive={isSelected ? "blue" : "#000000"}
                       emissiveIntensity={2}
                     />
                   </mesh>
@@ -128,7 +128,7 @@ const GraphView: React.FC<GraphViewProps> = ({ is2D }) => {
                   <Text
                     position={[0, 0.07, 0]}
                     fontSize={0.034}
-                    color="#ffffff"
+                    color="#000000"
                     anchorX="center"
                     anchorY="middle"
                   >

@@ -61,14 +61,16 @@ export const LandingAnimation = () => {
   }
 
   return (
-    <div className="fixed inset-0 -z-10">
+    <div className="absolute top-0 right-0 w-1/2 h-full">
       <Canvas
         camera={{ position: [0, 0, 6.5], fov: 42 }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={1.2} />
-        <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
-        <pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
+
+        <pointLight position={[0, 0, 5]} intensity={12} color="#242f40" />
+
+        <pointLight position={[-2, -2, -2]} intensity={6} color="#242f40" />
 
         <Suspense fallback={null}>
           <group ref={groupRef} scale={1} rotation={[0.1, 0, 0]}>
@@ -76,7 +78,7 @@ export const LandingAnimation = () => {
               <Line
                 key={index}
                 points={[start, end]}
-                color="#ffffff"
+                color="#1d202e"
                 transparent
                 opacity={0.35}
                 lineWidth={1}
@@ -84,23 +86,21 @@ export const LandingAnimation = () => {
             ))}
 
             {nodes.map((node, index) => (
-              <group key={index} position={node.position}>
-                <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
-                  <mesh>
-                    <sphereGeometry args={[0.035, 16, 16]} />
-                    <meshStandardMaterial
-                      color="#ffffff"
-                      emissive="#ffffff"
-                      emissiveIntensity={2}
-                    />
-                  </mesh>
-                </Float>
+              <group position={node.position}>
+                <mesh>
+                  <sphereGeometry args={[0.035, 16, 16]} />
+                  <meshStandardMaterial
+                    color="#242f40"
+                    emissive="#242f40"
+                    emissiveIntensity={2}
+                  />
+                </mesh>
 
                 <Billboard>
                   <Text
                     position={[0, 0.07, 0]}
                     fontSize={0.034}
-                    color="#ffffff"
+                    color="#242f40"
                     anchorX="center"
                     anchorY="middle"
                   >
@@ -113,7 +113,8 @@ export const LandingAnimation = () => {
         </Suspense>
 
         <OrbitControls
-          enableZoom={true}
+          enableZoom={false}
+          enableRotate={false}
           enablePan={false}
           autoRotate
           autoRotateSpeed={0.2}
