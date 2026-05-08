@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "../pages/Home";
 import Graph from "../pages/Graph";
 import Login from "../pages/Login";
+import Upload from "../pages/Upload"
 
 const AppRoutes = () => (
   <BrowserRouter>
