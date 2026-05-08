@@ -8,27 +8,27 @@ import GraphPage from "../pages/Graph";
 import Landing from "../pages/Landing";
 
 function App() {
-	return (
-		<AuthProvider>
-			<Router>
-				<Navbar />
-				<Routes>
-					<Route path="/" element={<Landing />} />
-					<Route path="/login" element={<Login />} />
-					<Route path="/register" element={<Register />} />
+  return (
+    <AuthProvider>
+      <Router>
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-					<Route
-						path="/graph"
-						element={
-							<ProtectedRoute>
-								<GraphPage />
-							</ProtectedRoute>
-						}
-					/>
-				</Routes>
-			</Router>
-		</AuthProvider>
-	);
+          <Route
+            path="/graph"
+            element={
+              // <ProtectedRoute>
+              <GraphPage />
+              // </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
 }
 
 export default App;

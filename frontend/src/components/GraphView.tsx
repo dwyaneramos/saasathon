@@ -2,7 +2,6 @@ import React, { Suspense, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
-import type Landing from "@/pages/Landing";
 
 const NODE_COUNT = 25;
 const NETWORK_SIZE = 2.8;
@@ -41,7 +40,7 @@ const generateNodes = () => {
   }));
 };
 
-export const LandingAnimation = () => {
+export const GraphView = () => {
   const groupRef = useRef<THREE.Group>(null!);
 
   const nodes = useMemo(() => generateNodes(), []);
@@ -123,4 +122,4 @@ export const LandingAnimation = () => {
   );
 };
 
-export default LandingAnimation;
+export default GraphView;

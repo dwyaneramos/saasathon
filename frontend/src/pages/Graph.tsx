@@ -1,17 +1,13 @@
+import GraphView from "@/components/GraphView";
+
 export default function Graph() {
   return (
-    <div className="graph-page">
-      <header className="graph-header">
-        <h1>Welcome to the Graph Page</h1>
-      </header>
+    <div className="relative text-primary h-screen bg-bg flex flex-col justify-center overflow-hidden">
+      <div className="absolute inset-0 left-32 z-0">
+        <GraphView></GraphView>
+      </div>
 
-      <main className="graph-content">
-        <p>graph</p>
-      </main>
-
-      <footer className="graph-footer">
-        <small>&copy; 2026 My App</small>
-      </footer>
+      <div className="relative z-10 pl-20"></div>
     </div>
   );
 }
