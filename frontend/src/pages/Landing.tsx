@@ -5,7 +5,7 @@ export const Landing = () => {
     <div className="relative text-primary h-screen bg-bg flex flex-col justify-center overflow-hidden">
 
       <div className="absolute inset-0 left-32 z-0">
-        <LandingAnimation />
+        {/* <LandingAnimation /> */}
       </div>
 
       <div className="relative z-10 pl-20">
