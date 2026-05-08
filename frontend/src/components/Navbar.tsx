@@ -74,8 +74,9 @@ const links = [
 export const Navbar = () => {
   return (
     <div className="flex flex-row justify-between w-full bg-bg-secondary text-primary px-5 py-2">
-
-      <Link className="text-xl" to="/">Kibi</Link>
+      <Link className="text-xl" to="/">
+        Kibi
+      </Link>
       <div className="flex flex-row gap-3">
         <PopoverDemo />
 
@@ -83,7 +84,6 @@ export const Navbar = () => {
         <Link className="text-lg" to="/">Register</Link>
         <img className="w-8 h-8" src="/default.svg" />
       </div>
-
     </div>
   );
 };
