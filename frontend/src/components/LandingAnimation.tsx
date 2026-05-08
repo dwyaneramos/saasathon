@@ -66,9 +66,9 @@ export const LandingAnimation = () => {
       >
         <ambientLight intensity={1.2} />
 
-        <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
+        <pointLight position={[0, 0, 5]} intensity={12} color="#242f40" />
 
-        <pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
+        <pointLight position={[-2, -2, -2]} intensity={6} color="#242f40" />
 
         <Suspense fallback={null}>
           <group ref={groupRef} scale={1} rotation={[0.1, 0, 0]}>
@@ -76,7 +76,7 @@ export const LandingAnimation = () => {
               <Line
                 key={index}
                 points={[start, end]}
-                color="#ffffff"
+                color="#1d202e"
                 transparent
                 opacity={0.35}
                 lineWidth={1}
@@ -94,8 +94,8 @@ export const LandingAnimation = () => {
                   <mesh>
                     <sphereGeometry args={[0.035, 16, 16]} />
                     <meshStandardMaterial
-                      color="#ffffff"
-                      emissive="#ffffff"
+                      color="#242f40"
+                      emissive="#242f40"
                       emissiveIntensity={2}
                     />
                   </mesh>
@@ -104,7 +104,7 @@ export const LandingAnimation = () => {
                     <Text
                       position={[0, 0.07, 0]}
                       fontSize={0.034}
-                      color="#ffffff"
+                      color="#242f40"
                       anchorX="center"
                       anchorY="middle"
                     >
@@ -115,7 +115,7 @@ export const LandingAnimation = () => {
               </Float>
             ))}
           </group>
-        </Suspense>
+        </Suspense >
 
         <OrbitControls
           enableZoom={false}
@@ -123,8 +123,8 @@ export const LandingAnimation = () => {
           autoRotate
           autoRotateSpeed={0.2}
         />
-      </Canvas>
-    </div>
+      </Canvas >
+    </div >
   );
 };
 
