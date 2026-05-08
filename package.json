@@ -2,5 +2,8 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.2.4",
     "tailwindcss": "^4.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2"
   }
 }
