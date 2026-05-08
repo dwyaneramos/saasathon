@@ -3,9 +3,11 @@ import Home from "../pages/Home";
 import Graph from "../pages/Graph";
 import Login from "../pages/Login";
 import ViewProfile from "../pages/ViewProfile";
+import Navbar from "../components/Navbar";
 
 const AppRoutes = () => (
   <BrowserRouter>
+    <Navbar />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/graph" element={<Graph />} />

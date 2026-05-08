@@ -1,2 +1,14 @@
 
 @import "tailwindcss";
+
+@theme {
+  --color-graphite:       #363636;
+  --color-jet-black:      #242F40;
+  --color-bronze:  #CCA43B;
+  --color-agrey: #E5E5E5;
+  --color-white:          #FFFFFF;
+  --color-purp: #04091C;
+}
+ 
+
+
