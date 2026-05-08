@@ -84,41 +84,35 @@ export const LandingAnimation = () => {
             ))}
 
             {nodes.map((node, index) => (
-              <Float
-                key={index}
-                speed={1.2}
-                rotationIntensity={0.1}
-                floatIntensity={0.3}
-              >
-                <group position={node.position}>
-                  <mesh>
-                    <sphereGeometry args={[0.035, 16, 16]} />
-                    <meshStandardMaterial
-                      color="#242f40"
-                      emissive="#242f40"
-                      emissiveIntensity={2}
-                    />
-                  </mesh>
+              <group position={node.position}>
+                <mesh>
+                  <sphereGeometry args={[0.035, 16, 16]} />
+                  <meshStandardMaterial
+                    color="#242f40"
+                    emissive="#242f40"
+                    emissiveIntensity={2}
+                  />
+                </mesh>
 
-                  <Billboard>
-                    <Text
-                      position={[0, 0.07, 0]}
-                      fontSize={0.034}
-                      color="#242f40"
-                      anchorX="center"
-                      anchorY="middle"
-                    >
-                      {node.label}
-                    </Text>
-                  </Billboard>
-                </group>
-              </Float>
+                <Billboard>
+                  <Text
+                    position={[0, 0.07, 0]}
+                    fontSize={0.034}
+                    color="#242f40"
+                    anchorX="center"
+                    anchorY="middle"
+                  >
+                    {node.label}
+                  </Text>
+                </Billboard>
+              </group>
             ))}
           </group>
         </Suspense>
 
         <OrbitControls
           enableZoom={false}
+          enableRotate={false}
           enablePan={false}
           autoRotate
           autoRotateSpeed={0.2}
