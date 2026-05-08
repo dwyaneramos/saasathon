@@ -20,7 +20,7 @@ export const Navbar = () => {
 
         <Popover>
           <PopoverTrigger asChild>
-            <img className="w-8 h-8 cursor-pointer" src="/default.svg" />
+            <img className="w-8 h-8 cursor-pointer rounded-full border-2 border-primary p-1" src="/default.svg" />
           </PopoverTrigger>
           <PopoverContent className="w-64 mr-3 mt-3">
             <div className="space-y-4">
