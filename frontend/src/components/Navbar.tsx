@@ -10,7 +10,7 @@ const links = [
 
 export const Navbar = () => {
   return (
-    <div className="flex flex-row justify-between w-full bg-jet-black text-white px-5 py-2">
+    <div className="flex flex-row justify-between w-full bg-background text-primary px-5 py-2">
 
       <Link className="text-xl" to="/">Kibi</Link>
       <div className="flex flex-row gap-3">
