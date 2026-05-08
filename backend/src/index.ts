@@ -3,17 +3,23 @@ import express, {
 	type Response,
 	type NextFunction,
 } from "express";
+import cors from "cors";
+import uploadRoutes from "./routes/upload.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
+app.use(cors());
 
 // Routes
 app.get("/", (req: Request, res: Response) => {
 	res.json({ message: "Server is running with ESM and TypeScript!" });
 });
+
+// Upload routes
+app.use("/upload", uploadRoutes);
 
 // Example Route for testing extensions
 // import { apiRouter } from './routes/api.js';

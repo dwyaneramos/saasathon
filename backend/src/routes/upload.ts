@@ -1,0 +1,82 @@
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
+import multer from "multer";
+
+const router = express.Router();
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const allowedMimeTypes = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
+]);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (allowedMimeTypes.has(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error("Only PDF and image files are allowed."));
+  },
+});
+
+router.post("/", (req: Request, res: Response, next: NextFunction) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      next(err);
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({
+        error:
+          "No file provided. Use multipart/form-data with field name 'file'.",
+      });
+      return;
+    }
+
+    res.status(201).json({
+      message: "File uploaded successfully.",
+      file: {
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+      },
+    });
+  });
+});
+
+router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({
+        error: `File is too large. Max size is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`,
+      });
+      return;
+    }
+
+    res.status(400).json({ error: err.message });
+    return;
+  }
+
+  if (err.message === "Only PDF and image files are allowed.") {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+
+  next(err);
+});
+
+export default router;
