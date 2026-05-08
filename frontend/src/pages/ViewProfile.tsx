@@ -1,6 +1,6 @@
 export const ViewProfile = () => {
   return (
-    <div className="h-screen w-screen text-agrey bg-purp">
+    <div className="h-screen w-screen text-agrey bg-bg">
       viewing your profile
     </div>
   )
