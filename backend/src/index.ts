@@ -1,6 +1,13 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import express, {
+	type Request,
+	type Response,
+	type NextFunction,
+} from "express";
+import apiRoutes from "./routes/index.js";
+import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,16 +16,14 @@ dotenv.config({
 	path: path.resolve(__dirname, "../../.env"),
 });
 
-import express, {
-	type Request,
-	type Response,
-	type NextFunction,
-} from "express";
-import apiRoutes from "./routes/index.js";
-import listEndpoints from "express-list-endpoints"; // npm install express-list-endpoints
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.use(
+	cors({
+		origin: "http://localhost:5173",
+		credentials: true,
+	}),
+);
 
 app.use(express.json());
 

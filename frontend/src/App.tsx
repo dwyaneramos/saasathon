@@ -1,15 +1,14 @@
 import AppRoutes from "./routes/AppRoutes";
-import Navbar from "./components/Navbar";
+import { AuthProvider } from "./context/AuthContext";
 
 function App() {
-  return (
-    <div className="h-screen w-screen">
-      <AppRoutes />
-    </div>
-  )
-
-
-    ;
+	return (
+		<div className="h-screen w-screen">
+			<AuthProvider>
+				<AppRoutes />
+			</AuthProvider>
+		</div>
+	);
 }
 
 export default App;

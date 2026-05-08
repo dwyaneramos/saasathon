@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,9 +10,69 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Link } from "react-router-dom";
 
 export default function Register() {
+	const navigate = useNavigate();
+
+	// Form State
+	const [formData, setFormData] = useState({
+		firstName: "",
+		lastName: "",
+		email: "",
+		password: "",
+		repeatPassword: "",
+	});
+
+	// Error/Loading States
+	const [error, setError] = useState("");
+	const [isLoading, setIsLoading] = useState(false);
+
+	const handleChange = (e) => {
+		setFormData({ ...formData, [e.target.name]: e.target.value });
+		if (error) setError("");
+	};
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		setIsLoading(true);
+
+		if (formData.password !== formData.repeatPassword) {
+			setError("Passwords do not match");
+			setIsLoading(false);
+			return;
+		}
+
+		try {
+			const response = await fetch(
+				"http://localhost:3000/api/v1/users/register",
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						firstName: formData.firstName,
+						lastName: formData.lastName,
+						email: formData.email,
+						password: formData.password,
+					}),
+				},
+			);
+
+			const data = await response.json();
+
+			if (response.ok) {
+				navigate("/login");
+			} else {
+				setError(data.error || data.message || "Registration failed");
+			}
+		} catch (err) {
+			setError("Server connection failed");
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
 	return (
 		<div className="register-page min-h-screen flex flex-col">
 			<main className="flex-1 flex items-center justify-center p-4">
@@ -20,15 +82,13 @@ export default function Register() {
 						<CardDescription>
 							Create your account to get started
 						</CardDescription>
+						{error && (
+							<p className="text-sm text-red-500 mt-2">{error}</p>
+						)}
 					</CardHeader>
 
 					<CardContent>
-						<form
-							onSubmit={(e) => {
-								e.preventDefault();
-							}}
-							className="space-y-4"
-						>
+						<form onSubmit={handleSubmit} className="space-y-4">
 							<div className="space-y-2">
 								<Label htmlFor="firstName">First Name</Label>
 								<Input
@@ -37,6 +97,8 @@ export default function Register() {
 									name="firstName"
 									placeholder="Enter your first name"
 									required
+									value={formData.firstName}
+									onChange={handleChange}
 								/>
 							</div>
 
@@ -48,6 +110,8 @@ export default function Register() {
 									name="lastName"
 									placeholder="Enter your last name"
 									required
+									value={formData.lastName}
+									onChange={handleChange}
 								/>
 							</div>
 
@@ -59,6 +123,8 @@ export default function Register() {
 									name="email"
 									placeholder="Enter your email"
 									required
+									value={formData.email}
+									onChange={handleChange}
 								/>
 							</div>
 
@@ -70,19 +136,23 @@ export default function Register() {
 									name="password"
 									placeholder="Enter your password"
 									required
+									value={formData.password}
+									onChange={handleChange}
 								/>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="repeat-password">
+								<Label htmlFor="repeatPassword">
 									Repeat Password
 								</Label>
 								<Input
 									type="password"
-									id="repeat-password"
-									name="repeat-password"
+									id="repeatPassword"
+									name="repeatPassword"
 									placeholder="Confirm your password"
 									required
+									value={formData.repeatPassword}
+									onChange={handleChange}
 								/>
 							</div>
 
@@ -98,9 +168,10 @@ export default function Register() {
 
 								<Button
 									type="submit"
+									disabled={isLoading}
 									className="flex-1 !bg-bg-accent text-white"
 								>
-									Register
+									{isLoading ? "Loading..." : "Register"}
 								</Button>
 							</div>
 						</form>

@@ -19,19 +19,20 @@ function signToken(userId: number) {
 }
 
 router.post("/register", validate(registerSchema), async (req, res) => {
-	const { email, first_name, last_name, password } = req.body;
+	const { email, firstName, lastName, password } = req.body;
 	const password_hash = await bcrypt.hash(password, 12);
 
 	try {
 		const { rows } = await getDb().query<User>(
 			`INSERT INTO users (email, first_name, last_name, password_hash)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-			[email, first_name, last_name, password_hash],
+			[email, firstName, lastName, password_hash],
 		);
 
 		const token = signToken(rows[0].id);
 		res.status(201).json({ user: toPublicUser(rows[0]), token });
 	} catch (err: any) {
+		console.error("DATABASE ERROR:", err);
 		if (err.code === "23505") {
 			// unique violation
 			res.status(409).json({ error: "Email already taken" });
