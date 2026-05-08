@@ -9,6 +9,7 @@
 	--color-primary: #fff;
 	--color-bg: #242f40;
 	--color-bg-secondary: #1d202e;
+	--color-bg-accent: #21a270;
 
 	--color-background: oklch(1 0 0);
 	--color-foreground: oklch(0.145 0 0);

@@ -10,7 +10,7 @@ import {
 import * as THREE from "three";
 
 const NODE_COUNT = 25;
-const NETWORK_SIZE = 3.0;
+const NETWORK_SIZE = 2.8;
 
 const LABELS = [
   "tax.pdf",
