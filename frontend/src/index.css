@@ -1,6 +1,5 @@
 
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
@@ -10,4 +9,9 @@
   --color-primary:       #FFF;
   --color-bg:      #242F40;
   --color-bg-secondary: #1d202e;
+}
+
+
+button {
+  @apply hover:opacity-80 cursor-pointer transition duration-400;
 }
