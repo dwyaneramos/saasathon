@@ -3,7 +3,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <h3 align="center">Kiby</h3>
+  <h3 align="center">Kibi</h3>
 
   <p align="center">
     A project for the SaaSathon
