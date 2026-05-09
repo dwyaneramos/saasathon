@@ -3,16 +3,22 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import { requireAuth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
-import { createCategorySchema } from "../validation/documents.js";
+import {
+	createCategorySchema,
+	updateDocumentSchema,
+} from "../validation/documents.js";
 import {
 	analyzeImage,
 	analyzePdf,
 	assignDocumentCategory,
 	createCategory,
+	deleteDocument,
 	getDocument,
 	listCategories,
 	listDocuments,
+	renameDocument,
 	toPublicCategory,
 	toPublicDocument,
 } from "../services/documentAnalyzer.js";
@@ -89,6 +95,56 @@ router.get("/documents/:documentId", async (req, res) => {
 	res.json({ document: toPublicDocument(document) });
 });
 
+router.patch(
+	"/documents/:documentId",
+	requireAuth,
+	validate(updateDocumentSchema),
+	async (req, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({ error: "documentId must be a positive integer" });
+			return;
+		}
+
+		const document = await renameDocument(documentId, req.body.name);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		res.json({ document: toPublicDocument(document) });
+	},
+);
+
+router.delete("/documents/:documentId", requireAuth, async (req, res) => {
+	const documentId = getDocumentIdFromParams(req);
+	if (!documentId) {
+		res.status(400).json({ error: "documentId must be a positive integer" });
+		return;
+	}
+
+	const document = await deleteDocument(documentId);
+	if (!document) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
+	if (document.filepath) {
+		const filePath = resolveStoredFilePath(document.filepath);
+		if (filePath) {
+			try {
+				await fs.promises.unlink(filePath);
+			} catch (error) {
+				if (!isNotFoundError(error)) {
+					throw error;
+				}
+			}
+		}
+	}
+
+	res.json({ success: true });
+});
+
 router.get("/documents/:documentId/file", async (req, res, next) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
@@ -126,11 +182,17 @@ router.get("/documents/:documentId/file", async (req, res, next) => {
 		publicDocument.fileName ??
 		publicDocument.filename;
 	const disposition = req.query.download === "1" ? "attachment" : "inline";
+	const downloadName = resolveDownloadFilename(displayName, [
+		publicDocument.originalFileName,
+		publicDocument.storedFileName,
+		publicDocument.filename,
+		publicDocument.filepath,
+	]);
 
 	res.setHeader("Content-Type", publicDocument.mimeType);
 	res.setHeader(
 		"Content-Disposition",
-		`${disposition}; filename="${sanitizeHeaderFilename(displayName)}"`,
+		`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
 	);
 
 	res.sendFile(filePath, (err) => {
@@ -310,4 +372,36 @@ function resolveStoredFilePath(filepath: string) {
 
 function sanitizeHeaderFilename(filename: string) {
 	return filename.replace(/["\r\n]/g, "_");
+}
+
+function isNotFoundError(error: unknown) {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		error.code === "ENOENT"
+	);
+}
+
+function resolveDownloadFilename(
+	displayName: string,
+	fallbackNames: Array<string | null | undefined>,
+) {
+	const trimmedDisplayName = displayName.trim();
+	if (path.extname(trimmedDisplayName)) {
+		return trimmedDisplayName;
+	}
+
+	for (const fallbackName of fallbackNames) {
+		if (!fallbackName) {
+			continue;
+		}
+
+		const extension = path.extname(path.basename(fallbackName.trim()));
+		if (extension) {
+			return `${trimmedDisplayName}${extension}`;
+		}
+	}
+
+	return trimmedDisplayName;
 }
