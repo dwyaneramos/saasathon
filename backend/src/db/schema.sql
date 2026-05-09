@@ -48,9 +48,3 @@ CREATE TABLE documents (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE space (
-  id          SERIAL PRIMARY KEY,
-  created_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
