@@ -294,21 +294,24 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-					...authHeaders(),
+			const response = await fetch(
+				`${apiBaseUrl}/documents/${documentId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeaders(),
+					},
+					body: JSON.stringify({ name: trimmedName }),
 				},
-				body: JSON.stringify({ name: trimmedName }),
-			});
+			);
 
 			if (!response.ok) {
 				throw new Error(
 					toFriendlyDocumentError(
 						"rename",
 						response.status,
-					await readApiError(response),
+						await readApiError(response),
 					),
 				);
 			}
@@ -349,17 +352,20 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
-				method: "DELETE",
-				headers: authHeaders(),
-			});
+			const response = await fetch(
+				`${apiBaseUrl}/documents/${documentId}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
 
 			if (!response.ok) {
 				throw new Error(
 					toFriendlyDocumentError(
 						"delete",
 						response.status,
-					await readApiError(response),
+						await readApiError(response),
 					),
 				);
 			}
@@ -378,196 +384,206 @@ export default function FileView() {
 	const fileSummary = document.summary?.trim();
 
 	return (
-		<main className="flex min-h-[calc(100svh-var(--header-height))] flex-col bg-zinc-50/60">
-			<header className="border-b border-zinc-100 bg-white px-6 py-4">
-				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-					<div className="min-w-0">
-						<div className="flex min-w-0 items-center gap-2">
-							{isEditingName ? (
-								<>
-									<input
-										value={editableName}
-										onChange={(event) =>
-											setEditableName(event.target.value)
-										}
-										className="h-9 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-lg font-semibold text-zinc-950 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400"
-										maxLength={180}
-										disabled={isSavingName || isDeleting}
-										aria-label="File name"
-									/>
-									<button
-										type="button"
-										onClick={handleSaveName}
-										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Save file name"
-									>
-										<Save className="size-4" />
-									</button>
-									<button
-										type="button"
-										onClick={() => {
-											setEditableName(displayName);
-											setIsEditingName(false);
-											setActionError(null);
-										}}
-										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Cancel file name edit"
-									>
-										<X className="size-4" />
-									</button>
-								</>
-							) : (
-								<>
-									<h1 className="truncate text-lg font-semibold text-zinc-950">
-										{displayName}
-									</h1>
-									<button
-										type="button"
-										onClick={() => {
-											setEditableName(displayName);
-											setIsEditingName(true);
-											setActionError(null);
-										}}
-										disabled={isDeleting}
-										className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Edit file name"
-									>
-										<Edit3 className="size-4" />
-									</button>
-								</>
-							)}
-						</div>
-						<p className="mt-1 text-xs text-muted-foreground">
-							{document.mimeType} ·{" "}
-							{formatFileSize(document.fileSize)}
-						</p>
-						{actionError ? (
-							<p className="mt-2 text-xs text-red-600">
-								{actionError}
-							</p>
-						) : null}
-					</div>
-					<div className="flex shrink-0 gap-2">
-						<button
-							type="button"
-							onClick={() => {
-								setActionError(null);
-								setIsDeleteModalOpen(true);
-							}}
-							disabled={isSavingName || isDeleting}
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							<Trash2 className="size-4" />
-							{isDeleting ? "Deleting..." : "Delete"}
-						</button>
-						<a
-							href={fileUrl}
-							target="_blank"
-							rel="noreferrer"
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-						>
-							<ExternalLink className="size-4" />
-							Open
-						</a>
-						<a
-							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover)"
-						>
-							<Download className="size-4" />
-							Download
-						</a>
-					</div>
-				</div>
-				{fileSummary ? (
-					<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-						<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-							Summary
-						</p>
-						<p className="mt-1 text-sm leading-6 text-zinc-700">
-							{fileSummary}
-						</p>
-					</div>
-				) : null}
-			</header>
-
-			<section className="min-h-[480px] flex-1 p-4 md:p-6">
-				{canPreview ? (
-					<FilePreview
-						document={document}
-						fileUrl={fileUrl}
-						displayName={displayName}
-					/>
-				) : (
-					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
-						<FileText className="size-12 text-muted-foreground" />
-						<h2 className="mt-4 text-base font-semibold">
-							Preview unavailable
-						</h2>
-						<p className="mt-2 max-w-md text-sm text-muted-foreground">
-							This file type cannot be previewed inline. Open it
-							in a new tab or download it to view.
-						</p>
-					</div>
-				)}
-			</section>
-
-			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 px-4">
-					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl">
-						<div className="flex items-start justify-between gap-4">
-							<div>
-								<h2 className="text-base font-semibold text-zinc-950">
-									Delete file?
-								</h2>
-								<p className="mt-2 text-sm text-zinc-600">
-									Are you sure you want to delete{" "}
-									<span className="font-medium text-zinc-900">
-										{displayName}
-									</span>
-									? This action cannot be undone.
-								</p>
+		<div className="graph-page relative min-h-[calc(100vh-var(--header-height)-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50">
+			<main className="flex min-h-[calc(100vh-var(--header-height)-1rem)] flex-col bg-zinc-50/60">
+				<header className="border-b border-zinc-100 bg-white px-6 py-4">
+					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+						<div className="min-w-0">
+							<div className="flex min-w-0 items-center gap-2">
+								{isEditingName ? (
+									<>
+										<input
+											value={editableName}
+											onChange={(event) =>
+												setEditableName(
+													event.target.value,
+												)
+											}
+											className="h-9 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-lg font-semibold text-zinc-950 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400"
+											maxLength={180}
+											disabled={
+												isSavingName || isDeleting
+											}
+											aria-label="File name"
+										/>
+										<button
+											type="button"
+											onClick={handleSaveName}
+											disabled={
+												isSavingName || isDeleting
+											}
+											className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Save file name"
+										>
+											<Save className="size-4" />
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												setEditableName(displayName);
+												setIsEditingName(false);
+												setActionError(null);
+											}}
+											disabled={
+												isSavingName || isDeleting
+											}
+											className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Cancel file name edit"
+										>
+											<X className="size-4" />
+										</button>
+									</>
+								) : (
+									<>
+										<h1 className="truncate text-lg font-semibold text-zinc-950">
+											{displayName}
+										</h1>
+										<button
+											type="button"
+											onClick={() => {
+												setEditableName(displayName);
+												setIsEditingName(true);
+												setActionError(null);
+											}}
+											disabled={isDeleting}
+											className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Edit file name"
+										>
+											<Edit3 className="size-4" />
+										</button>
+									</>
+								)}
 							</div>
+							<p className="mt-1 text-xs text-muted-foreground">
+								{document.mimeType} ·{" "}
+								{formatFileSize(document.fileSize)}
+							</p>
+							{actionError ? (
+								<p className="mt-2 text-xs text-red-600">
+									{actionError}
+								</p>
+							) : null}
+						</div>
+						<div className="flex shrink-0 gap-2">
 							<button
 								type="button"
 								onClick={() => {
-									if (isDeleting) return;
-									setIsDeleteModalOpen(false);
+									setActionError(null);
+									setIsDeleteModalOpen(true);
 								}}
-								className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-								aria-label="Close delete modal"
+								disabled={isSavingName || isDeleting}
+								className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
 							>
-								<X className="size-4" />
+								<Trash2 className="size-4" />
+								{isDeleting ? "Deleting..." : "Delete"}
 							</button>
-						</div>
-						{actionError ? (
-							<p className="mt-4 text-sm text-red-600">
-								{actionError}
-							</p>
-						) : null}
-						<div className="mt-6 flex justify-end gap-2">
-							<button
-								type="button"
-								onClick={() => setIsDeleteModalOpen(false)}
-								disabled={isDeleting}
-								className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+							<a
+								href={fileUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
 							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onClick={handleDelete}
-								disabled={isDeleting}
-								className="inline-flex h-10 items-center rounded-md bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+								<ExternalLink className="size-4" />
+								Open
+							</a>
+							<a
+								href={downloadUrl}
+								className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover)"
 							>
-								{isDeleting ? "Deleting..." : "Delete item"}
-							</button>
+								<Download className="size-4" />
+								Download
+							</a>
 						</div>
 					</div>
-				</div>
-			) : null}
-		</main>
+					{fileSummary ? (
+						<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+							<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+								Summary
+							</p>
+							<p className="mt-1 text-sm leading-6 text-zinc-700">
+								{fileSummary}
+							</p>
+						</div>
+					) : null}
+				</header>
+
+				<section className="min-h-[480px] flex-1 p-4 md:p-6">
+					{canPreview ? (
+						<FilePreview
+							document={document}
+							fileUrl={fileUrl}
+							displayName={displayName}
+						/>
+					) : (
+						<div className="flex h-full flex-col items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
+							<FileText className="size-12 text-muted-foreground" />
+							<h2 className="mt-4 text-base font-semibold">
+								Preview unavailable
+							</h2>
+							<p className="mt-2 max-w-md text-sm text-muted-foreground">
+								This file type cannot be previewed inline. Open
+								it in a new tab or download it to view.
+							</p>
+						</div>
+					)}
+				</section>
+
+				{isDeleteModalOpen ? (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 px-4">
+						<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl">
+							<div className="flex items-start justify-between gap-4">
+								<div>
+									<h2 className="text-base font-semibold text-zinc-950">
+										Delete file?
+									</h2>
+									<p className="mt-2 text-sm text-zinc-600">
+										Are you sure you want to delete{" "}
+										<span className="font-medium text-zinc-900">
+											{displayName}
+										</span>
+										? This action cannot be undone.
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={() => {
+										if (isDeleting) return;
+										setIsDeleteModalOpen(false);
+									}}
+									className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+									aria-label="Close delete modal"
+								>
+									<X className="size-4" />
+								</button>
+							</div>
+							{actionError ? (
+								<p className="mt-4 text-sm text-red-600">
+									{actionError}
+								</p>
+							) : null}
+							<div className="mt-6 flex justify-end gap-2">
+								<button
+									type="button"
+									onClick={() => setIsDeleteModalOpen(false)}
+									disabled={isDeleting}
+									className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={handleDelete}
+									disabled={isDeleting}
+									className="inline-flex h-10 items-center rounded-md bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{isDeleting ? "Deleting..." : "Delete item"}
+								</button>
+							</div>
+						</div>
+					</div>
+				) : null}
+			</main>
+		</div>
 	);
 }
 

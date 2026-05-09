@@ -1591,8 +1591,9 @@ Rules:
 - Use the prompt and search results first, not canned wording.
 - If the user asks to open/view/read a specific file and the best search result is a strong match, set navigateTo to /file/<id>.
 - If the user asks about categories or collections, navigateTo can be /graph.
-- If the user asks to add or import files, navigateTo can be /upload.
+- If the user asks to add or import files, set navigateTo to /upload so the app can open the upload modal on the graph view.
 - Never claim direct file editing exists.
+- Any upload-related suggested action label must be exactly "Upload".
 - Suggested actions must fit the actual workspace state and should do what they say.
 - Do not invent files, categories, keywords, or routes.
 `;
@@ -1652,9 +1653,9 @@ function buildSuggestedActions({
   }
 
   actions.push({
-    label: "Open uploads",
+    label: "Upload",
     sub: documents.length === 0 ? "Add your first file" : "Add more files",
-    prompt: "Take me to the upload page",
+    prompt: "Open upload",
   });
 
   if (pathname !== "/dashboard") {
