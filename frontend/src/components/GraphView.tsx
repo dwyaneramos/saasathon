@@ -356,7 +356,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 				const radius = nodeSizeScale(node);
 				const nodeColor =
 					node.documentId != null ? "#1c1c1c" : "#1c1c1c";
-				const color = isSelected ? "#1c1c1c" : nodeColor;
+				const color = isSelected ? "#22c55e" : nodeColor;
 
 				return (
 					<group key={node.id} position={node.position.clone()}>

@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import {
 	createSpace,
 	deleteSpace,
-	listSpaces,
 	listSpacesForUser,
 	toPublicSpace,
 	updateSpace,
@@ -18,17 +17,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadDir = path.resolve(__dirname, "../../upload");
 
-router.get("/", async (req: AuthRequest, res, next) => {
-	const token = req.headers.authorization?.split(" ")[1];
-	if (token) {
-		requireAuth(req, res, async () => {
-			const spaces = await listSpacesForUser(req.userId!);
-			res.json({ spaces: spaces.map(toPublicSpace) });
-		});
-		return;
-	}
-
-	const spaces = await listSpaces();
+router.get("/", requireAuth, async (req: AuthRequest, res) => {
+	const spaces = await listSpacesForUser(req.userId!);
 	res.json({ spaces: spaces.map(toPublicSpace) });
 });
 

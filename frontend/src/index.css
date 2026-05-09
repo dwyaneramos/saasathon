@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 
 :root {
-	font-family: "Inter", sans-serif;
+	font-family: "Inter", Arial, Helvetica, sans-serif;
 	font-optical-sizing: auto;
 	font-style: normal;
 

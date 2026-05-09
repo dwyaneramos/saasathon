@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -36,13 +37,19 @@ import {
 	updateCategory,
 	type DownloadableDocumentRow,
 } from "../services/documentAnalyzer.js";
-import { userCanAccessSpace as userCanAccessUserSpace } from "../services/spaceService.js";
+import { userCanAccessSpace } from "../services/spaceService.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, "../../..");
 const uploadRoot = path.join(workspaceRoot, "backend/upload");
+const archiveDownloadRateLimit = createPerUserRateLimiter({
+	maxRequests: 30,
+	windowMs: 60_000,
+});
+const MIN_ARCHIVE_NAME_TOKEN_LENGTH = 2;
+const MAX_ARCHIVE_NAME_LENGTH = 72;
 const ARCHIVE_NAME_STOPWORDS = new Set([
 	"a",
 	"all",
@@ -75,6 +82,26 @@ const ARCHIVE_NAME_STOPWORDS = new Set([
 	"with",
 	"zip",
 ]);
+function createPerUserRateLimiter({
+	windowMs,
+	maxRequests,
+}: {
+	windowMs: number;
+	maxRequests: number;
+}) {
+	return rateLimit({
+		windowMs,
+		limit: maxRequests,
+		standardHeaders: true,
+		legacyHeaders: false,
+		message: { error: "Too many requests. Please try again in a minute." },
+		keyGenerator: (req) => {
+			const authReq = req as AuthRequest;
+			return `${authReq.userId ?? "anonymous"}:${req.ip}:${req.path}`;
+		},
+	});
+}
+
 export const uploadPdfMiddleware = multer({
 	storage: multer.memoryStorage(),
 	limits: {
@@ -108,10 +135,9 @@ export const uploadImageMiddleware = multer({
 	},
 });
 
-router.get("/categories", async (req, res) => {
-	const spaceId = getSpaceId(req);
-	if (spaceId === false) {
-		res.status(400).json({ error: "spaceId must be a positive integer" });
+router.get("/categories", requireAuth, async (req: AuthRequest, res) => {
+	const spaceId = await getAuthorizedQuerySpaceId(req, res);
+	if (spaceId == null) {
 		return;
 	}
 
@@ -125,10 +151,9 @@ router.get("/categories", async (req, res) => {
 	});
 });
 
-router.get("/documents", async (req, res) => {
-	const spaceId = getSpaceId(req);
-	if (spaceId === false) {
-		res.status(400).json({ error: "spaceId must be a positive integer" });
+router.get("/documents", requireAuth, async (req: AuthRequest, res) => {
+	const spaceId = await getAuthorizedQuerySpaceId(req, res);
+	if (spaceId == null) {
 		return;
 	}
 
@@ -136,10 +161,9 @@ router.get("/documents", async (req, res) => {
 	res.json({ documents: documents.map(toPublicDocument) });
 });
 
-router.get("/documents/search", async (req, res) => {
-	const spaceId = getSpaceId(req);
-	if (spaceId === false) {
-		res.status(400).json({ error: "spaceId must be a positive integer" });
+router.get("/documents/search", requireAuth, async (req: AuthRequest, res) => {
+	const spaceId = await getAuthorizedQuerySpaceId(req, res);
+	if (spaceId == null) {
 		return;
 	}
 
@@ -169,6 +193,7 @@ router.get("/documents/search", async (req, res) => {
 router.post(
 	"/documents/download-query",
 	requireAuth,
+	archiveDownloadRateLimit,
 	async (req: AuthRequest, res) => {
 		const spaceId =
 			typeof req.body?.spaceId === "number"
@@ -186,7 +211,7 @@ router.post(
 
 		if (
 			spaceId !== null &&
-			!(await userCanAccessUserSpace(req.userId!, spaceId))
+			!(await userCanAccessSpace(req.userId!, spaceId))
 		) {
 			res.status(404).json({ error: "Space not found" });
 			return;
@@ -216,15 +241,19 @@ router.post(
 );
 
 router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) => {
-	const spaceId =
-		typeof req.body?.spaceId === "number"
-			? req.body.spaceId
-			: typeof req.body?.spaceId === "string"
-				? Number(req.body.spaceId)
-				: null;
-
-	if (spaceId !== null && (!Number.isInteger(spaceId) || spaceId < 1)) {
+	const parsedSpaceId = getSpaceIdFromBody(req);
+	if (parsedSpaceId === false) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	if (parsedSpaceId == null) {
+		res.status(400).json({ error: "spaceId is required" });
+		return;
+	}
+
+	if (!(await userCanAccessSpace(req.userId!, parsedSpaceId))) {
+		res.status(403).json({ error: "You do not have access to this space" });
 		return;
 	}
 
@@ -236,7 +265,7 @@ router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) =
 
 	const response = await askDashboardAssistant({
 		prompt,
-		spaceId,
+		spaceId: parsedSpaceId,
 		pathname,
 	});
 
@@ -246,6 +275,7 @@ router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) =
 router.get(
 	"/categories/:categoryId/download",
 	requireAuth,
+	archiveDownloadRateLimit,
 	async (req: AuthRequest, res) => {
 		const categoryId = getCategoryIdFromParams(req);
 		if (!categoryId) {
@@ -267,7 +297,7 @@ router.get(
 		if (
 			!category ||
 			typeof category.space_id !== "number" ||
-			!(await userCanAccessUserSpace(req.userId!, category.space_id)) ||
+			!(await userCanAccessSpace(req.userId!, category.space_id)) ||
 			(typeof spaceId === "number" && category.space_id !== spaceId)
 		) {
 			res.status(404).json({ error: "Category not found" });
@@ -301,14 +331,15 @@ router.get(
 			return;
 		}
 
-	const document = await getDocument(documentId);
-	if (!document) {
-		res.status(404).json({ error: "Document not found" });
-		return;
-	}
+		const document = await getManageableDocument(req, documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
 
-	res.json({ document: toPublicDocument(document) });
-});
+		res.json({ document: toPublicDocument(document) });
+	},
+);
 
 router.patch(
 	"/documents/:documentId",
@@ -320,6 +351,12 @@ router.patch(
 			res.status(400).json({
 				error: "documentId must be a positive integer",
 			});
+			return;
+		}
+
+		const manageableDocument = await getManageableDocument(req, documentId);
+		if (!manageableDocument) {
+			res.status(404).json({ error: "Document not found" });
 			return;
 		}
 
@@ -339,6 +376,12 @@ router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 		res.status(400).json({
 			error: "documentId must be a positive integer",
 		});
+		return;
+	}
+
+	const manageableDocument = await getManageableDocument(req, documentId);
+	if (!manageableDocument) {
+		res.status(404).json({ error: "Document not found" });
 		return;
 	}
 
@@ -364,92 +407,139 @@ router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 	res.json({ success: true });
 });
 
-router.get("/documents/:documentId/file", async (req, res, next) => {
-	const documentId = getDocumentIdFromParams(req);
-	if (!documentId) {
-		res.status(400).json({
-			error: "documentId must be a positive integer",
-		});
-		return;
-	}
-
-	const document = await getDocument(documentId);
-	if (!document) {
-		res.status(404).json({ error: "Document not found" });
-		return;
-	}
-
-	if (!document.filepath) {
-		res.status(404).json({ error: "Stored file not found" });
-		return;
-	}
-
-	const filePath = resolveStoredFilePath(document.filepath);
-	if (!filePath) {
-		res.status(400).json({ error: "Invalid stored file path" });
-		return;
-	}
-
-	try {
-		await fs.promises.access(filePath, fs.constants.R_OK);
-	} catch {
-		res.status(404).json({ error: "Stored file not found" });
-		return;
-	}
-
-	const publicDocument = toPublicDocument(document);
-	const displayName =
-		publicDocument.originalFileName ??
-		publicDocument.fileName ??
-		publicDocument.filename;
-	const disposition = req.query.download === "1" ? "attachment" : "inline";
-	const downloadName = resolveDownloadFilename(displayName, [
-		publicDocument.originalFileName,
-		publicDocument.storedFileName,
-		publicDocument.filename,
-		publicDocument.filepath,
-	]);
-
-	res.setHeader("Content-Type", publicDocument.mimeType);
-	res.setHeader(
-		"Content-Disposition",
-		`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
-	);
-
-	res.sendFile(filePath, (err) => {
-		if (!err) {
+router.get(
+	"/documents/:documentId/file",
+	requireAuth,
+	async (req: AuthRequest, res, next) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
 			return;
 		}
 
-		if (
-			err.message === "Request aborted" ||
-			(err as NodeJS.ErrnoException).code === "ECONNABORTED" ||
-			res.headersSent
-		) {
-			return;
-		}
-
-		next(err);
-	});
-});
-
-router.post("/categories", validate(createCategorySchema), async (req, res) => {
-	const { documentId, ...categoryInput } = req.body;
-	const category = await createCategory({ ...categoryInput, documentId });
-	let responseCategory = category;
-
-	if (documentId) {
-		const assigned = await assignDocumentCategory(documentId, category.id);
-		if (!assigned) {
+		const document = await getManageableDocument(req, documentId);
+		if (!document) {
 			res.status(404).json({ error: "Document not found" });
 			return;
 		}
 
+		if (!document.filepath) {
+			res.status(404).json({ error: "Stored file not found" });
+			return;
+		}
+
+		const filePath = resolveStoredFilePath(document.filepath);
+		if (!filePath) {
+			res.status(400).json({ error: "Invalid stored file path" });
+			return;
+		}
+
+		try {
+			await fs.promises.access(filePath, fs.constants.R_OK);
+		} catch {
+			res.status(404).json({ error: "Stored file not found" });
+			return;
+		}
+
+		const publicDocument = toPublicDocument(document);
+		const displayName =
+			publicDocument.originalFileName ??
+			publicDocument.fileName ??
+			publicDocument.filename;
+		const disposition = req.query.download === "1" ? "attachment" : "inline";
+		const downloadName = resolveDownloadFilename(displayName, [
+			publicDocument.originalFileName,
+			publicDocument.storedFileName,
+			publicDocument.filename,
+			publicDocument.filepath,
+		]);
+
+		res.setHeader("Content-Type", publicDocument.mimeType);
+		res.setHeader(
+			"Content-Disposition",
+			`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
+		);
+
+		res.sendFile(filePath, (err) => {
+			if (!err) {
+				return;
+			}
+
+			if (
+				err.message === "Request aborted" ||
+				(err as NodeJS.ErrnoException).code === "ECONNABORTED" ||
+				res.headersSent
+			) {
+				return;
+			}
+
+			next(err);
+		});
+	},
+);
+
+router.post(
+	"/categories",
+	requireAuth,
+	validate(createCategorySchema),
+	async (req: AuthRequest, res) => {
+		const { documentId, ...categoryInput } = req.body;
+		const parsedSpaceId = getSpaceIdFromBody(req);
+		if (parsedSpaceId === false) {
+			res.status(400).json({ error: "spaceId must be a positive integer" });
+			return;
+		}
+
+		let spaceId = parsedSpaceId;
+		if (documentId) {
+			const document = await getManageableDocument(req, documentId);
+			if (!document || typeof document.space_id !== "number") {
+				res.status(404).json({ error: "Document not found" });
+				return;
+			}
+
+			if (spaceId != null && spaceId !== document.space_id) {
+				res.status(400).json({
+					error: "Document does not belong to this space",
+				});
+				return;
+			}
+
+			spaceId = document.space_id;
+		}
+
+		if (spaceId == null) {
+			res.status(400).json({ error: "spaceId is required" });
+			return;
+		}
+
+		if (!(await userCanAccessSpace(req.userId!, spaceId))) {
+			res.status(403).json({ error: "You do not have access to this space" });
+			return;
+		}
+
+		const category = await createCategory({
+			...categoryInput,
+			documentId,
+			spaceId,
+		});
+		let responseCategory = category;
+
+		if (documentId) {
+			const assigned = await assignDocumentCategory(documentId, category.id);
+			if (!assigned) {
+				res.status(404).json({ error: "Document not found" });
+				return;
+			}
+
 			responseCategory = (await getCategory(category.id)) ?? category;
 		}
 
-	res.status(201).json({ category: toPublicCategory(responseCategory) });
-});
+		res.status(201).json({ category: toPublicCategory(responseCategory) });
+	},
+);
 
 router.patch(
 	"/categories/:categoryId",
@@ -506,9 +596,15 @@ router.delete(
 	},
 );
 
-export async function analyzePdfUploadHandler(req: Request, res: Response) {
+export async function analyzePdfUploadHandler(req: AuthRequest, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "PDF file is required" });
+		return;
+	}
+
+	const documentId = getDocumentId(req);
+	if (documentId && !(await getManageableDocument(req, documentId))) {
+		res.status(404).json({ error: "Document not found" });
 		return;
 	}
 
@@ -519,7 +615,7 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
-		getDocumentId(req),
+		documentId,
 	);
 	const selectedCategory = await applyRequestedCategory(req, analysis.documentId);
 	const responseCategory = selectedCategory ?? analysis.match.category;
@@ -548,9 +644,15 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	});
 }
 
-export async function analyzeImageUploadHandler(req: Request, res: Response) {
+export async function analyzeImageUploadHandler(req: AuthRequest, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "Image file is required" });
+		return;
+	}
+
+	const documentId = getDocumentId(req);
+	if (documentId && !(await getManageableDocument(req, documentId))) {
+		res.status(404).json({ error: "Document not found" });
 		return;
 	}
 
@@ -561,7 +663,7 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
-		getDocumentId(req),
+		documentId,
 	);
 	const selectedCategory = await applyRequestedCategory(req, analysis.documentId);
 	const responseCategory = selectedCategory ?? analysis.match.category;
@@ -592,12 +694,14 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 
 router.post(
 	"/documents/analyze",
+	requireAuth,
 	uploadPdfMiddleware.single("file"),
 	analyzePdfUploadHandler,
 );
 
 router.post(
 	"/images/analyze",
+	requireAuth,
 	uploadImageMiddleware.single("file"),
 	analyzeImageUploadHandler,
 );
@@ -742,7 +846,7 @@ function archiveNameTokens(value: string) {
 		.replace(/[^a-z0-9\s-]/g, " ")
 		.split(/[\s-]+/)
 		.map((token) => token.trim())
-		.filter((token) => token.length >= 2)
+		.filter((token) => token.length >= MIN_ARCHIVE_NAME_TOKEN_LENGTH)
 		.filter((token) => !ARCHIVE_NAME_STOPWORDS.has(token))
 		.slice(0, 6);
 }
@@ -753,16 +857,17 @@ function archiveNameSlug(parts: string[]) {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
-		.slice(0, 72)
+		.slice(0, MAX_ARCHIVE_NAME_LENGTH)
 		.replace(/-+$/g, "");
 
 	return slug || "files";
 }
 
 function getDocumentId(req: Request) {
+	const rawDocumentId = req.body?.documentId;
 	const documentId =
-		typeof req.body?.documentId === "string"
-			? Number(req.body.documentId)
+		typeof rawDocumentId === "string" || typeof rawDocumentId === "number"
+			? Number(rawDocumentId)
 			: undefined;
 
 	return typeof documentId === "number" &&
@@ -782,6 +887,42 @@ function getSpaceId(req: Request) {
 
 	const spaceId = Number(req.query.spaceId);
 	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
+}
+
+function getSpaceIdFromBody(req: Request) {
+	if (
+		req.body?.spaceId === null ||
+		req.body?.spaceId === undefined ||
+		req.body?.spaceId === ""
+	) {
+		return null;
+	}
+
+	const spaceId =
+		typeof req.body.spaceId === "number"
+			? req.body.spaceId
+			: Number(req.body.spaceId);
+	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
+}
+
+async function getAuthorizedQuerySpaceId(req: AuthRequest, res: Response) {
+	const spaceId = getSpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return null;
+	}
+
+	if (spaceId == null) {
+		res.status(400).json({ error: "spaceId is required" });
+		return null;
+	}
+
+	if (!req.userId || !(await userCanAccessSpace(req.userId, spaceId))) {
+		res.status(403).json({ error: "You do not have access to this space" });
+		return null;
+	}
+
+	return spaceId;
 }
 
 function getCategoryIdFromBody(req: Request) {
@@ -840,8 +981,19 @@ async function getManageableCategory(req: AuthRequest, categoryId: number) {
 		return null;
 	}
 
-	return (await userCanAccessUserSpace(req.userId, category.space_id))
+	return (await userCanAccessSpace(req.userId, category.space_id))
 		? category
+		: null;
+}
+
+async function getManageableDocument(req: AuthRequest, documentId: number) {
+	const document = await getDocument(documentId);
+	if (!document || typeof document.space_id !== "number" || !req.userId) {
+		return null;
+	}
+
+	return (await userCanAccessSpace(req.userId, document.space_id))
+		? document
 		: null;
 }
 

@@ -42,6 +42,7 @@ const DOWNLOAD_CRITERIA_STOPWORDS = new Set([
 ]);
 const CATEGORY_CONNECTION_MIN_WEIGHT = 0.08;
 const CATEGORY_CONNECTION_REASON_LIMIT = 5;
+const FILE_TYPE_SEARCH_LIMIT = 100;
 
 const CATEGORY_CONNECTION_RELATED_TOKENS: Record<string, string[]> = {
   account: ["banking", "finance", "transaction"],
@@ -290,7 +291,7 @@ export async function listCategoryConnections(spaceId?: number | null) {
         metadata,
         updated_at
      FROM category_connections
-     WHERE space_id IS NOT DISTINCT FROM $1
+     WHERE space_id IS NOT DISTINCT FROM $1::integer
      ORDER BY weight DESC, updated_at DESC`,
     [spaceId ?? null],
   );
@@ -327,7 +328,7 @@ export async function listDocuments(spaceId?: number | null) {
         keywords,
         created_at
      FROM documents
-     WHERE $1::integer IS NULL OR space_id = $1
+     WHERE space_id IS NOT DISTINCT FROM $1::integer
      ORDER BY created_at DESC`,
     [spaceId ?? null],
   );
@@ -468,7 +469,10 @@ export async function searchDocuments(input: {
   const normalizedQuery = trimmedQuery.toLowerCase();
   const tokens = normalizeSearchTokens(trimmedQuery);
   const fileTypeHints = resolveFileTypeSearchHints(trimmedQuery);
-  const safeLimit = Math.min(Math.max(input.limit ?? 8, 1), 20);
+  const hasFileTypeHints = hasResolvedFileTypeHints(fileTypeHints);
+  const safeLimit = hasFileTypeHints
+    ? FILE_TYPE_SEARCH_LIMIT
+    : Math.min(Math.max(input.limit ?? 8, 1), 20);
 
   const { rows } = await getDb().query<DocumentSearchRow>(
     `SELECT
@@ -563,7 +567,21 @@ export async function searchDocuments(input: {
         )::float8 AS score
      FROM documents d
      LEFT JOIN document_categories c ON c.id = d.category_id
-     WHERE ($1::integer IS NULL OR d.space_id = $1)
+     WHERE d.space_id IS NOT DISTINCT FROM $1::integer
+       AND (
+        $8::boolean = FALSE
+        OR lower(COALESCE(d.mime_type, '')) = ANY($5::text[])
+        OR EXISTS (
+          SELECT 1
+          FROM unnest($6::text[]) AS mime_prefix
+          WHERE lower(COALESCE(d.mime_type, '')) LIKE mime_prefix || '%'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM unnest($7::text[]) AS extension
+          WHERE lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) LIKE '%.' || extension
+        )
+       )
      ORDER BY score DESC, d.created_at DESC
      LIMIT $4`,
     [
@@ -574,6 +592,7 @@ export async function searchDocuments(input: {
       fileTypeHints.exactMimeTypes,
       fileTypeHints.mimePrefixes,
       fileTypeHints.extensions,
+      hasFileTypeHints,
     ],
   );
 
@@ -2070,22 +2089,39 @@ type FileTypeSearchHints = {
   extensions: string[];
 };
 
+const IMAGE_FILE_EXTENSIONS = [
+  "apng",
+  "avif",
+  "bmp",
+  "gif",
+  "heic",
+  "heif",
+  "ico",
+  "jfif",
+  "jpeg",
+  "jpg",
+  "pjp",
+  "pjpeg",
+  "png",
+  "svg",
+  "tif",
+  "tiff",
+  "webp",
+];
+
+const IMAGE_FILE_TYPE_HINTS: FileTypeSearchHints = {
+  exactMimeTypes: [],
+  mimePrefixes: ["image/"],
+  extensions: IMAGE_FILE_EXTENSIONS,
+};
+
 const FILE_TYPE_SEARCH_ALIASES: Record<string, FileTypeSearchHints> = {
-  image: {
-    exactMimeTypes: [],
-    mimePrefixes: ["image/"],
-    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "svg", "webp"],
-  },
-  picture: {
-    exactMimeTypes: [],
-    mimePrefixes: ["image/"],
-    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "svg", "webp"],
-  },
-  photo: {
-    exactMimeTypes: [],
-    mimePrefixes: ["image/"],
-    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "webp"],
-  },
+  image: IMAGE_FILE_TYPE_HINTS,
+  picture: IMAGE_FILE_TYPE_HINTS,
+  photo: IMAGE_FILE_TYPE_HINTS,
+  photograph: IMAGE_FILE_TYPE_HINTS,
+  pic: IMAGE_FILE_TYPE_HINTS,
+  screenshot: IMAGE_FILE_TYPE_HINTS,
   pdf: {
     exactMimeTypes: ["application/pdf"],
     mimePrefixes: [],
@@ -2160,6 +2196,36 @@ const EXTENSION_SEARCH_HINTS: Record<string, FileTypeSearchHints> = {
     exactMimeTypes: ["image/svg+xml"],
     mimePrefixes: [],
     extensions: ["svg"],
+  },
+  bmp: {
+    exactMimeTypes: ["image/bmp"],
+    mimePrefixes: [],
+    extensions: ["bmp"],
+  },
+  tif: {
+    exactMimeTypes: ["image/tiff"],
+    mimePrefixes: [],
+    extensions: ["tif", "tiff"],
+  },
+  tiff: {
+    exactMimeTypes: ["image/tiff"],
+    mimePrefixes: [],
+    extensions: ["tif", "tiff"],
+  },
+  heic: {
+    exactMimeTypes: ["image/heic"],
+    mimePrefixes: [],
+    extensions: ["heic"],
+  },
+  heif: {
+    exactMimeTypes: ["image/heif"],
+    mimePrefixes: [],
+    extensions: ["heif"],
+  },
+  avif: {
+    exactMimeTypes: ["image/avif"],
+    mimePrefixes: [],
+    extensions: ["avif"],
   },
   csv: {
     exactMimeTypes: ["text/csv"],
@@ -2242,6 +2308,14 @@ function addFileTypeHints(target: FileTypeSearchHints, source: FileTypeSearchHin
   target.exactMimeTypes.push(...source.exactMimeTypes);
   target.mimePrefixes.push(...source.mimePrefixes);
   target.extensions.push(...source.extensions);
+}
+
+function hasResolvedFileTypeHints(hints: FileTypeSearchHints) {
+  return (
+    hints.exactMimeTypes.length > 0 ||
+    hints.mimePrefixes.length > 0 ||
+    hints.extensions.length > 0
+  );
 }
 
 type DashboardAssistantJson = {

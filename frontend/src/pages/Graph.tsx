@@ -86,6 +86,9 @@ export default function Graph() {
 		width: 0,
 		height: 0,
 	});
+	const [documentPreviewObjectUrl, setDocumentPreviewObjectUrl] = useState<
+		string | null
+	>(null);
 	const [isDragUploadActive, setIsDragUploadActive] = useState(false);
 	const dragDepthRef = useRef(0);
 	const requestedCategoryId = useMemo(() => {
@@ -305,18 +308,18 @@ export default function Graph() {
 		event.preventDefault();
 		dragDepthRef.current = 0;
 		setIsDragUploadActive(false);
-			window.dispatchEvent(
-				new CustomEvent(openUploadModalEvent, {
-					detail: {
-						files: Array.from(event.dataTransfer.files),
-						categoryId:
-							mode === "files" && typeof activeCategoryId === "number"
-								? activeCategoryId
-								: null,
-					},
-				}),
-			);
-		};
+		window.dispatchEvent(
+			new CustomEvent(openUploadModalEvent, {
+				detail: {
+					files: Array.from(event.dataTransfer.files),
+					categoryId:
+						mode === "files" && typeof activeCategoryId === "number"
+							? activeCategoryId
+							: null,
+				},
+			}),
+		);
+	};
 
 	const categoryNodes = useMemo<GraphNode[]>(() => {
 		return categories.map((category) => ({
@@ -405,11 +408,68 @@ export default function Graph() {
 		mode === "categories" && hoveredNode?.categoryId != null;
 	const showTooltip =
 		tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
-	const documentPreviewUrl = hoveredNode?.documentId
-		? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
-		: "";
+	const documentPreviewUrl = documentPreviewObjectUrl ?? "";
 	const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
 	const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
+
+	useEffect(() => {
+		const documentId = hoveredNode?.documentId;
+		const canLoadPreview =
+			mode === "files" &&
+			typeof documentId === "number" &&
+			(isImagePreview || isPdfPreview);
+
+		if (!canLoadPreview) {
+			setDocumentPreviewObjectUrl(null);
+			return;
+		}
+
+		const abortController = new AbortController();
+		let objectUrl: string | null = null;
+		setDocumentPreviewObjectUrl(null);
+
+		async function loadPreview() {
+			try {
+				const token = localStorage.getItem("token");
+				const headers = token
+					? { Authorization: `Bearer ${token}` }
+					: undefined;
+				const response = await fetch(
+					`${apiBaseUrl}/documents/${documentId}/file`,
+					{
+						headers,
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok || abortController.signal.aborted) {
+					return;
+				}
+
+				const blob = await response.blob();
+				objectUrl = URL.createObjectURL(blob);
+				setDocumentPreviewObjectUrl(objectUrl);
+			} catch (error) {
+				if (
+					error instanceof DOMException &&
+					error.name === "AbortError"
+				) {
+					return;
+				}
+
+				setDocumentPreviewObjectUrl(null);
+			}
+		}
+
+		void loadPreview();
+
+		return () => {
+			abortController.abort();
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [hoveredNode?.documentId, isImagePreview, isPdfPreview, mode]);
 
 	// Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
 	const TOOLTIP_WIDTH = 320;
@@ -623,7 +683,7 @@ export default function Graph() {
 			{isDragUploadActive ? (
 				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
 					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-zinc-900">
 							<UploadCloud className="size-6" />
 						</span>
 						<div>
@@ -750,7 +810,12 @@ export default function Graph() {
 
 								<div className="border-b border-zinc-100 bg-zinc-50 p-3">
 									<div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white">
-										{isImagePreview ? (
+										{(isImagePreview || isPdfPreview) &&
+										!documentPreviewUrl ? (
+											<p className="px-4 text-center text-xs leading-5 text-zinc-500">
+												Loading preview...
+											</p>
+										) : isImagePreview ? (
 											<img
 												src={documentPreviewUrl}
 												alt={`${hoveredNode!.label} preview`}

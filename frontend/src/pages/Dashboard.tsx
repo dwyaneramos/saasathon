@@ -139,6 +139,26 @@ function sortDocumentsByNewest(documents: DocumentSummary[]) {
 	});
 }
 
+const productivityPromptTemplates = [
+	"How can I help inside {spaceLabel}?",
+	"What should we get moving inside {spaceLabel}?",
+	"What would you like to clear first in {spaceLabel}?",
+	"What can I help organise in {spaceLabel}?",
+	"What should we make easier in {spaceLabel} today?",
+	"Where should we focus inside {spaceLabel}?",
+	"What do you want to get done in {spaceLabel}?",
+	"Want to find, file, or tidy something in {spaceLabel}?",
+];
+
+function productivityPromptForSpace(spaceLabel: string, seed: number) {
+	const template =
+		productivityPromptTemplates[
+			seed % productivityPromptTemplates.length
+		];
+
+	return template.replace("{spaceLabel}", spaceLabel);
+}
+
 function TypingIndicator() {
 	return (
 		<div className="mb-3 flex items-end gap-2">
@@ -234,7 +254,7 @@ function ChatMessage({ message }: { message: Message }) {
 			<div
 				className={`min-w-0 max-w-[78%] overflow-hidden px-3 py-2 text-sm leading-relaxed ${
 					isUser
-						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
+						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-[var(--color-accent)] text-black"
 						: "rounded-xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
 				}`}
 			>
@@ -370,7 +390,20 @@ export default function Dashboard() {
 	const isEmpty = messages.length === 0;
 	const hasStartedConversation = messages.length > 0 || isLoading;
 	const userFirstName = user?.firstName ?? null;
-	const spaceLabel = activeSpaceName ?? "this workspace";
+	const spaceLabel = activeSpaceName ?? "your space";
+	const [productivityPromptSeed, setProductivityPromptSeed] = useState(() =>
+		Math.floor(Math.random() * productivityPromptTemplates.length),
+	);
+	const productivityPrompt = useMemo(
+		() => productivityPromptForSpace(spaceLabel, productivityPromptSeed),
+		[productivityPromptSeed, spaceLabel],
+	);
+
+	useEffect(() => {
+		setProductivityPromptSeed(
+			Math.floor(Math.random() * productivityPromptTemplates.length),
+		);
+	}, [activeSpaceId]);
 
 	useEffect(() => {
 		const container = scrollContainerRef.current;
@@ -468,6 +501,14 @@ export default function Dashboard() {
 
 	useEffect(() => {
 		let ignore = false;
+
+		if (!activeSpaceId) {
+			setSuggestions([]);
+			setIsSuggestionsLoading(false);
+			return () => {
+				ignore = true;
+			};
+		}
 
 		async function loadSuggestions() {
 			setIsSuggestionsLoading(true);
@@ -575,6 +616,19 @@ export default function Dashboard() {
 	const sendMessage = async (text: string) => {
 		const trimmedText = text.trim();
 		if (!trimmedText || isLoading) return;
+		if (!activeSpaceId) {
+			const assistantMessage: Message = {
+				id: crypto.randomUUID(),
+				role: "assistant",
+				content: "Choose a space from the sidebar first, then I can search its files and categories.",
+				timestamp: new Date(),
+			};
+			setMessages((currentMessages) => [
+				...currentMessages,
+				assistantMessage,
+			]);
+			return;
+		}
 
 		const userMessage: Message = {
 			id: crypto.randomUUID(),
@@ -771,7 +825,7 @@ export default function Dashboard() {
 									,
 								</h1>
 								<p className="text-base text-zinc-500 sm:text-lg">
-									How can I help inside {spaceLabel}?
+									{productivityPrompt}
 								</p>
 								<p className="mx-auto mt-2 max-w-xl text-xs text-zinc-400 sm:mt-3 sm:text-sm">
 									{contextSummary}
@@ -849,7 +903,7 @@ export default function Dashboard() {
 								<button
 									onClick={() => void sendMessage(input)}
 									disabled={!input.trim() || isLoading}
-									className={`flex items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
+									className={`flex items-center justify-center rounded-full bg-[var(--color-accent)] transition-all hover:bg-[var(--color-accent-hover)] active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
 										hasStartedConversation
 											? "h-9 w-9"
 											: "h-10 w-10 md:h-11 md:w-11"
@@ -880,7 +934,7 @@ export default function Dashboard() {
 			{isDragUploadActive ? (
 				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
 					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-zinc-900">
 							<UploadCloud className="size-6" />
 						</span>
 						<div>
