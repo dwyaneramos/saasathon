@@ -1252,7 +1252,14 @@ export function UploadWorkspace({
 																					{result.categoryInput.trim() &&
 																						!hasExactCategoryMatch && (
 																							<div className="border-t border-border px-2.5 py-2 text-xs text-muted-foreground">
-																								Press Confirm to create "{result.categoryInput.trim()}"
+																								Press
+																								Confirm
+																								to
+																								create
+																								"
+																								{result.categoryInput.trim()}
+
+																								"
 																							</div>
 																						)}
 																				</div>
