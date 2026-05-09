@@ -17,18 +17,7 @@ import {
   Plus,
   Layers,
   FolderClosed,
-	ChevronRight,
-	FileArchive,
-	FileAudio,
-	FileCode,
-	FileImage,
-	FileSpreadsheet,
-	FolderOpen,
-	FileVideo,
-	FileText,
-	Plus,
-	FolderClosed,
-	Orbit,
+  Orbit,
 } from "lucide-react";
 import {
   Collapsible,
@@ -64,10 +53,10 @@ const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 export type KibiFile = {
-	id: number;
-	name: string;
-	filename: string;
-	mimeType: string;
+  id: number;
+  name: string;
+  filename: string;
+  mimeType: string;
 };
 type Category = { id: number; name: string; files: KibiFile[] };
 type Space = { id: number; name: string };
@@ -125,36 +114,36 @@ function fileExtension(file: KibiFile) {
 }
 
 export function fileIconFor(file: KibiFile) {
-	const mimeType = file.mimeType.toLowerCase();
-	const extension = fileExtension(file);
+  const mimeType = file.mimeType.toLowerCase();
+  const extension = fileExtension(file);
 
-	if (mimeType === "application/pdf" || extension === "pdf") return FileText;
-	if (mimeType.startsWith("image/")) return FileImage;
-	if (mimeType.startsWith("audio/")) return FileAudio;
-	if (mimeType.startsWith("video/")) return FileVideo;
-	if (
-		mimeType.includes("spreadsheet") ||
-		mimeType.includes("excel") ||
-		["csv", "tsv", "xls", "xlsx"].includes(extension)
-	) {
-		return FileSpreadsheet;
-	}
-	if (
-		mimeType.includes("zip") ||
-		mimeType.includes("compressed") ||
-		["zip", "rar", "7z", "tar", "gz"].includes(extension)
-	) {
-		return FileArchive;
-	}
-	if (
-		mimeType.includes("json") ||
-		mimeType.includes("xml") ||
-		["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(
-			extension,
-		)
-	) {
-		return FileCode;
-	}
+  if (mimeType === "application/pdf" || extension === "pdf") return FileText;
+  if (mimeType.startsWith("image/")) return FileImage;
+  if (mimeType.startsWith("audio/")) return FileAudio;
+  if (mimeType.startsWith("video/")) return FileVideo;
+  if (
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel") ||
+    ["csv", "tsv", "xls", "xlsx"].includes(extension)
+  ) {
+    return FileSpreadsheet;
+  }
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("compressed") ||
+    ["zip", "rar", "7z", "tar", "gz"].includes(extension)
+  ) {
+    return FileArchive;
+  }
+  if (
+    mimeType.includes("json") ||
+    mimeType.includes("xml") ||
+    ["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(
+      extension,
+    )
+  ) {
+    return FileCode;
+  }
 
   return FileText;
 }
@@ -173,57 +162,57 @@ function SpaceSwitcher({
   const { isMobile } = useSidebar();
   const activeSpaceName = activeSpace?.name ?? "No spaces";
 
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton
-					tooltip={activeSpaceName}
-					className="hover:bg-zinc-200"
-					style={{ transition: "none" }}
-				>
-					<Orbit />
-					<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-						<span className="truncate font-semibold">
-							{activeSpaceName}
-						</span>
-						<span className="truncate text-xs text-muted-foreground">
-							Active space
-						</span>
-					</div>
-					<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-				</SidebarMenuButton>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent
-				side={isMobile ? "bottom" : "right"}
-				align="start"
-				className="min-w-48 rounded-lg"
-			>
-				{spaces.length > 0 ? (
-					spaces.map((space) => (
-						<DropdownMenuItem
-							key={space.id}
-							onSelect={() => onSelect(space)}
-							className="gap-2"
-						>
-							<div className="flex size-6 items-center justify-center rounded-md">
-								<Orbit className="size-3.5 shrink-0" />
-							</div>
-							{space.name}
-							{space.id === activeSpace?.id && (
-								<span className="ml-auto text-xs text-muted-foreground">
-									Active
-								</span>
-							)}
-						</DropdownMenuItem>
-					))
-				) : (
-					<DropdownMenuItem disabled>
-						No spaces found
-					</DropdownMenuItem>
-				)}
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <SidebarMenuButton
+          tooltip={activeSpaceName}
+          className="hover:bg-zinc-200"
+          style={{ transition: "none" }}
+        >
+          <Orbit />
+          <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-semibold">
+              {activeSpaceName}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">
+              Active space
+            </span>
+          </div>
+          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+        </SidebarMenuButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side={isMobile ? "bottom" : "right"}
+        align="start"
+        className="min-w-48 rounded-lg"
+      >
+        {spaces.length > 0 ? (
+          spaces.map((space) => (
+            <DropdownMenuItem
+              key={space.id}
+              onSelect={() => onSelect(space)}
+              className="gap-2"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md">
+                <Orbit className="size-3.5 shrink-0" />
+              </div>
+              {space.name}
+              {space.id === activeSpace?.id && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  Active
+                </span>
+              )}
+            </DropdownMenuItem>
+          ))
+        ) : (
+          <DropdownMenuItem disabled>
+            No spaces found
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 // ── File tree (categories → files) ───────────────────────────────────────────
