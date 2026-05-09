@@ -6,6 +6,7 @@ import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { registerSchema, loginSchema } from "../validation/user.js";
 import type { User, PublicUser } from "../types/user.js";
+import { getOrCreateUserSpace } from "../services/spaceService.js";
 
 const router = Router();
 
@@ -28,6 +29,11 @@ router.post("/register", validate(registerSchema), async (req, res) => {
        VALUES ($1, $2, $3, $4) RETURNING *`,
 			[email, firstName, lastName, password_hash],
 		);
+
+		await getOrCreateUserSpace({
+			userId: rows[0].id,
+			name: `${firstName}'s Space`,
+		});
 
 		const token = signToken(rows[0].id);
 		res.status(201).json({ user: toPublicUser(rows[0]), token });
@@ -58,6 +64,10 @@ router.post("/login", validate(loginSchema), async (req, res) => {
 	}
 
 	const token = signToken(user.id);
+	await getOrCreateUserSpace({
+		userId: user.id,
+		name: `${user.firstName}'s Space`,
+	});
 	res.json({ user: toPublicUser(user), token });
 });
 
@@ -71,6 +81,11 @@ router.get("/me", requireAuth, async (req: AuthRequest, res) => {
 		res.status(404).json({ error: "User not found" });
 		return;
 	}
+
+	await getOrCreateUserSpace({
+		userId: rows[0].id,
+		name: `${rows[0].firstName}'s Space`,
+	});
 
 	res.json({ user: toPublicUser(rows[0]) });
 });

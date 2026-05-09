@@ -16,6 +16,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import AppNavbar from "@/components/AppNavbar";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { Toaster } from "./components/ui/sonner";
 
 function AppLayout() {
 	return (
@@ -69,8 +70,19 @@ function App() {
 					</Routes>
 				</Router>
 			</TooltipProvider>
+      <Toaster
+        toastOptions={{
+          classNames: {
+            error: "!bg-red-100 !text-red-800 !border-red-300",
+            success:
+              "!bg-green-100 !text-green-800 !border-green-300",
+            warning: "!bg-yellow-100",
+            info: "!bg-blue-100",
+          },
+        }}
+      />
 		</AuthProvider>
-	);
+    )
 }
 
 export default App;
