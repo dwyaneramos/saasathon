@@ -476,6 +476,14 @@ function UploadModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const [isUploadLocked, setIsUploadLocked] = React.useState(false);
+  const [hasAnalysisStarted, setHasAnalysisStarted] = React.useState(false);
+
+  const handleBusyChange = React.useCallback((isBusy: boolean) => {
+    setIsUploadLocked(isBusy);
+    if (isBusy) {
+      setHasAnalysisStarted(true);
+    }
+  }, []);
 
   const requestClose = React.useCallback(() => {
     if (isUploadLocked) {
@@ -484,6 +492,13 @@ function UploadModal({
 
     onOpenChange(false);
   }, [isUploadLocked, onOpenChange]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setIsUploadLocked(false);
+      setHasAnalysisStarted(false);
+    }
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) {
@@ -535,25 +550,29 @@ function UploadModal({
           <UploadWorkspace
             detailMode="compact"
             showHeading={false}
-            onBusyChange={setIsUploadLocked}
+            onBusyChange={handleBusyChange}
           />
         </CardContent>
         <div className="grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t bg-muted/40 px-6 py-3 text-muted-foreground">
           <span className="flex min-h-full items-center text-sm leading-relaxed md:text-[15px]">
             {isUploadLocked
               ? "You can't leave while files are uploading or analyzing, or the batch may be interrupted."
-              : "Finished here? Press Esc, click outside, or use Done to close."}
+              : hasAnalysisStarted
+                ? "Finished here? Press Esc, click outside, or use Done to close."
+                : "Press Esc, click outside, or use the close button to leave."}
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            className="shrink-0 self-end !bg-bg !text-white hover:!bg-bg/90 disabled:!bg-bg/50 disabled:!text-white"
-            size="default"
-            onClick={requestClose}
-            disabled={isUploadLocked}
-          >
-            Done
-          </Button>
+          {hasAnalysisStarted ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="shrink-0 self-end !bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover) disabled:!bg-zinc-400 disabled:!text-zinc-100"
+              size="default"
+              onClick={requestClose}
+              disabled={isUploadLocked}
+            >
+              Done
+            </Button>
+          ) : null}
         </div>
       </Card>
     </div>,
