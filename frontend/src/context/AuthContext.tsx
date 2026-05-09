@@ -47,6 +47,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     localStorage.setItem("user", JSON.stringify(mappedUser));
     localStorage.setItem("token", token);
+    localStorage.removeItem("activeSpaceId");
 
     setIsLoading(false);
   };
@@ -55,6 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    localStorage.removeItem("activeSpaceId");
     setIsLoading(false);
   };
   useEffect(() => {

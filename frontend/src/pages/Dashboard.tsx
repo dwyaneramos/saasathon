@@ -445,6 +445,14 @@ export default function Dashboard() {
 	useEffect(() => {
 		let ignore = false;
 
+		if (!activeSpaceId) {
+			setSuggestions([]);
+			setIsSuggestionsLoading(false);
+			return () => {
+				ignore = true;
+			};
+		}
+
 		async function loadSuggestions() {
 			setIsSuggestionsLoading(true);
 
@@ -513,6 +521,19 @@ export default function Dashboard() {
 	const sendMessage = async (text: string) => {
 		const trimmedText = text.trim();
 		if (!trimmedText || isLoading) return;
+		if (!activeSpaceId) {
+			const assistantMessage: Message = {
+				id: crypto.randomUUID(),
+				role: "assistant",
+				content: "Choose a space from the sidebar first, then I can search its files and categories.",
+				timestamp: new Date(),
+			};
+			setMessages((currentMessages) => [
+				...currentMessages,
+				assistantMessage,
+			]);
+			return;
+		}
 
 		const userMessage: Message = {
 			id: crypto.randomUUID(),

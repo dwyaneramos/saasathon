@@ -82,6 +82,9 @@ export default function Graph() {
 		width: 0,
 		height: 0,
 	});
+	const [documentPreviewObjectUrl, setDocumentPreviewObjectUrl] = useState<
+		string | null
+	>(null);
 	const requestedCategoryId = useMemo(() => {
 		const rawValue = searchParams.get("categoryId");
 		if (!rawValue) return null;
@@ -344,11 +347,68 @@ export default function Graph() {
 		mode === "categories" && hoveredNode?.categoryId != null;
 	const showTooltip =
 		tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
-	const documentPreviewUrl = hoveredNode?.documentId
-		? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
-		: "";
+	const documentPreviewUrl = documentPreviewObjectUrl ?? "";
 	const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
 	const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
+
+	useEffect(() => {
+		const documentId = hoveredNode?.documentId;
+		const canLoadPreview =
+			mode === "files" &&
+			typeof documentId === "number" &&
+			(isImagePreview || isPdfPreview);
+
+		if (!canLoadPreview) {
+			setDocumentPreviewObjectUrl(null);
+			return;
+		}
+
+		const abortController = new AbortController();
+		let objectUrl: string | null = null;
+		setDocumentPreviewObjectUrl(null);
+
+		async function loadPreview() {
+			try {
+				const token = localStorage.getItem("token");
+				const headers = token
+					? { Authorization: `Bearer ${token}` }
+					: undefined;
+				const response = await fetch(
+					`${apiBaseUrl}/documents/${documentId}/file`,
+					{
+						headers,
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok || abortController.signal.aborted) {
+					return;
+				}
+
+				const blob = await response.blob();
+				objectUrl = URL.createObjectURL(blob);
+				setDocumentPreviewObjectUrl(objectUrl);
+			} catch (error) {
+				if (
+					error instanceof DOMException &&
+					error.name === "AbortError"
+				) {
+					return;
+				}
+
+				setDocumentPreviewObjectUrl(null);
+			}
+		}
+
+		void loadPreview();
+
+		return () => {
+			abortController.abort();
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [hoveredNode?.documentId, isImagePreview, isPdfPreview, mode]);
 
 	// Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
 	const TOOLTIP_WIDTH = 320;
@@ -667,7 +727,12 @@ export default function Graph() {
 
 								<div className="border-b border-zinc-100 bg-zinc-50 p-3">
 									<div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white">
-										{isImagePreview ? (
+										{(isImagePreview || isPdfPreview) &&
+										!documentPreviewUrl ? (
+											<p className="px-4 text-center text-xs leading-5 text-zinc-500">
+												Loading preview...
+											</p>
+										) : isImagePreview ? (
 											<img
 												src={documentPreviewUrl}
 												alt={`${hoveredNode!.label} preview`}
