@@ -7,6 +7,10 @@ import express, {
 	type NextFunction,
 } from "express";
 import apiRoutes from "./routes/index.js";
+import {
+	analyzePdfUploadHandler,
+	uploadPdfMiddleware,
+} from "./routes/documents.js";
 import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +31,7 @@ app.use(
 
 app.use(express.json());
 
+app.post("/upload", uploadPdfMiddleware.single("file"), analyzePdfUploadHandler);
 app.use("/api/v1", apiRoutes);
 
 app.get("/api/v1/health", (req: Request, res: Response) => {
@@ -38,6 +43,21 @@ app.use((req: Request, res: Response) => {
 });
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+	if (err.name === "MulterError" || err.message === "Only PDF files are supported") {
+		res.status(400).json({ error: err.message });
+		return;
+	}
+
+	if (err.message === "Only PNG, JPEG, WebP, or GIF images are supported") {
+		res.status(400).json({ error: err.message });
+		return;
+	}
+
+	if (err.message === "OPENROUTER_API_KEY is required") {
+		res.status(503).json({ error: err.message });
+		return;
+	}
+
 	console.error(err.stack);
 	res.status(500).json({ error: "Something went wrong!" });
 });

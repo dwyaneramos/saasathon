@@ -11,7 +11,7 @@ export const Landing = () => {
         <h1 className="text-9xl">Kibi</h1>
 
         <h2 className="text-6xl">
-          What your life <span className="italic">'kibi'</span>
+          What your document workflow <span className="italic">'kibi'</span>
         </h2>
 
         <button className="bg-primary w-64 rounded-full my-3 text-bg text-3xl px-6 py-3">
