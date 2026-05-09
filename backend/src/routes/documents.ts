@@ -156,7 +156,19 @@ router.get("/documents/:documentId/file", async (req, res, next) => {
 	);
 
 	res.sendFile(filePath, (err) => {
-		if (err) next(err);
+		if (!err) {
+			return;
+		}
+
+		if (
+			err.message === "Request aborted" ||
+			(err as NodeJS.ErrnoException).code === "ECONNABORTED" ||
+			res.headersSent
+		) {
+			return;
+		}
+
+		next(err);
 	});
 });
 

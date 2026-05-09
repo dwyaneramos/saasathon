@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -17,7 +18,7 @@ import {
   Plus,
   Layers,
   FolderClosed,
-  Orbit,
+  X,
 } from "lucide-react";
 import {
   Collapsible,
@@ -47,7 +48,15 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { UploadWorkspace } from "@/components/upload-workspace";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -170,7 +179,7 @@ function SpaceSwitcher({
           className="hover:bg-zinc-200"
           style={{ transition: "none" }}
         >
-          <Orbit />
+          <Layers />
           <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-semibold">
               {activeSpaceName}
@@ -195,7 +204,7 @@ function SpaceSwitcher({
               className="gap-2"
             >
               <div className="flex size-6 items-center justify-center rounded-md">
-                <Orbit className="size-3.5 shrink-0" />
+                <Layers className="size-3.5 shrink-0" />
               </div>
               {space.name}
               {space.id === activeSpace?.id && (
@@ -543,39 +552,154 @@ function SearchResults({
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
 function AddButton() {
+  const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuButton
-          tooltip="Add new"
-          className="w-full border border-dashed border-sidebar-border hover:border-sidebar-accent-foreground/30 text-muted-foreground hover:text-foreground transition-colors"
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton
+            tooltip="Add new"
+            className="w-full border border-dashed border-sidebar-border bg-sidebar text-muted-foreground shadow-sm transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Plus className="shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">
+              Add new
+            </span>
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-44">
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => setIsUploadModalOpen(true)}
+          >
+            <FileText className="size-4" /> New file
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2">
+            <FolderOpen className="size-4" /> New collection
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2">
+            <Layers className="size-4" /> New space
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <UploadModal
+        open={isUploadModalOpen}
+        onOpenChange={setIsUploadModalOpen}
+      />
+    </>
+  );
+}
+
+function UploadModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [isUploadLocked, setIsUploadLocked] = React.useState(false);
+
+  const requestClose = React.useCallback(() => {
+    if (isUploadLocked) {
+      return;
+    }
+
+    onOpenChange(false);
+  }, [isUploadLocked, onOpenChange]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isUploadLocked) {
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isUploadLocked, onOpenChange, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/20 p-4 supports-backdrop-filter:backdrop-blur-xs"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isUploadLocked) {
+          onOpenChange(false);
+        }
+      }}
+    >
+      <Card className="relative z-[201] max-h-[85vh] w-full max-w-4xl overflow-hidden py-0 shadow-2xl">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute top-4 right-4 z-10 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={requestClose}
+          disabled={isUploadLocked}
         >
-          <Plus className="shrink-0" />
-          <span className="group-data-[collapsible=icon]:hidden">
-            Add new
+          <X className="size-4" />
+          <span className="sr-only">Close upload modal</span>
+        </Button>
+        <CardHeader className="border-b pr-12">
+          <CardTitle>Upload files</CardTitle>
+          <CardDescription>
+            Drop PDFs or images here, then track each file while analysis runs.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-y-auto py-4">
+          <UploadWorkspace
+            detailMode="compact"
+            showHeading={false}
+            onBusyChange={setIsUploadLocked}
+          />
+        </CardContent>
+        <div className="grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t bg-muted/40 px-6 py-3 text-muted-foreground">
+          <span className="flex min-h-full items-center text-sm leading-relaxed md:text-[15px]">
+            {isUploadLocked
+              ? "You can't leave while files are uploading or analyzing, or the batch may be interrupted."
+              : "Finished here? Press Esc, click outside, or use Done to close."}
           </span>
-        </SidebarMenuButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="min-w-44">
-        <DropdownMenuItem className="gap-2">
-          <FileText className="size-4" /> New file
-        </DropdownMenuItem>
-        <DropdownMenuItem className="gap-2">
-          <FolderOpen className="size-4" /> New collection
-        </DropdownMenuItem>
-        <DropdownMenuItem className="gap-2">
-          <Layers className="size-4" /> New space
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <Button
+            type="button"
+            variant="ghost"
+            className="shrink-0 self-end !bg-bg !text-white hover:!bg-bg/90 disabled:!bg-bg/50 disabled:!text-white"
+            size="default"
+            onClick={requestClose}
+            disabled={isUploadLocked}
+          >
+            Done
+          </Button>
+        </div>
+      </Card>
+    </div>,
+    document.body,
   );
 }
 
 // ── AppSidebar ────────────────────────────────────────────────────────────────
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+  activeSpaceId?: number | null;
+  onSpaceChange?: React.Dispatch<React.SetStateAction<number | null>>;
+  onSpacesLoaded?: React.Dispatch<React.SetStateAction<Space[]>>;
+};
+
+export function AppSidebar({
+  activeSpaceId: controlledActiveSpaceId,
+  onSpaceChange,
+  onSpacesLoaded,
+  ...props
+}: AppSidebarProps) {
   const [spaces, setSpaces] = React.useState<Space[]>([]);
-  const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(null);
+  const [uncontrolledActiveSpaceId, setUncontrolledActiveSpaceId] = React.useState<number | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [spacesLoaded, setSpacesLoaded] = React.useState(false);
@@ -596,6 +720,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   );
   const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(new Map());
   const fileTreeLoadedRef = React.useRef(false);
+
+  const activeSpaceId =
+    controlledActiveSpaceId !== undefined
+      ? controlledActiveSpaceId
+      : uncontrolledActiveSpaceId;
+  const setActiveSpaceId = React.useCallback(
+    (value: React.SetStateAction<number | null>) => {
+      if (onSpaceChange) {
+        onSpaceChange(value);
+        return;
+      }
+
+      setUncontrolledActiveSpaceId(value);
+    },
+    [onSpaceChange],
+  );
 
   const activeSpace =
     spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
@@ -793,6 +933,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         if (ignore) return;
 
         setSpaces(nextSpaces);
+        onSpacesLoaded?.(nextSpaces);
         setActiveSpaceId((currentSpaceId) => {
           if (
             currentSpaceId &&
@@ -818,7 +959,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [onSpacesLoaded, setActiveSpaceId]);
 
   React.useEffect(() => {
     loadFileTree();
