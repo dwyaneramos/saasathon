@@ -4,23 +4,11 @@ import {
 	useRef,
 	useState,
 	type KeyboardEvent,
-	type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
-import {
-	ArrowUp,
-	BookOpen,
-	Bot,
-	FlaskConical,
-	Globe,
-	Image,
-	Mic,
-	Plus,
-	RotateCcw,
-	Sparkles,
-	X,
-} from "lucide-react";
+import { ArrowUp, RotateCcw, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { openUploadModalEvent } from "@/components/app-sidebar";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -28,6 +16,7 @@ const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type AppLayoutContext = {
 	activeSpaceId: number | null;
+	activeSpaceName: string | null;
 };
 
 type Message = {
@@ -35,13 +24,6 @@ type Message = {
 	role: "user" | "assistant";
 	content: string;
 	timestamp: Date;
-};
-
-type ModeChip = {
-	id: string;
-	label: string;
-	icon: ReactNode;
-	active: boolean;
 };
 
 type Suggestion = {
@@ -57,39 +39,6 @@ type AssistantResponse = {
 	navigateTo: string | null;
 	suggestedActions?: Suggestion[];
 };
-
-const DEFAULT_MODES: ModeChip[] = [
-	{
-		id: "files",
-		label: "Files",
-		icon: <Image size={13} strokeWidth={1.8} />,
-		active: true,
-	},
-	{
-		id: "categories",
-		label: "Categories",
-		icon: <BookOpen size={13} strokeWidth={1.8} />,
-		active: true,
-	},
-	{
-		id: "agent",
-		label: "Agent",
-		icon: <Bot size={13} strokeWidth={1.8} />,
-		active: true,
-	},
-	{
-		id: "tasks",
-		label: "Tasks",
-		icon: <FlaskConical size={13} strokeWidth={1.8} />,
-		active: true,
-	},
-	{
-		id: "navigation",
-		label: "Navigation",
-		icon: <Globe size={13} strokeWidth={1.8} />,
-		active: true,
-	},
-];
 
 function authHeaders() {
 	const token = localStorage.getItem("token");
@@ -158,13 +107,13 @@ function ChatMessage({ message }: { message: Message }) {
 			<div
 				className={`max-w-[75%] px-4 py-3 text-sm leading-relaxed ${
 					isUser
-						? "rounded-2xl rounded-br-md bg-zinc-900 text-white shadow-sm"
-						: "rounded-2xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700 shadow-sm"
+						? "rounded-2xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
+						: "rounded-2xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
 				}`}
 			>
 				<p className="whitespace-pre-wrap">{message.content}</p>
 				<p
-					className={`mt-1.5 text-[10px] ${isUser ? "text-right text-zinc-500" : "text-zinc-400"}`}
+					className={`mt-1.5 text-[10px] ${isUser ? "text-right text-black/55" : "text-zinc-400"}`}
 				>
 					{message.timestamp.toLocaleTimeString([], {
 						hour: "2-digit",
@@ -180,49 +129,78 @@ function QuickActions({
 	suggestions,
 	isLoading,
 	onSelect,
+	spaceLabel,
 	compact = false,
 }: {
 	suggestions: Suggestion[];
 	isLoading: boolean;
 	onSelect: (prompt: string) => void;
+	spaceLabel: string;
 	compact?: boolean;
 }) {
+	const visibleSuggestions = suggestions.slice(0, 3);
+
 	if (!isLoading && suggestions.length === 0) {
+		return null;
+	}
+
+	if (compact) {
 		return (
-			<div className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-400 shadow-sm">
-				No suggestions yet.
+			<div className="grid gap-2 sm:grid-cols-3">
+				{isLoading
+					? Array.from({ length: 3 }).map((_, index) => (
+							<div
+								key={index}
+								className="flex min-h-16 w-full flex-col justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm"
+							>
+								<div className="h-4 w-28 animate-pulse rounded bg-zinc-100" />
+								<div className="mt-2 h-3 w-full animate-pulse rounded bg-zinc-100" />
+								<div className="mt-1 h-3 w-4/5 animate-pulse rounded bg-zinc-100" />
+								<p className="mt-2 text-[11px] text-zinc-400">
+									Generating actions for {spaceLabel}...
+								</p>
+							</div>
+						))
+					: visibleSuggestions.map((suggestion) => (
+							<button
+								key={suggestion.prompt}
+								onClick={() => onSelect(suggestion.prompt)}
+								className="inline-flex min-h-20 w-full min-w-0 flex-col items-start justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+								title={suggestion.sub}
+							>
+								<span className="text-sm font-medium leading-snug text-zinc-800">
+									{suggestion.label}
+								</span>
+								<span className="mt-1 line-clamp-2 text-xs leading-snug text-zinc-500">
+									{suggestion.sub}
+								</span>
+							</button>
+						))}
 			</div>
 		);
 	}
 
 	return (
-		<div
-			className={`grid gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm ${
-				compact ? "grid-cols-1 md:grid-cols-2" : "w-full max-w-3xl sm:grid-cols-2"
-			}`}
-		>
+		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm sm:grid-cols-3">
 			{isLoading
-				? Array.from({ length: compact ? 2 : 4 }).map((_, index) => (
-						<div
-							key={index}
-							className="bg-white p-5"
-						>
-							<div className="h-4 w-32 animate-pulse rounded bg-zinc-100" />
-							<div className="mt-2 h-3 w-40 animate-pulse rounded bg-zinc-100" />
+				? Array.from({ length: 3 }).map((_, index) => (
+						<div key={index} className="bg-white p-3">
+							<div className="h-3.5 w-24 animate-pulse rounded bg-zinc-100" />
+							<div className="mt-1.5 h-3 w-32 animate-pulse rounded bg-zinc-100" />
 						</div>
 					))
-				: suggestions.map((suggestion) => (
+				: visibleSuggestions.map((suggestion) => (
 						<button
 							key={suggestion.prompt}
 							onClick={() => onSelect(suggestion.prompt)}
 							className={`group bg-white text-left transition-colors hover:bg-zinc-50 ${
-								compact ? "p-4" : "p-5"
+								compact ? "p-3" : "p-4"
 							}`}
 						>
-							<p className="text-sm font-medium leading-snug text-zinc-900">
+							<p className="text-xs font-semibold leading-snug text-zinc-900">
 								{suggestion.label}
 							</p>
-							<p className="mt-1 text-xs text-zinc-400">
+							<p className="mt-1 line-clamp-2 text-[11px] text-zinc-400">
 								{suggestion.sub}
 							</p>
 						</button>
@@ -233,7 +211,8 @@ function QuickActions({
 
 export default function Dashboard() {
 	const { user } = useAuth();
-	const { activeSpaceId } = useOutletContext<AppLayoutContext>();
+	const { activeSpaceId, activeSpaceName } =
+		useOutletContext<AppLayoutContext>();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [messages, setMessages] = useState<Message[]>([]);
@@ -241,7 +220,6 @@ export default function Dashboard() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [isContextLoading, setIsContextLoading] = useState(false);
 	const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
-	const [modes, setModes] = useState<ModeChip[]>(DEFAULT_MODES);
 	const [categories, setCategories] = useState<CategorySummary[]>([]);
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
 	const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -249,7 +227,9 @@ export default function Dashboard() {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isEmpty = messages.length === 0;
+	const hasStartedConversation = messages.length > 0 || isLoading;
 	const userFirstName = user?.firstName ?? null;
+	const spaceLabel = activeSpaceName ?? "this workspace";
 
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -458,7 +438,9 @@ export default function Dashboard() {
 
 			await new Promise((resolve) => window.setTimeout(resolve, 220));
 
-			if (
+			if (assistantReply.navigateTo === "/upload") {
+				window.dispatchEvent(new Event(openUploadModalEvent));
+			} else if (
 				assistantReply.navigateTo &&
 				assistantReply.navigateTo !== location.pathname
 			) {
@@ -499,12 +481,6 @@ export default function Dashboard() {
 		}
 	};
 
-	const removeMode = (id: string) => {
-		setModes((currentModes) =>
-			currentModes.filter((mode) => mode.id !== id),
-		);
-	};
-
 	const resetConversation = () => {
 		if (isLoading) return;
 		setMessages([]);
@@ -512,10 +488,10 @@ export default function Dashboard() {
 
 	return (
 		<div className="relative flex-1 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
-			<div className="flex-1 overflow-y-auto px-6 py-8">
+			<div className="flex-1 overflow-y-auto px-6 pb-64 pt-8">
 				<div className="mx-auto max-w-3xl">
 					{isEmpty ? (
-						<div className="flex min-h-[50vh] flex-col items-center justify-center gap-8 text-center">
+						<div className="pointer-events-none flex min-h-[50vh] flex-col items-center justify-start gap-6 pt-10 text-center">
 							<div>
 								<h1 className="bg-gradient-to-b from-zinc-900 to-zinc-400 bg-clip-text pb-3 text-5xl font-bold leading-[0.9] tracking-tighter text-transparent md:text-7xl">
 									Hi
@@ -525,18 +501,12 @@ export default function Dashboard() {
 									,
 								</h1>
 								<p className="text-lg text-zinc-500">
-									How can I help inside this workspace?
+									How can I help inside {spaceLabel}?
 								</p>
 								<p className="mx-auto mt-3 max-w-xl text-sm text-zinc-400">
 									{contextSummary}
 								</p>
 							</div>
-
-							<QuickActions
-								suggestions={suggestions}
-								isLoading={isSuggestionsLoading}
-								onSelect={(prompt) => void sendMessage(prompt)}
-							/>
 						</div>
 					) : (
 						<>
@@ -560,33 +530,34 @@ export default function Dashboard() {
 								/>
 							))}
 							{isLoading && <TypingIndicator />}
-							<div className="mt-8">
-								<p className="mb-3 text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
-									Quick Actions
-								</p>
-								<QuickActions
-									suggestions={suggestions}
-									isLoading={isSuggestionsLoading}
-									onSelect={(prompt) =>
-										void sendMessage(prompt)
-									}
-									compact
-								/>
-							</div>
 							<div ref={messagesEndRef} />
 						</>
 					)}
 				</div>
 			</div>
 
-			<div className="px-4 pb-5 pt-3">
-				<div className="mx-auto max-w-3xl">
-					<div className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-md">
-						<div className="flex items-end gap-2 px-4 pb-3 pt-3">
-							<button className="mb-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-colors hover:bg-zinc-50">
-								<Plus size={14} strokeWidth={2} />
-							</button>
-
+			<div
+				className={`pointer-events-none absolute inset-x-4 z-10 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+					hasStartedConversation
+						? "bottom-5"
+						: "top-1/2 -translate-y-1/2"
+				}`}
+			>
+				<div
+					className={`pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+						hasStartedConversation
+							? "max-w-[50rem]"
+							: "max-w-[56rem]"
+					}`}
+				>
+					<div className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.12)]">
+						<div
+							className={`flex items-end gap-3 transition-all duration-700 ${
+								hasStartedConversation
+									? "px-5 pb-4 pt-4"
+									: "px-6 pb-5 pt-5 md:px-7 md:pb-6 md:pt-6"
+							}`}
+						>
 							<textarea
 								ref={textareaRef}
 								rows={1}
@@ -595,48 +566,42 @@ export default function Dashboard() {
 									setInput(event.target.value)
 								}
 								onKeyDown={handleKeyDown}
-								placeholder="Ask me to find a file, open an image, or search this workspace"
-								className="flex-1 resize-none bg-transparent py-0.5 text-sm leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400"
+								placeholder={`Ask me to find a file, open an image, or search ${spaceLabel}`}
+								className={`flex-1 resize-none bg-transparent py-2 leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 transition-all duration-700 ${
+									hasStartedConversation
+										? "text-base md:text-[1.05rem]"
+										: "text-base md:text-lg"
+								}`}
 								style={{ maxHeight: "140px" }}
 							/>
 
-							<div className="mb-0.5 flex flex-shrink-0 items-center gap-2">
-								<button className="text-zinc-400 transition-colors hover:text-zinc-600">
-									<Mic size={16} strokeWidth={1.8} />
-								</button>
+							<div className="flex flex-shrink-0 items-center self-center">
 								<button
 									onClick={() => void sendMessage(input)}
 									disabled={!input.trim() || isLoading}
-									className="flex h-8 w-8 items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30"
+									className={`flex items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
+										hasStartedConversation
+											? "h-9 w-9"
+											: "h-10 w-10 md:h-11 md:w-11"
+									}`}
 								>
 									<ArrowUp
-										size={14}
+										size={hasStartedConversation ? 14 : 16}
 										strokeWidth={2.5}
 										className="text-black"
 									/>
 								</button>
 							</div>
 						</div>
-
-						<div className="mx-4 h-px bg-zinc-100" />
-
-						<div className="scrollbar-none flex items-center gap-1.5 overflow-x-auto px-3 py-2.5">
-							{modes.map((mode) => (
-								<div
-									key={mode.id}
-									className="flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300"
-								>
-									{mode.icon}
-									<span>{mode.label}</span>
-									<button
-										onClick={() => removeMode(mode.id)}
-										className="ml-0.5 text-zinc-400 transition-colors hover:text-zinc-600"
-									>
-										<X size={10} strokeWidth={2.5} />
-									</button>
-								</div>
-							))}
-						</div>
+					</div>
+					<div className="mt-3">
+						<QuickActions
+							suggestions={suggestions}
+							isLoading={isSuggestionsLoading}
+							onSelect={(prompt) => void sendMessage(prompt)}
+							spaceLabel={spaceLabel}
+							compact
+						/>
 					</div>
 				</div>
 			</div>

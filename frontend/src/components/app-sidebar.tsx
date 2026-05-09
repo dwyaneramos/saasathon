@@ -58,7 +58,8 @@ import { fileIconFor } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
-const fileTreeUpdatedEvent = "kibi:file-tree-updated";
+export const fileTreeUpdatedEvent = "kibi:file-tree-updated";
+export const openUploadModalEvent = "kibi:open-upload-modal";
 
 export type KibiFile = {
 	id: number;
