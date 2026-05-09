@@ -97,6 +97,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   const nodesRef = useRef(nodes);
   const prevIs2DRef = useRef(is2D);
   const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
+  const graphRotationRef = useRef(new THREE.Euler(0.1, 0, 0));
   const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, forceUpdate] = useState({});
 
@@ -122,16 +123,13 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     prevIs2DRef.current = is2D;
   }, [is2D]);
 
-  // Track normalised cursor position in NDC space (-1..1)
-  const { gl } = useThree();
+  // Track cursor position in canvas pixels so hover-freeze matches the visible graph.
+  const { camera, gl, size } = useThree();
   useEffect(() => {
     const canvas = gl.domElement;
     const onMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      cursorRef.current.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
+      cursorRef.current.set(e.clientX - rect.left, e.clientY - rect.top);
     };
     const onLeave = () => cursorRef.current.set(9999, 9999);
     canvas.addEventListener("mousemove", onMove);
@@ -151,20 +149,33 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     const t = clock.getElapsedTime();
     const currentNodes = nodesRef.current;
 
-    // Approximate cursor in world space (NDC scaled to ~3 unit graph bounds)
-    const cursorWorld = new THREE.Vector3(
-      cursorRef.current.x * 3,
-      cursorRef.current.y * 3,
-      0,
-    );
-    // Radius is sized to roughly match a node's visual footprint in world units
-    const CURSOR_RADIUS = 0.3;
+    const graphRotation = graphRotationRef.current;
+    const nodeScreenPosition = new THREE.Vector3();
+    const FREEZE_PADDING_PX = 34;
+    const isCursorOnCanvas = cursorRef.current.x !== 9999;
 
     currentNodes.forEach((node, i) => {
-      const distToCursor = cursorWorld.distanceTo(node.position);
+      const radius = nodeSizeScale(node);
+      let isNearCursor = false;
 
-      if (distToCursor < CURSOR_RADIUS) {
-        // Hard freeze — zero velocity and skip all further updates for this node
+      if (isCursorOnCanvas) {
+        nodeScreenPosition.copy(node.position).applyEuler(graphRotation).project(camera);
+        nodeScreenPosition.set(
+          ((nodeScreenPosition.x + 1) / 2) * size.width,
+          ((-nodeScreenPosition.y + 1) / 2) * size.height,
+          nodeScreenPosition.z,
+        );
+
+        const nodeRadiusPx = Math.max(18, radius * 220);
+        isNearCursor =
+          Math.hypot(
+            cursorRef.current.x - nodeScreenPosition.x,
+            cursorRef.current.y - nodeScreenPosition.y,
+          ) <=
+          nodeRadiusPx + FREEZE_PADDING_PX;
+      }
+
+      if (isNearCursor) {
         node.velocity.set(0, 0, 0);
         return;
       }
@@ -250,7 +261,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   });
 
   return (
-    <group scale={1} rotation={[0.1, 0, 0]}>
+    <group scale={1} rotation={graphRotationRef.current}>
       {edges.map((edge, index) => {
         const start = nodesRef.current[edge.source]?.position;
         const end = nodesRef.current[edge.target]?.position;
