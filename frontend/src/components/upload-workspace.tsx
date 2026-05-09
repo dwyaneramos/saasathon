@@ -1102,7 +1102,7 @@ export function UploadWorkspace({
 										</div>
 
 										{result.error ? (
-											<p className="mt-3 text-sm text-destructive">
+											<p className="mt-3 text-sm text-red-600">
 												{result.error}
 											</p>
 										) : (
@@ -1110,186 +1110,66 @@ export function UploadWorkspace({
 												{result.needsNewCategory &&
 													result.prompt &&
 													isActivePrompt && (
-														<div className="mt-4 border-l-2 border-(--color-accent) pl-4">
-															<p className="text-sm font-medium text-foreground">
+														<div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+															<p className="text-sm font-medium text-gray-900">
 																Confirm the
 																suggested
 																category
 															</p>
-															<p className="mt-1 text-sm text-muted-foreground">
+															<p className="text-sm text-gray-800">
 																{result.prompt}
 															</p>
-															<div className="mt-3 space-y-2">
-																<Label
+															<div className="mt-3 flex flex-col gap-2 sm:flex-row">
+																<label
+																	className="sr-only"
 																	htmlFor={`category-name-${index}`}
 																>
 																	Category
-																</Label>
-																<div className="flex flex-col gap-2 sm:flex-row">
-																	<div
-																		className="relative flex-1"
-																		onBlur={(
-																			event,
-																		) => {
-																			if (
-																				!event.currentTarget.contains(
-																					event.relatedTarget,
-																				)
-																			) {
-																				setOpenCategoryCombobox(
-																					null,
-																				);
-																			}
-																		}}
-																	>
-																		<Input
-																			id={`category-name-${index}`}
-																			value={
-																				result.categoryInput
-																			}
-																			onFocus={() =>
-																				setOpenCategoryCombobox(
-																					result.fileName,
-																				)
-																			}
-																			onChange={(
-																				e,
-																			) => {
-																				updateCategoryInput(
-																					result.fileName,
-																					e
-																						.target
-																						.value,
-																				);
-																				setOpenCategoryCombobox(
-																					result.fileName,
-																				);
-																			}}
-																			placeholder={
-																				knownCategoryOptions.length >
-																				0
-																					? "Search or type a new category"
-																					: "Type a new category"
-																			}
-																			className="pr-9"
-																			autoComplete="off"
-																		/>
-																		{knownCategoryOptions.length >
-																			0 && (
-																			<button
-																				type="button"
-																				className="absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-																				onMouseDown={(
-																					event,
-																				) =>
-																					event.preventDefault()
-																				}
-																				onClick={() =>
-																					setOpenCategoryCombobox(
-																						isCategoryComboboxOpen
-																							? null
-																							: result.fileName,
-																					)
-																				}
-																				aria-label="Toggle category suggestions"
-																			>
-																				<ChevronDown
-																					className={
-																						isCategoryComboboxOpen
-																							? "size-4 rotate-180 transition-transform"
-																							: "size-4 transition-transform"
-																					}
-																				/>
-																			</button>
-																		)}
-																		{isCategoryComboboxOpen &&
-																			knownCategoryOptions.length >
-																				0 && (
-																				<div className="absolute z-30 mt-2 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-background p-1 text-sm">
-																					{filteredCategoryOptions.length >
-																					0 ? (
-																						filteredCategoryOptions.map(
-																							(
-																								category,
-																							) => (
-																								<button
-																									key={`${category.id ?? category.name}-${category.name}`}
-																									type="button"
-																									className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-foreground hover:bg-muted/50 hover:text-foreground"
-																									onMouseDown={(
-																										event,
-																									) =>
-																										event.preventDefault()
-																									}
-																									onClick={() => {
-																										updateCategoryInput(
-																											result.fileName,
-																											category.name,
-																										);
-																										setOpenCategoryCombobox(
-																											null,
-																										);
-																									}}
-																								>
-																									<span className="min-w-0 truncate">
-																										{
-																											category.name
-																										}
-																									</span>
-																									<span className="shrink-0 text-xs text-muted-foreground">
-																										Existing
-																									</span>
-																								</button>
-																							),
-																						)
-																					) : (
-																						<div className="px-2.5 py-2 text-muted-foreground">
-																							No
-																							matching
-																							categories
-																						</div>
-																					)}
-																					{result.categoryInput.trim() &&
-																						!hasExactCategoryMatch && (
-																							<div className="border-t border-border px-2.5 py-2 text-xs text-muted-foreground">
-																								Press
-																								Confirm
-																								to
-																								create
-																								"
-																								{result.categoryInput.trim()}
-
-																								"
-																							</div>
-																						)}
-																				</div>
-																			)}
-																	</div>
-																	<Button
-																		type="button"
-																		variant="accent"
-																		onClick={() =>
-																			confirmCategory(
-																				result,
-																			)
-																		}
-																		disabled={
-																			result.isCreatingCategory ||
-																			!result.categoryInput.trim()
-																		}
-																	>
-																		{result.isCreatingCategory
-																			? "Creating..."
-																			: "Confirm"}
-																	</Button>
-																</div>
+																	name
+																</label>
+																<input
+																	id={`category-name-${index}`}
+																	value={
+																		result.categoryInput
+																	}
+																	onChange={(
+																		e,
+																	) =>
+																		updateCategoryInput(
+																			result.fileName,
+																			e
+																				.target
+																				.value,
+																		)
+																	}
+																	placeholder="Category name"
+																	className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500"
+																/>
+																<Button
+																	type="button"
+																	variant="ghost"
+																	onClick={() =>
+																		confirmCategory(
+																			result,
+																		)
+																	}
+																	disabled={
+																		result.isCreatingCategory ||
+																		!result.categoryInput.trim()
+																	}
+																	className="!bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover)"
+																>
+																	{result.isCreatingCategory
+																		? "Creating..."
+																		: "Confirm"}
+																</Button>
 															</div>
-															<Label
+															<label
 																htmlFor={`category-description-${index}`}
-																className="mt-3"
+																className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500"
 															>
 																Description
-															</Label>
+															</label>
 															<textarea
 																id={`category-description-${index}`}
 																value={
@@ -1321,24 +1201,24 @@ export function UploadWorkspace({
 																}
 																rows={2}
 																placeholder="Describe what belongs in this category"
-																className={`mt-2 ${textareaClassName}`}
+																className="mt-2 w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500"
 															/>
 														</div>
 													)}
 												{result.needsNewCategory &&
 													!isActivePrompt && (
-														<p className="mt-3 text-sm text-muted-foreground">
+														<p className="mt-3 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-600">
 															Waiting for the
 															previous category
 															decision.
 														</p>
 													)}
 												{result.categoryStatus && (
-													<p className="mt-3 text-sm text-muted-foreground">
+													<p className="mt-3 text-sm text-gray-600">
 														{result.categoryStatus}
 													</p>
 												)}
-												<p className="mt-3 text-sm leading-6 text-foreground">
+												<p className="mt-3 text-sm leading-6 text-gray-700">
 													{result.summary}
 												</p>
 											</>
