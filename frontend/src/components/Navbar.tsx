@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { Sparkles, Share2, LogIn, UserPlus } from "lucide-react";
+import { Sparkles, Share2, LogIn, UserPlus, UploadCloud } from "lucide-react";
 import kibiLogo from "../assets/kibi-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -49,6 +49,17 @@ const Navbar = () => {
 						>
 							<Share2 size={16} strokeWidth={2.25} />
 							Graph
+						</NavLink>
+						<NavLink
+							to="/upload"
+							className={({ isActive }) =>
+								`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
+									isActive ? "text-zinc-900" : ""
+								}`
+							}
+						>
+							<UploadCloud size={16} strokeWidth={2.25} />
+							Upload
 						</NavLink>
 					</div>
 
