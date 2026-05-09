@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
-import { fileIconFor } from "@/components/app-sidebar";
+import { fileIconFor, fileTreeUpdatedEvent } from "@/components/app-sidebar";
 import type {
 	CategorySummary,
 	DocumentSummary,
@@ -25,6 +25,7 @@ export default function Graph() {
   const [mode, setMode] = useState<GraphMode>("categories");
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<{ x: number; y: number }>({
@@ -43,6 +44,25 @@ export default function Graph() {
     width: 0,
     height: 0,
   });
+
+  const hideTooltip = useCallback(() => {
+    setTooltipVisible(false);
+    setHoveredNode(null);
+    setTooltipFrameSize({ width: 0, height: 0 });
+    hoveredNodeIdRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const handleFileTreeUpdated = () => {
+      setGraphRefreshKey((key) => key + 1);
+      hideTooltip();
+    };
+
+    window.addEventListener(fileTreeUpdatedEvent, handleFileTreeUpdated);
+    return () => {
+      window.removeEventListener(fileTreeUpdatedEvent, handleFileTreeUpdated);
+    };
+  }, [hideTooltip]);
 
   useEffect(() => {
     let ignore = false;
@@ -86,7 +106,7 @@ export default function Graph() {
     return () => {
       ignore = true;
     };
-  }, [activeSpaceId]);
+  }, [activeSpaceId, graphRefreshKey]);
 
   // Track viewport mouse position without re-rendering.
   useEffect(() => {
@@ -122,13 +142,10 @@ export default function Graph() {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
       if (!tooltipHoveredRef.current) {
-        setTooltipVisible(false);
-        setHoveredNode(null);
-        setTooltipFrameSize({ width: 0, height: 0 });
-        hoveredNodeIdRef.current = null;
+        hideTooltip();
       }
     }, 110);
-  }, []);
+  }, [hideTooltip]);
 
   const cancelHide = useCallback(() => {
     if (hideTimerRef.current) {
@@ -189,6 +206,15 @@ export default function Graph() {
     () => categories.find((category) => category.id === activeCategoryId) ?? null,
     [activeCategoryId, categories],
   );
+
+  useEffect(() => {
+    if (activeCategoryId == null) return;
+    if (categories.some((category) => category.id === activeCategoryId)) return;
+
+    hideTooltip();
+    setActiveCategoryId(null);
+    setMode("categories");
+  }, [activeCategoryId, categories, hideTooltip]);
   const currentMatrix = useMemo(
     () => buildConnectedMatrix(currentNodes.length),
     [currentNodes.length],
@@ -196,10 +222,7 @@ export default function Graph() {
 
   const handleNodeClick = (node: GraphNode) => {
     if (mode === "categories" && node.categoryId) {
-      setTooltipVisible(false);
-      setHoveredNode(null);
-      setTooltipFrameSize({ width: 0, height: 0 });
-      hoveredNodeIdRef.current = null;
+      hideTooltip();
       setActiveCategoryId(node.categoryId);
       setMode("files");
       return;
@@ -353,10 +376,7 @@ export default function Graph() {
         {mode === "files" ? (
           <button
             onClick={() => {
-              setTooltipVisible(false);
-              setHoveredNode(null);
-              setTooltipFrameSize({ width: 0, height: 0 });
-              hoveredNodeIdRef.current = null;
+              hideTooltip();
               setMode("categories");
               setActiveCategoryId(null);
             }}

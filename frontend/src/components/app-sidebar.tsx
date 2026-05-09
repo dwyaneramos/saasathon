@@ -1073,6 +1073,8 @@ export function AppSidebar({
 				toast.success(
 					`Category '${createdCategory.name ?? trimmedName}' created in '${activeSpace.name ?? "Default Space"}'`,
 				);
+
+				window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
 			}
 
 			setIsCreateCategoryOpen(false);
