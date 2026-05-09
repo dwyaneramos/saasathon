@@ -160,6 +160,7 @@ function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
+  overlay = false,
   className,
   children,
   dir,
@@ -168,6 +169,7 @@ function Sidebar({
   side?: "left" | "right";
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
+  overlay?: boolean;
 }) {
   const { isMobile, state, openMobile, setOpen, setOpenMobile } = useSidebar();
   const sidebarRef = React.useRef<HTMLDivElement | null>(null);
@@ -283,12 +285,17 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-          "group-data-[collapsible=offcanvas]:w-0",
-          "group-data-[side=right]:rotate-180",
-          variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+          "relative bg-transparent transition-[width] duration-200 ease-linear",
+          overlay
+            ? "w-0"
+            : [
+                "w-(--sidebar-width)",
+                "group-data-[collapsible=offcanvas]:w-0",
+                "group-data-[side=right]:rotate-180",
+                variant === "floating" || variant === "inset"
+                  ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+                  : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+              ],
         )}
       />
       <div

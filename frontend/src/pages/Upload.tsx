@@ -47,6 +47,7 @@ type CategoryListResponse = {
 
 type CategoryUpsertResponse = {
   category?: {
+    id?: number;
     name?: string;
     metadata?: {
       description?: string | null;
@@ -123,7 +124,7 @@ export default function Upload() {
           ? `Upload complete. Analysis failed for ${failedCount} file(s).`
           : "Upload and analysis complete",
       );
-      notifyFileTreeUpdated();
+      notifyFileTreeUpdated(results.map((result) => result.documentId));
       setFiles([]);
     } catch (err: any) {
       setStatus(`Upload failed: ${err.message ?? err}`);
@@ -286,9 +287,10 @@ export default function Upload() {
       throw new Error(payload?.error ?? `${res.status} ${res.statusText}`);
     }
 
-    notifyFileTreeUpdated();
+    notifyFileTreeUpdated([documentId]);
 
     return {
+      id: payload?.category?.id,
       name: payload?.category?.name ?? name,
       description:
         getCategoryDescription(payload?.category) ??
@@ -311,8 +313,16 @@ export default function Upload() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const notifyFileTreeUpdated = () => {
-    window.dispatchEvent(new Event(fileTreeUpdatedEvent));
+  const notifyFileTreeUpdated = (documentIds: Array<number | undefined> = []) => {
+    window.dispatchEvent(
+      new CustomEvent(fileTreeUpdatedEvent, {
+        detail: {
+          documentIds: documentIds.filter(
+            (documentId): documentId is number => typeof documentId === "number",
+          ),
+        },
+      }),
+    );
   };
 
   const confirmCategory = async (result: FileAnalysisResult) => {
