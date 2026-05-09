@@ -209,6 +209,11 @@ export default function Graph() {
     }
   };
 
+  const handleTooltipAction = () => {
+    if (!hoveredNode) return;
+    handleNodeClick(hoveredNode);
+  };
+
   // Files belonging to the hovered category
   const hoveredCategoryFiles = useMemo(() => {
     if (mode !== "categories" || !hoveredNode?.categoryId) return [];
@@ -432,9 +437,13 @@ export default function Graph() {
               </ul>
 
               <div className="border-t border-stone-100 px-4 py-2">
-                <p className="text-[10px] text-stone-400">
-                  Click to explore files
-                </p>
+                <button
+                  type="button"
+                  onClick={handleTooltipAction}
+                  className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                >
+                  Explore files
+                </button>
               </div>
             </>
           ) : (
@@ -471,9 +480,13 @@ export default function Graph() {
               </div>
 
               <div className="px-4 py-2">
-                <p className="text-[10px] text-stone-400">
-                  Click to open file page
-                </p>
+                <button
+                  type="button"
+                  onClick={handleTooltipAction}
+                  className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                >
+                  Open file page
+                </button>
               </div>
             </>
             )}
