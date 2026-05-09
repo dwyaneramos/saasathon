@@ -26,6 +26,9 @@ import { useAuth } from "./context/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 type Space = { id: number; name: string };
+type AppLayoutContext = {
+	activeSpaceId: number | null;
+};
 
 function AppLayout() {
 	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(
@@ -50,7 +53,7 @@ function AppLayout() {
 					onSpacesLoaded={setSpaces}
 				/>
 				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0">
-					<Outlet />
+					<Outlet context={{ activeSpaceId } satisfies AppLayoutContext} />
 				</SidebarInset>
 			</SidebarProvider>
 		</div>

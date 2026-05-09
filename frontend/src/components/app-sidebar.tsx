@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -14,8 +15,9 @@ import {
   FileVideo,
   FileText,
   Plus,
+  Layers,
   FolderClosed,
-  Orbit,
+  X,
 } from "lucide-react";
 import {
 	Collapsible,
@@ -44,6 +46,15 @@ import {
 	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { UploadWorkspace } from "@/components/upload-workspace";
 import { cn } from "@/lib/utils";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -154,7 +165,7 @@ function SpaceSwitcher({
           className="hover:bg-zinc-200"
           style={{ transition: "none" }}
         >
-          <Orbit />
+          <Layers />
           <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
             <span className="truncate font-semibold">
               {activeSpaceName}
@@ -179,7 +190,7 @@ function SpaceSwitcher({
               className="gap-2"
             >
               <div className="flex size-6 items-center justify-center rounded-md">
-                <Orbit className="size-3.5 shrink-0" />
+                <Layers className="size-3.5 shrink-0" />
               </div>
               {space.name}
               {space.id === activeSpace?.id && (
@@ -413,81 +424,217 @@ function FileTree({
 
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
-type AddButtonProps = {
-	onNewCollection: () => void;
-};
+function AddButton({
+  onNewCollection,
+}: {
+  onNewCollection: () => void;
+}) {
+  const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 
-function AddButton({ onNewCollection }: AddButtonProps) {
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton
-					tooltip="Add new"
-					className="w-full border border-dashed border-sidebar-border border-zinc-400 text-muted-foreground hover:text-foreground hover:bg-zinc-200"
-					style={{ transition: "none" }}
-				>
-					<Plus className="shrink-0" />
-					<span className="group-data-[collapsible=icon]:hidden">
-						Add new
-					</span>
-				</SidebarMenuButton>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent side="top" align="start" className="min-w-44">
-				<DropdownMenuItem className="gap-2">
-					<FileText className="size-4" /> New file
-				</DropdownMenuItem>
-				<DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
-					<FolderOpen className="size-4" /> New category
-				</DropdownMenuItem>
-				<DropdownMenuItem className="gap-2">
-					<Orbit className="size-4" /> New space
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton
+            tooltip="Add new"
+            className="w-full border border-dashed border-sidebar-border bg-sidebar text-muted-foreground shadow-sm transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Plus className="shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">
+              Add new
+            </span>
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-44">
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => setIsUploadModalOpen(true)}
+          >
+            <FileText className="size-4" /> New file
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
+            <FolderOpen className="size-4" /> New category
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2">
+            <Layers className="size-4" /> New space
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <UploadModal
+        open={isUploadModalOpen}
+        onOpenChange={setIsUploadModalOpen}
+      />
+    </>
+  );
+}
+
+function UploadModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [isUploadLocked, setIsUploadLocked] = React.useState(false);
+  const [hasAnalysisStarted, setHasAnalysisStarted] = React.useState(false);
+
+  const handleBusyChange = React.useCallback((isBusy: boolean) => {
+    setIsUploadLocked(isBusy);
+    if (isBusy) {
+      setHasAnalysisStarted(true);
+    }
+  }, []);
+
+  const requestClose = React.useCallback(() => {
+    if (isUploadLocked) {
+      return;
+    }
+
+    onOpenChange(false);
+  }, [isUploadLocked, onOpenChange]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setIsUploadLocked(false);
+      setHasAnalysisStarted(false);
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isUploadLocked) {
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isUploadLocked, onOpenChange, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/20 p-4 supports-backdrop-filter:backdrop-blur-xs"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isUploadLocked) {
+          onOpenChange(false);
+        }
+      }}
+    >
+      <Card className="relative z-[201] max-h-[85vh] w-full max-w-4xl overflow-hidden py-0 shadow-2xl">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute top-4 right-4 z-10 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={requestClose}
+          disabled={isUploadLocked}
+        >
+          <X className="size-4" />
+          <span className="sr-only">Close upload modal</span>
+        </Button>
+        <CardHeader className="border-b pr-12">
+          <CardTitle>Upload files</CardTitle>
+          <CardDescription>
+            Drop PDFs or images here, then track each file while analysis runs.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-y-auto py-4">
+          <UploadWorkspace
+            detailMode="compact"
+            showHeading={false}
+            onBusyChange={handleBusyChange}
+          />
+        </CardContent>
+        <div className="grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t bg-muted/40 px-6 py-3 text-muted-foreground">
+          <span className="flex min-h-full items-center text-sm leading-relaxed md:text-[15px]">
+            {isUploadLocked
+              ? "You can't leave while files are uploading or analyzing, or the batch may be interrupted."
+              : hasAnalysisStarted
+                ? "Finished here? Press Esc, click outside, or use Done to close."
+                : "Press Esc, click outside, or use the close button to leave."}
+          </span>
+          {hasAnalysisStarted ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="shrink-0 self-end !bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover) disabled:!bg-zinc-400 disabled:!text-zinc-100"
+              size="default"
+              onClick={requestClose}
+              disabled={isUploadLocked}
+            >
+              Done
+            </Button>
+          ) : null}
+        </div>
+      </Card>
+    </div>,
+    document.body,
+  );
 }
 
 // ── AppSidebar ────────────────────────────────────────────────────────────────
 
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+  activeSpaceId?: number | null;
+  onSpaceChange?: React.Dispatch<React.SetStateAction<number | null>>;
+  onSpacesLoaded?: React.Dispatch<React.SetStateAction<Space[]>>;
+};
+
 export function AppSidebar({
-	activeSpaceId,
-	onSpaceChange,
-	onSpacesLoaded,
-	...props
-}: React.ComponentProps<typeof Sidebar> & {
-	activeSpaceId: number | null;
-	onSpaceChange: (id: number | null) => void;
-	onSpacesLoaded: (spaces: Space[]) => void;
-}) {
-	const [spaces, setSpaces] = React.useState<Space[]>([]);
-	const [categories, setCategories] = React.useState<Category[]>([]);
-	const [isLoading, setIsLoading] = React.useState(true);
-	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
-	const [error, setError] = React.useState<string | null>(null);
-	const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
-	const [newCategoryName, setNewCategoryName] = React.useState("");
-	const [createCategoryError, setCreateCategoryError] = React.useState<string | null>(
-		null,
-	);
-	const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
-	const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
-		() => new Set(),
-	);
-	const [newFileCategoryIds, setNewFileCategoryIds] = React.useState<
-		Set<number>
-	>(() => new Set());
-	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
-		() => new Set(),
-	);
-	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(
-		new Map(),
-	);
-	const fileTreeLoadedRef = React.useRef(false);
+  activeSpaceId: controlledActiveSpaceId,
+  onSpaceChange,
+  onSpacesLoaded,
+  ...props
+}: AppSidebarProps) {
+  const [spaces, setSpaces] = React.useState<Space[]>([]);
+  const [uncontrolledActiveSpaceId, setUncontrolledActiveSpaceId] = React.useState<number | null>(null);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [spacesLoaded, setSpacesLoaded] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
+  const [newCategoryName, setNewCategoryName] = React.useState("");
+  const [createCategoryError, setCreateCategoryError] = React.useState<string | null>(null);
+  const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
+  const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
+    () => new Set(),
+  );
+  const [newFileCategoryIds, setNewFileCategoryIds] = React.useState<Set<number>>(
+    () => new Set(),
+  );
+  const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
+    () => new Set(),
+  );
+  const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(new Map());
+  const fileTreeLoadedRef = React.useRef(false);
 
-	const activeSpace =
-		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
+  const activeSpaceId =
+    controlledActiveSpaceId !== undefined
+      ? controlledActiveSpaceId
+      : uncontrolledActiveSpaceId;
+  const setActiveSpaceId = React.useCallback(
+    (value: React.SetStateAction<number | null>) => {
+      if (onSpaceChange) {
+        onSpaceChange(value);
+        return;
+      }
 
-	const validateCategoryName = React.useCallback(
+      setUncontrolledActiveSpaceId(value);
+    },
+    [onSpaceChange],
+  );
+
+  const activeSpace =
+    spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
+  const validateCategoryName = React.useCallback(
 		(value: string) => {
 			const trimmed = value.trim();
 
@@ -711,63 +858,73 @@ export function AppSidebar({
 
 						return nextIds;
 					});
-				}
+					}
 
-				categoryFileIdsRef.current = nextCategoryFileIds;
-				fileTreeLoadedRef.current = true;
-				setCategories(nextCategories);
-			} catch {
-				setCategories([]);
-				setError("Unable to load files");
-			} finally {
-				setIsLoading(false);
-			}
-		},
-		[activeSpaceId, spacesLoaded],
-	);
-
-	React.useEffect(() => {
-		let ignore = false;
-
-		async function loadSpaces() {
-			try {
-				const response = await fetch(`${apiBaseUrl}/spaces`, {
-					headers: authHeaders(),
-				});
-
-				if (!response.ok) {
-					throw new Error("Unable to load spaces");
-				}
-
-				const payload = (await response.json()) as {
-					spaces?: ApiSpace[];
-				};
-				const nextSpaces = payload.spaces ?? [];
-				if (ignore) return;
-
-				setSpaces(nextSpaces);
-				onSpacesLoaded(nextSpaces);
-				onSpaceChange(
-					nextSpaces.some((s) => s.id === activeSpaceId)
-						? activeSpaceId
-						: (nextSpaces[0]?.id ?? null),
-				);
-				setSpacesLoaded(true);
-			} catch {
-				if (!ignore) {
-					setError("Unable to load spaces");
+					categoryFileIdsRef.current = nextCategoryFileIds;
+					fileTreeLoadedRef.current = true;
+					setCategories(nextCategories);
+				} catch {
+					setCategories([]);
+					setError("Unable to load files");
+				} finally {
 					setIsLoading(false);
+				}
+			},
+			[activeSpaceId, spacesLoaded],
+		);
+
+		React.useEffect(() => {
+			let ignore = false;
+
+			async function loadSpaces() {
+				try {
+					const response = await fetch(`${apiBaseUrl}/spaces`, {
+						headers: authHeaders(),
+					});
+
+					if (!response.ok) {
+						throw new Error("Unable to load spaces");
+					}
+
+					const payload = (await response.json()) as {
+						spaces?: ApiSpace[];
+					};
+					const nextSpaces = payload.spaces ?? [];
+
+					if (ignore) return;
+
+					setSpaces(nextSpaces);
+					onSpacesLoaded?.(nextSpaces);
+					setActiveSpaceId((currentSpaceId) => {
+						if (
+							currentSpaceId &&
+							nextSpaces.some((space) => space.id === currentSpaceId)
+						) {
+							return currentSpaceId;
+						}
+
+						return nextSpaces[0]?.id ?? null;
+					});
 					setSpacesLoaded(true);
+				} catch {
+					if (!ignore) {
+						setError("Unable to load spaces");
+						setSpacesLoaded(true);
+					}
+				} finally {
+					if (!ignore) {
+						fileTreeLoadedRef.current = false;
+					}
+					setIsLoading(false);
 				}
 			}
-		}
 
-		loadSpaces();
+			loadSpaces();
 
-		return () => {
-			ignore = true;
-		};
-	}, []);
+			return () => {
+				ignore = true;
+			};
+		}, [onSpacesLoaded, setActiveSpaceId]);
 
 	React.useEffect(() => {
 		if (!spacesLoaded) return;
@@ -866,11 +1023,11 @@ export function AppSidebar({
 				<SidebarHeader>
 					<SidebarMenu>
 						<SidebarMenuItem>
-							<SpaceSwitcher
-								spaces={spaces}
-								activeSpace={activeSpace}
-								onSelect={(space) => onSpaceChange(space.id)}
-							/>
+								<SpaceSwitcher
+									spaces={spaces}
+									activeSpace={activeSpace}
+									onSelect={(space) => setActiveSpaceId(space.id)}
+								/>
 						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>

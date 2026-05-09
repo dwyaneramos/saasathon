@@ -1,4 +1,5 @@
 import { getDb } from "../db/index.js";
+import { ensureCoreSchema } from "./schemaService.js";
 import { HttpError } from "../utils/httpError.js";
 
 const MIN_CONFIDENCE = 0.28;
@@ -119,114 +120,20 @@ const DEFAULT_CATEGORIES: CategoryInput[] = [
   },
 ];
 
+const seededDefaultCategorySpaces = new Set<number>();
+const defaultCategorySeedPromises = new Map<number, Promise<void>>();
+
 export async function ensureDocumentSchema() {
-  await getDb().query(`
-		CREATE TABLE IF NOT EXISTS spaces (
-			id SERIAL PRIMARY KEY,
-			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-			name TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
-		CREATE TABLE IF NOT EXISTS document_categories (
-			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL,
-			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
-			metadata JSONB NOT NULL DEFAULT '{}',
-			description TEXT,
-			keywords TEXT[] NOT NULL DEFAULT '{}',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
-		CREATE TABLE IF NOT EXISTS documents (
-			id SERIAL PRIMARY KEY,
-			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
-			filename TEXT NOT NULL,
-			filepath TEXT,
-			metadata JSONB NOT NULL DEFAULT '{}',
-			file_name TEXT NOT NULL,
-			mime_type TEXT NOT NULL,
-			page_count INTEGER NOT NULL DEFAULT 0,
-			extracted_text TEXT NOT NULL,
-			summary TEXT NOT NULL,
-			category_id INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
-			confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
-			needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
-		ALTER TABLE document_categories
-			DROP CONSTRAINT IF EXISTS document_categories_name_key,
-			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
-			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS description TEXT,
-			ADD COLUMN IF NOT EXISTS keywords TEXT[] NOT NULL DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-
-		ALTER TABLE documents
-			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
-			ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT 'unknown',
-			ADD COLUMN IF NOT EXISTS filepath TEXT,
-			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'unknown',
-			ADD COLUMN IF NOT EXISTS original_file_name TEXT,
-			ADD COLUMN IF NOT EXISTS stored_file_name TEXT,
-			ADD COLUMN IF NOT EXISTS storage_path TEXT,
-			ADD COLUMN IF NOT EXISTS file_size INTEGER NOT NULL DEFAULT 0,
-			ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-			ADD COLUMN IF NOT EXISTS page_count INTEGER NOT NULL DEFAULT 0,
-			ADD COLUMN IF NOT EXISTS extracted_text TEXT NOT NULL DEFAULT '',
-			ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '',
-			ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
-			ADD COLUMN IF NOT EXISTS confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
-			ADD COLUMN IF NOT EXISTS needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
-			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-
-		UPDATE document_categories
-		SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
-			'description', description,
-			'keywords', keywords
-		));
-
-		UPDATE documents
-		SET
-			filename = COALESCE(NULLIF(filename, ''), stored_file_name, file_name, 'unknown'),
-			filepath = COALESCE(filepath, storage_path),
-			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
-				'originalName', original_file_name,
-				'mimeType', mime_type,
-				'size', file_size,
-				'spaceId', space_id
-			));
-
-		CREATE UNIQUE INDEX IF NOT EXISTS document_categories_space_name_unique_idx
-			ON document_categories (COALESCE(space_id, 0), lower(name));
-	`);
-
-  for (const category of DEFAULT_CATEGORIES) {
-    await getDb().query(
-      `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
-			 SELECT $1, NULL, $2, $3, $4
-			 WHERE NOT EXISTS (
-				SELECT 1 FROM document_categories
-				WHERE lower(name) = lower($1) AND space_id IS NULL
-			 )`,
-      [
-        category.name,
-        buildCategoryMetadata(category),
-        category.description ?? null,
-        category.keywords ?? [],
-      ],
-    );
-  }
+  await ensureCoreSchema();
 }
 
 export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
+  await ensureDefaultCategoriesForSpace(spaceId ?? null);
   const { rows } = await getDb().query<CategoryRow>(
     `SELECT id, name, space_id, metadata, description, keywords, created_at
 		 FROM document_categories
-		 WHERE $1::integer IS NULL OR space_id IS NULL OR space_id = $1
+		 WHERE space_id = $1
 		 ORDER BY name ASC`,
     [spaceId ?? null],
   );
@@ -335,6 +242,10 @@ export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);
   const spaceId = input.spaceId ?? await getDocumentSpaceId(input.documentId);
+  if (spaceId == null) {
+    throw new HttpError(400, "A space is required to create categories.");
+  }
+
   const metadata = buildCategoryMetadata({
     ...input,
     keywords,
@@ -345,7 +256,7 @@ export async function createCategory(input: CategoryInput) {
 		 WHERE lower(name) = lower($1)
 			AND space_id IS NOT DISTINCT FROM $2
 		 LIMIT 1`,
-    [input.name.trim(), spaceId ?? null],
+    [input.name.trim(), spaceId],
   );
 
   if (existing.rows[0]) {
@@ -373,7 +284,7 @@ export async function createCategory(input: CategoryInput) {
 		 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
     [
       input.name.trim(),
-      spaceId ?? null,
+      spaceId,
       metadata,
       input.description?.trim() || null,
       keywords,
@@ -985,6 +896,45 @@ async function getDocumentSpaceId(documentId?: number) {
     [documentId],
   );
   return rows[0]?.space_id ?? null;
+}
+
+async function ensureDefaultCategoriesForSpace(spaceId: number | null) {
+  if (spaceId == null || seededDefaultCategorySpaces.has(spaceId)) {
+    return;
+  }
+
+  const inFlight = defaultCategorySeedPromises.get(spaceId);
+  if (inFlight) {
+    await inFlight;
+    return;
+  }
+
+  const promise = (async () => {
+    for (const category of DEFAULT_CATEGORIES) {
+      await getDb().query(
+        `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
+         SELECT $1, $2, $3, $4, $5
+         WHERE NOT EXISTS (
+           SELECT 1 FROM document_categories
+           WHERE lower(name) = lower($1) AND space_id = $2
+         )`,
+        [
+          category.name,
+          spaceId,
+          buildCategoryMetadata(category),
+          category.description ?? null,
+          category.keywords ?? [],
+        ],
+      );
+    }
+
+    seededDefaultCategorySpaces.add(spaceId);
+  })().finally(() => {
+    defaultCategorySeedPromises.delete(spaceId);
+  });
+
+  defaultCategorySeedPromises.set(spaceId, promise);
+  await promise;
 }
 
 function buildCategoryMetadata(input: CategoryInput): CategoryMetadata {

@@ -1,7 +1,9 @@
 import { getDb } from "../db/index.js";
 import type { PublicSpace, Space } from "../types/space.js";
+import { ensureCoreSchema } from "./schemaService.js";
 
 export async function ensureSpaceSchema() {
+	await ensureCoreSchema();
 	await getDb().query(`
 		CREATE TABLE IF NOT EXISTS spaces (
 			id SERIAL PRIMARY KEY,

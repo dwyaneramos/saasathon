@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
   CategorySummary,
@@ -12,7 +13,12 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
+type AppLayoutContext = {
+  activeSpaceId: number | null;
+};
+
 export default function Graph() {
+  const { activeSpaceId } = useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
   const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -30,10 +36,19 @@ export default function Graph() {
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
+    if (!activeSpaceId) {
+      setCategories([]);
+      setDocuments([]);
+      return () => {
+        ignore = true;
+      };
+    }
+
     async function loadGraphData() {
+      const query = `?spaceId=${activeSpaceId}`;
       const [categoriesResponse, documentsResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/categories`, { headers }),
-        fetch(`${apiBaseUrl}/documents`, { headers }),
+        fetch(`${apiBaseUrl}/categories${query}`, { headers }),
+        fetch(`${apiBaseUrl}/documents${query}`, { headers }),
       ]);
 
       const categoriesPayload = (await categoriesResponse
@@ -58,7 +73,7 @@ export default function Graph() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [activeSpaceId]);
 
   // Track mouse position relative to the container
   useEffect(() => {
