@@ -42,6 +42,12 @@ docker compose ps          # check status
 docker compose exec db psql -U appuser -d appdb -c "\dt"  # list tables
 ```
 
+## Enter PostgreSql shell
+
+```bash
+compose exec db psql -U appuser -d appdb
+```
+
 ## Document analysis API
 
 The backend accepts PDF and image uploads, asks Claude through OpenRouter to parse them, and scores the result against saved categories.
