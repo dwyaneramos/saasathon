@@ -59,7 +59,7 @@ export const LandingAnimation = () => {
   }
 
   return (
-    <div className="absolute top-0 right-0 w-1/2 h-full">
+    <div className="w-full h-[900px]">
       <Canvas
         camera={{ position: [0, 0, 6.5], fov: 42 }}
         gl={{ antialias: true, alpha: true }}
