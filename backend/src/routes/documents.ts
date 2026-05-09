@@ -19,10 +19,12 @@ import {
 	getCategory,
 	getDocument,
 	listCategories,
+	listCategoryConnections,
 	listDocuments,
 	renameDocument,
 	searchDocuments,
 	toPublicCategory,
+	toPublicCategoryConnection,
 	toPublicDocument,
 	toPublicDocumentSearchResult,
 } from "../services/documentAnalyzer.js";
@@ -72,8 +74,14 @@ router.get("/categories", async (req, res) => {
 		return;
 	}
 
-	const categories = await listCategories(spaceId);
-	res.json({ categories: categories.map(toPublicCategory) });
+	const [categories, connections] = await Promise.all([
+		listCategories(spaceId),
+		listCategoryConnections(spaceId),
+	]);
+	res.json({
+		categories: categories.map(toPublicCategory),
+		connections: connections.map(toPublicCategoryConnection),
+	});
 });
 
 router.get("/documents", async (req, res) => {

@@ -479,13 +479,12 @@ export default function FileView() {
 							<ExternalLink className="size-4" />
 							Open
 						</a>
-						<a
-							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover)"
-						>
-							<Download className="size-4" />
-							Download
-						</a>
+						<Button asChild variant="accent" size="lg">
+							<a href={downloadUrl}>
+								<Download className="size-4" />
+								Download
+							</a>
+						</Button>
 					</div>
 				</div>
 				{fileSummary ? (
