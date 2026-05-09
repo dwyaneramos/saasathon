@@ -52,8 +52,10 @@ function AppLayout() {
 					onSpaceChange={setActiveSpaceId}
 					onSpacesLoaded={setSpaces}
 				/>
-				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0">
-					<Outlet context={{ activeSpaceId } satisfies AppLayoutContext} />
+				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full p-2">
+					<Outlet
+						context={{ activeSpaceId } satisfies AppLayoutContext}
+					/>
 				</SidebarInset>
 			</SidebarProvider>
 		</div>
