@@ -1,0 +1,147 @@
+import { Router, type Request, type Response } from "express";
+import multer from "multer";
+import { validate } from "../middleware/validate.js";
+import { createCategorySchema } from "../validation/documents.js";
+import {
+	analyzeImage,
+	analyzePdf,
+	assignDocumentCategory,
+	createCategory,
+	listCategories,
+} from "../services/documentAnalyzer.js";
+
+const router = Router();
+export const uploadPdfMiddleware = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 10 * 1024 * 1024,
+		files: 1,
+	},
+	fileFilter: (req, file, cb) => {
+		if (file.mimetype !== "application/pdf") {
+			cb(new Error("Only PDF files are supported"));
+			return;
+		}
+		cb(null, true);
+	},
+});
+export const uploadImageMiddleware = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 10 * 1024 * 1024,
+		files: 1,
+	},
+	fileFilter: (req, file, cb) => {
+		if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.mimetype)) {
+			cb(new Error("Only PNG, JPEG, WebP, or GIF images are supported"));
+			return;
+		}
+		cb(null, true);
+	},
+});
+
+router.get("/categories", async (req, res) => {
+	const categories = await listCategories();
+	res.json({ categories });
+});
+
+router.post(
+	"/categories",
+	validate(createCategorySchema),
+	async (req, res) => {
+		const { documentId, ...categoryInput } = req.body;
+		const category = await createCategory(categoryInput);
+
+		if (documentId) {
+			const assigned = await assignDocumentCategory(documentId, category.id);
+			if (!assigned) {
+				res.status(404).json({ error: "Document not found" });
+				return;
+			}
+		}
+
+		res.status(201).json({ category });
+	},
+);
+
+export async function analyzePdfUploadHandler(req: Request, res: Response) {
+	if (!req.file) {
+		res.status(400).json({ error: "PDF file is required" });
+		return;
+	}
+
+	const minConfidence =
+		typeof req.body?.minConfidence === "string"
+			? Number(req.body.minConfidence)
+			: undefined;
+	const analysis = await analyzePdf(
+		req.file,
+		Number.isFinite(minConfidence) ? minConfidence : undefined,
+	);
+
+	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+		document: {
+			id: analysis.documentId,
+			fileName: analysis.fileName,
+			sourceType: analysis.sourceType,
+			pageCount: analysis.pageCount,
+			summary: analysis.summary,
+			textPreview: analysis.textPreview,
+			model: analysis.model,
+		},
+		category: analysis.match.category,
+		confidence: analysis.match.confidence,
+		matchedKeywords: analysis.match.matchedKeywords,
+		needsNewCategory: analysis.match.needsNewCategory,
+		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		prompt: analysis.match.prompt,
+	});
+}
+
+export async function analyzeImageUploadHandler(req: Request, res: Response) {
+	if (!req.file) {
+		res.status(400).json({ error: "Image file is required" });
+		return;
+	}
+
+	const minConfidence =
+		typeof req.body?.minConfidence === "string"
+			? Number(req.body.minConfidence)
+			: undefined;
+	const analysis = await analyzeImage(
+		req.file,
+		Number.isFinite(minConfidence) ? minConfidence : undefined,
+	);
+
+	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+		document: {
+			id: analysis.documentId,
+			fileName: analysis.fileName,
+			sourceType: analysis.sourceType,
+			pageCount: analysis.pageCount,
+			summary: analysis.summary,
+			textPreview: analysis.textPreview,
+			model: analysis.model,
+		},
+		category: analysis.match.category,
+		confidence: analysis.match.confidence,
+		matchedKeywords: analysis.match.matchedKeywords,
+		needsNewCategory: analysis.match.needsNewCategory,
+		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		prompt: analysis.match.prompt,
+	});
+}
+
+router.post(
+	"/documents/analyze",
+	uploadPdfMiddleware.single("file"),
+	analyzePdfUploadHandler,
+);
+
+router.post(
+	"/images/analyze",
+	uploadImageMiddleware.single("file"),
+	analyzeImageUploadHandler,
+);
+
+export default router;

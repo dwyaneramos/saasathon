@@ -23,7 +23,7 @@ export const Navbar = () => {
 
         {!user ? (
           <>
-            <Link className="text-lg" to="/login">
+            <Link className="text-lg cursor" to="/login">
               Login
             </Link>
             <Link className="text-lg" to="/register">
@@ -34,7 +34,7 @@ export const Navbar = () => {
           <Popover>
             <PopoverTrigger asChild>
               <img
-                className="w-8 h-8 cursor-pointer rounded-full border-2 border-primary p-1"
+                className="w-8 h-8 cursor-pointer rounded-full border-2 border-bg p-1"
                 src="/default.svg"
                 alt="User Profile"
               />
