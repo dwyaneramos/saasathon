@@ -171,9 +171,10 @@ export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
   await ensureDefaultCategoriesForSpace(spaceId ?? null);
   const { rows } = await getDb().query<CategoryRow>(
-    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
-		 FROM document_categories
-		 WHERE space_id = $1
+    `SELECT c.id, c.name, c.space_id, c.metadata, c.description, c.summary, c.keywords, c.created_at
+		 FROM document_categories c
+     LEFT JOIN spaces s ON s.id = c.space_id
+		 WHERE c.space_id = $1
 		 ORDER BY name ASC`,
     [spaceId ?? null],
   );
@@ -192,27 +193,29 @@ export async function getCategory(categoryId: number) {
   return rows[0] ?? null;
 }
 
-export async function listDocuments(spaceId?: number | null) {
+export async function listDocuments(spaceId?: number | null, userId?: number | null) {
   await ensureDocumentSchema();
   const { rows } = await getDb().query<DocumentRow>(
     `SELECT
-        id,
-        space_id,
-        filename,
-        filepath,
-        file_name,
-        original_file_name,
-        stored_file_name,
-        mime_type,
-        file_size,
-        category_id,
-        summary,
-        keywords,
-        created_at
-     FROM documents
-     WHERE $1::integer IS NULL OR space_id = $1
-     ORDER BY created_at DESC`,
-    [spaceId ?? null],
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.created_at
+     FROM documents d
+     LEFT JOIN spaces s ON s.id = d.space_id
+     WHERE ($1::integer IS NULL OR d.space_id = $1)
+       AND ($2::integer IS NULL OR s.created_by = $2)
+     ORDER BY d.created_at DESC`,
+    [spaceId ?? null, userId ?? null],
   );
   return rows;
 }
@@ -242,10 +245,38 @@ export async function getDocument(documentId: number) {
   return rows[0] ?? null;
 }
 
+export async function userCanAccessDocument(documentId: number, userId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<{ allowed: true }>(
+    `SELECT TRUE AS allowed
+     FROM documents d
+     INNER JOIN spaces s ON s.id = d.space_id
+     WHERE d.id = $1
+       AND s.created_by = $2
+     LIMIT 1`,
+    [documentId, userId],
+  );
+  return Boolean(rows[0]?.allowed);
+}
+
+export async function userCanAccessSpace(spaceId: number, userId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<{ allowed: true }>(
+    `SELECT TRUE AS allowed
+     FROM spaces
+     WHERE id = $1
+       AND created_by = $2
+     LIMIT 1`,
+    [spaceId, userId],
+  );
+  return Boolean(rows[0]?.allowed);
+}
+
 export async function searchDocuments(input: {
   query: string;
   spaceId?: number | null;
   limit?: number;
+  userId?: number | null;
 }) {
   await ensureDocumentSchema();
 
@@ -329,11 +360,13 @@ export async function searchDocuments(input: {
           ), 0)
         )::float8 AS score
      FROM documents d
+     LEFT JOIN spaces s ON s.id = d.space_id
      LEFT JOIN document_categories c ON c.id = d.category_id
      WHERE ($1::integer IS NULL OR d.space_id = $1)
+       AND ($5::integer IS NULL OR s.created_by = $5)
      ORDER BY score DESC, d.created_at DESC
      LIMIT $4`,
-    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit],
+    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit, input.userId ?? null],
   );
 
   return rows.filter((row) => row.score > 0);
@@ -343,24 +376,29 @@ export async function askDashboardAssistant({
   prompt,
   spaceId,
   pathname,
+  userId,
 }: {
   prompt?: string;
   spaceId?: number | null;
   pathname?: string;
+  userId?: number | null;
 }): Promise<DashboardAssistantResponse> {
   await ensureDocumentSchema();
 
   const trimmedPrompt = prompt?.trim() ?? "";
   const categories = await listCategories(spaceId ?? null);
-  const documents = await listDocuments(spaceId ?? null);
+  const documents = await listDocuments(spaceId ?? null, userId ?? null);
   const searchRows = trimmedPrompt
     ? await searchDocuments({
         query: trimmedPrompt,
         spaceId: spaceId ?? null,
+        userId: userId ?? null,
         limit: 6,
       })
     : [];
-  const publicSearchResults = searchRows.map(toPublicDocumentSearchResult);
+  const publicSearchResults = searchRows.map((row) =>
+    toPublicDocumentSearchResult(row, trimmedPrompt),
+  );
   const suggestionsSeed = buildSuggestedActions({
     pathname: pathname ?? "/dashboard",
     categories,
@@ -419,15 +457,20 @@ export async function askDashboardAssistant({
   }
 
   const parsed = parseDashboardAssistantJson(rawContent);
-  return {
-    message:
-      cleanString(parsed.message) ||
-      buildFallbackAssistantMessage({
+  const parsedMessage = cleanString(parsed.message);
+  const fallbackMessage = buildFallbackAssistantMessage({
         prompt: trimmedPrompt,
         categories,
         documents,
         searchResults: searchRows,
-      }),
+      });
+  const message =
+    searchRows.length > 0 && answerLooksLikeNoMatch(parsedMessage)
+      ? fallbackMessage
+      : parsedMessage || fallbackMessage;
+
+  return {
+    message,
     navigateTo: sanitizeDashboardNavigateTo(
       cleanString(parsed.navigateTo),
       searchRows,
@@ -627,12 +670,13 @@ export function toPublicDocument(document: DocumentRow): PublicDocument {
 
 export function toPublicDocumentSearchResult(
   document: DocumentSearchRow,
+  query?: string,
 ): PublicDocumentSearchResult {
   return {
     ...toPublicDocument(document),
     categoryName: document.category_name,
     score: document.score,
-    snippet: buildSearchSnippet(document),
+    snippet: buildSearchSnippet(document, query),
   };
 }
 
@@ -1598,7 +1642,16 @@ function buildDashboardAssistantPrompt({
       summary: document.summary,
       keywords: document.keywords,
     })),
-    searchResults,
+    contentSearchResults: searchResults.map((result) => ({
+      id: result.id,
+      name: result.originalFileName || result.fileName || result.filename,
+      categoryName: result.categoryName,
+      score: result.score,
+      summary: result.summary,
+      snippet: result.snippet,
+      keywords: result.keywords,
+      navigateTo: `/file/${result.id}`,
+    })),
     defaultSuggestedActions: suggestions,
   };
 
@@ -1626,6 +1679,9 @@ Return exactly this JSON:
 
 Rules:
 - Use the prompt and search results first, not canned wording.
+- contentSearchResults are matches from filenames, categories, summaries, keywords, OCR text, and parsed document content.
+- If contentSearchResults is not empty, do not say that no file was found. Tell the user the best matching file name and why it matched, using the snippet when available.
+- If the user asks where something is, which file mentions something, or asks to find/search for a term, answer with the best contentSearchResults item even if the term only appears in parsed content.
 - If the user asks to open/view/read a specific file and the best search result is a strong match, set navigateTo to /file/<id>.
 - If the user asks about categories or collections, navigateTo can be /graph.
 - If the user asks to add or import files, set navigateTo to /upload so the app can open the upload modal on the graph view.
@@ -1737,10 +1793,24 @@ function buildFallbackAssistantMessage({
 
   if (searchResults[0]) {
     const bestMatch = searchResults[0];
-    return `I searched this space for "${prompt}" and the closest match is ${displayDocumentName(bestMatch)}${bestMatch.category_name ? ` in ${bestMatch.category_name}` : ""}.`;
+    const snippet = buildSearchSnippet(bestMatch, prompt);
+    return `I searched this space for "${prompt}" and the closest match is ${displayDocumentName(bestMatch)}${bestMatch.category_name ? ` in ${bestMatch.category_name}` : ""}.${snippet ? ` Matching passage: ${snippet}` : ""}`;
   }
 
   return `I searched this workspace for "${prompt}" but did not find a strong file match. Try a filename, category name, or a phrase that should appear in the document.`;
+}
+
+function answerLooksLikeNoMatch(message: string) {
+  const normalizedMessage = message.toLowerCase();
+  return [
+    "couldn't find",
+    "could not find",
+    "didn't find",
+    "did not find",
+    "no matching",
+    "no file",
+    "not find",
+  ].some((phrase) => normalizedMessage.includes(phrase));
 }
 
 function resolveSuggestedNavigation({
@@ -1827,10 +1897,42 @@ function containsSearchPhrase(text: string, values: string[]) {
   return values.some((value) => text.includes(value));
 }
 
-function buildSearchSnippet(row: DocumentSearchRow) {
-  return row.summary ? normalizeWhitespace(row.summary).slice(0, 140) : null;
+function buildSearchSnippet(row: DocumentSearchRow, query?: string) {
+  const summary = normalizeWhitespace(row.summary);
+  const extractedText = normalizeWhitespace(row.extracted_text);
+  const snippet =
+    findSearchSnippet(summary, query) ?? findSearchSnippet(extractedText, query);
+
+  return snippet ?? (summary ? summary.slice(0, 140) : null);
 }
 
 function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function findSearchSnippet(text: string, query?: string) {
+  if (!text) {
+    return null;
+  }
+
+  const normalizedQuery = query?.trim().toLowerCase() ?? "";
+  const tokens = normalizeSearchTokens(normalizedQuery);
+  const lowerText = text.toLowerCase();
+  const matchIndex =
+    normalizedQuery && lowerText.includes(normalizedQuery)
+      ? lowerText.indexOf(normalizedQuery)
+      : tokens
+          .map((token) => lowerText.indexOf(token))
+          .filter((index) => index >= 0)
+          .sort((a, b) => a - b)[0];
+
+  if (matchIndex == null || matchIndex < 0) {
+    return null;
+  }
+
+  const start = Math.max(0, matchIndex - 70);
+  const end = Math.min(text.length, matchIndex + 150);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < text.length ? "..." : "";
+  return `${prefix}${text.slice(start, end)}${suffix}`;
 }
