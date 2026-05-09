@@ -47,6 +47,7 @@ export type FileTreeUpdatedEvent = CustomEvent<{
 
 export type OpenUploadModalEvent = CustomEvent<{
 	files?: File[];
+	categoryId?: number | null;
 }>;
 
 export type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {

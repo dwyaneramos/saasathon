@@ -6,7 +6,7 @@ export type CreatedCategory = {
 
 export type CompactAnalysisStatus = {
 	currentFileName: string;
-	currentStatus: "Analyzing" | "Finished" | "Failed";
+	currentStatus: "Analysing" | "Finished" | "Failed";
 	remainingCount: number;
 	totalCount: number;
 };

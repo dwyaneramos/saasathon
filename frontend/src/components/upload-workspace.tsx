@@ -80,6 +80,7 @@ type UploadWorkspaceProps = {
 	spaceId?: number | null;
 	incomingFiles?: File[];
 	incomingFilesToken?: number;
+	incomingCategoryId?: number | null;
 };
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -102,6 +103,7 @@ export function UploadWorkspace({
 	spaceId,
 	incomingFiles = [],
 	incomingFilesToken = 0,
+	incomingCategoryId = null,
 }: UploadWorkspaceProps) {
 	const [files, setFiles] = useState<File[]>([]);
 	const [status, setStatus] = useState<string | null>(null);
@@ -174,8 +176,13 @@ export function UploadWorkspace({
 		}
 
 		processedIncomingFilesTokenRef.current = incomingFilesToken;
+		setSelectedCategoryId(
+			typeof incomingCategoryId === "number"
+				? String(incomingCategoryId)
+				: "",
+		);
 		addFiles(incomingFiles);
-	}, [incomingFiles, incomingFilesToken]);
+	}, [incomingCategoryId, incomingFiles, incomingFilesToken]);
 
 	const notifyFileTreeUpdated = (
 		documentIds: Array<number | undefined> = [],
@@ -215,9 +222,9 @@ export function UploadWorkspace({
 	};
 
 	const selectedUploadCategory = selectedCategoryId
-		? knownCategoryOptions.find(
+		? (knownCategoryOptions.find(
 				(category) => String(category.id) === selectedCategoryId,
-			) ?? null
+			) ?? null)
 		: null;
 
 	const upload = async () => {
@@ -258,7 +265,7 @@ export function UploadWorkspace({
 			setSummary(
 				`${payload.message} Total size: ${(payload.totalSize / 1024 / 1024).toFixed(2)} MB`,
 			);
-			setStatus("Upload successful. Analyzing files...");
+			setStatus("Upload successful. Analysing files...");
 			setIsAnalyzing(true);
 
 			const knownCategories = await loadKnownCategories();
@@ -268,7 +275,7 @@ export function UploadWorkspace({
 			for (const [index, file] of files.entries()) {
 				setCompactAnalysisStatus({
 					currentFileName: file.name,
-					currentStatus: "Analyzing",
+					currentStatus: "Analysing",
 					remainingCount: totalCount - index,
 					totalCount,
 				});
@@ -375,12 +382,15 @@ export function UploadWorkspace({
 
 			if (selectedUploadCategory) {
 				return {
-					documentId: payload.document?.id ?? uploadedFile?.documentId,
+					documentId:
+						payload.document?.id ?? uploadedFile?.documentId,
 					fileName: file.name,
 					categoryName: selectedUploadCategory.name,
 					suggestedCategoryName: selectedUploadCategory.name,
-					suggestedCategoryDescription: selectedUploadCategory.description,
-					summary: payload.document?.summary ?? "No summary returned.",
+					suggestedCategoryDescription:
+						selectedUploadCategory.description,
+					summary:
+						payload.document?.summary ?? "No summary returned.",
 					prompt: null,
 					needsNewCategory: false,
 					categoryInput: selectedUploadCategory.name,
@@ -700,9 +710,7 @@ export function UploadWorkspace({
 	const shouldCollapseCompactSelection =
 		hasCompactSelection && (isBusy || Boolean(compactAnalysisStatus));
 	const shouldShowCompactDropzone =
-		detailMode === "compact" &&
-		!hasCompactSelection &&
-		!hasCompactActivity;
+		detailMode === "compact" && !hasCompactSelection && !hasCompactActivity;
 	const shouldShowAnalysisPlaceholder =
 		detailMode === "compact" && isBusy && analysisResults.length === 0;
 	const compactProgressText = compactAnalysisStatus
@@ -803,6 +811,7 @@ export function UploadWorkspace({
 
 	useEffect(() => {
 		if (!selectedCategoryId) return;
+		if (knownCategoryOptions.length === 0) return;
 		if (
 			knownCategoryOptions.some(
 				(category) => String(category.id) === selectedCategoryId,
@@ -853,7 +862,8 @@ export function UploadWorkspace({
 									Drop files here
 								</p>
 								<p className="mt-1 text-sm text-muted-foreground">
-									PDF, PNG, JPG, GIF, WebP, SVG, BMP, or TIFF. Up to {MAX_UPLOAD_FILES} files at once.
+									PDF, PNG, JPG, GIF, WebP, SVG, BMP, or TIFF.
+									Up to {MAX_UPLOAD_FILES} files at once.
 								</p>
 								<Button
 									type="button"
@@ -884,7 +894,8 @@ export function UploadWorkspace({
 										</p>
 										{!shouldCollapseCompactSelection ? (
 											<p className="mt-1 text-xs text-muted-foreground">
-												Up to {MAX_UPLOAD_FILES} files per upload
+												Up to {MAX_UPLOAD_FILES} files
+												per upload
 											</p>
 										) : null}
 									</div>
@@ -981,7 +992,7 @@ export function UploadWorkspace({
 							</section>
 						) : null}
 
-							{(status || compactAnalysisStatus) && (
+						{(status || compactAnalysisStatus) && (
 							<section
 								className={
 									isBusy && !isWaitingForCategoryInput
@@ -1005,7 +1016,7 @@ export function UploadWorkspace({
 												{isWaitingForCategoryInput
 													? "Waiting for your input"
 													: isBusy
-														? "Analyzing files"
+														? "Analysing files"
 														: "Upload status"}
 											</p>
 											{compactProgressText ? (
@@ -1087,7 +1098,8 @@ export function UploadWorkspace({
 						</p>
 						<small className="text-sm text-muted-foreground mt-1">
 							Supported: PDF and image files (JPEG, PNG, GIF,
-							WebP, SVG, BMP, TIFF). Up to {MAX_UPLOAD_FILES} files per upload.
+							WebP, SVG, BMP, TIFF). Up to {MAX_UPLOAD_FILES}{" "}
+							files per upload.
 						</small>
 						<input
 							ref={inputRef}
@@ -1113,14 +1125,14 @@ export function UploadWorkspace({
 										{file.name} (
 										{(file.size / 1024).toFixed(2)} KB)
 									</span>
-										<Button
-											type="button"
-											variant="destructive"
-											size="xs"
-											onClick={() => removeFile(index)}
-										>
-											Remove
-										</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="xs"
+										onClick={() => removeFile(index)}
+									>
+										Remove
+									</Button>
 								</li>
 							))}
 						</ul>
@@ -1251,10 +1263,13 @@ export function UploadWorkspace({
 									.toLowerCase();
 								const filteredCategoryOptions =
 									categoryQuery.length > 0
-										? knownCategoryOptions.filter((category) =>
-												category.name
-													.toLowerCase()
-													.includes(categoryQuery),
+										? knownCategoryOptions.filter(
+												(category) =>
+													category.name
+														.toLowerCase()
+														.includes(
+															categoryQuery,
+														),
 											)
 										: knownCategoryOptions;
 								const hasExactCategoryMatch =

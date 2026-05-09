@@ -32,6 +32,7 @@ import {
 	updateCategory,
 } from "../services/documentAnalyzer.js";
 import { userCanAccessSpace } from "../services/spaceService.js";
+import { HttpError } from "../utils/httpError.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -386,8 +387,10 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
 		getDocumentId(req),
 	);
+	const selectedCategory = await applyRequestedCategory(req, analysis.documentId);
+	const responseCategory = selectedCategory ?? analysis.match.category;
 
-	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+	res.status(selectedCategory || !analysis.match.needsNewCategory ? 200 : 202).json({
 		document: {
 			id: analysis.documentId,
 			fileName: analysis.fileName,
@@ -397,16 +400,17 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category
-			? toPublicCategory(analysis.match.category)
-			: null,
+		category: responseCategory ? toPublicCategory(responseCategory) : null,
 		confidence: analysis.match.confidence,
 		matchedKeywords: analysis.match.matchedKeywords,
-		needsNewCategory: analysis.match.needsNewCategory,
-		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription:
-			analysis.match.suggestedCategoryDescription,
-		prompt: analysis.match.prompt,
+		needsNewCategory: selectedCategory ? false : analysis.match.needsNewCategory,
+		suggestedCategoryName: selectedCategory
+			? selectedCategory.name
+			: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: selectedCategory
+			? selectedCategory.description
+			: analysis.match.suggestedCategoryDescription,
+		prompt: selectedCategory ? null : analysis.match.prompt,
 	});
 }
 
@@ -425,8 +429,10 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
 		getDocumentId(req),
 	);
+	const selectedCategory = await applyRequestedCategory(req, analysis.documentId);
+	const responseCategory = selectedCategory ?? analysis.match.category;
 
-	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+	res.status(selectedCategory || !analysis.match.needsNewCategory ? 200 : 202).json({
 		document: {
 			id: analysis.documentId,
 			fileName: analysis.fileName,
@@ -436,16 +442,17 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category
-			? toPublicCategory(analysis.match.category)
-			: null,
+		category: responseCategory ? toPublicCategory(responseCategory) : null,
 		confidence: analysis.match.confidence,
 		matchedKeywords: analysis.match.matchedKeywords,
-		needsNewCategory: analysis.match.needsNewCategory,
-		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription:
-			analysis.match.suggestedCategoryDescription,
-		prompt: analysis.match.prompt,
+		needsNewCategory: selectedCategory ? false : analysis.match.needsNewCategory,
+		suggestedCategoryName: selectedCategory
+			? selectedCategory.name
+			: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: selectedCategory
+			? selectedCategory.description
+			: analysis.match.suggestedCategoryDescription,
+		prompt: selectedCategory ? null : analysis.match.prompt,
 	});
 }
 
@@ -486,6 +493,51 @@ function getSpaceId(req: Request) {
 
 	const spaceId = Number(req.query.spaceId);
 	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
+}
+
+function getCategoryIdFromBody(req: Request) {
+	const rawCategoryId = req.body?.categoryId;
+	if (rawCategoryId === undefined || rawCategoryId === null || rawCategoryId === "") {
+		return null;
+	}
+
+	const categoryId = Number(rawCategoryId);
+	return Number.isInteger(categoryId) && categoryId > 0 ? categoryId : false;
+}
+
+async function applyRequestedCategory(req: Request, documentId: number) {
+	const categoryId = getCategoryIdFromBody(req);
+	if (categoryId === null) {
+		return null;
+	}
+
+	if (categoryId === false) {
+		throw new HttpError(400, "categoryId must be a positive integer");
+	}
+
+	const [category, document] = await Promise.all([
+		getCategory(categoryId),
+		getDocument(documentId),
+	]);
+
+	if (!category) {
+		throw new HttpError(404, "Category not found");
+	}
+
+	if (!document) {
+		throw new HttpError(404, "Document not found");
+	}
+
+	if (category.space_id !== document.space_id) {
+		throw new HttpError(400, "Category does not belong to this document's space");
+	}
+
+	const assigned = await assignDocumentCategory(documentId, category.id);
+	if (!assigned) {
+		throw new HttpError(404, "Document not found");
+	}
+
+	return category;
 }
 
 function getCategoryIdFromParams(req: Request) {

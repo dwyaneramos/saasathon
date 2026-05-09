@@ -3,6 +3,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type DragEvent,
 	type KeyboardEvent,
 } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
@@ -340,9 +341,11 @@ export default function Dashboard() {
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
 	const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 	const [contextRefreshKey, setContextRefreshKey] = useState(0);
+	const [isDragUploadActive, setIsDragUploadActive] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const dragDepthRef = useRef(0);
 	const isEmpty = messages.length === 0;
 	const hasStartedConversation = messages.length > 0 || isLoading;
 	const userFirstName = user?.firstName ?? null;
@@ -618,8 +621,66 @@ export default function Dashboard() {
 		setMessages([]);
 	};
 
+	const handleDashboardDragEnter = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current += 1;
+		setIsDragUploadActive(true);
+	};
+
+	const handleDashboardDragOver = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+		if (!isDragUploadActive) {
+			setIsDragUploadActive(true);
+		}
+	};
+
+	const handleDashboardDragLeave = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+		if (dragDepthRef.current === 0) {
+			setIsDragUploadActive(false);
+		}
+	};
+
+	const handleDashboardDrop = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.files.length) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = 0;
+		setIsDragUploadActive(false);
+		window.dispatchEvent(
+			new CustomEvent(openUploadModalEvent, {
+				detail: {
+					files: Array.from(event.dataTransfer.files),
+					categoryId: null,
+				},
+			}),
+		);
+	};
+
 	return (
-		<div className="relative flex h-[calc(100svh-var(--header-height)-1rem)] max-h-[calc(100svh-var(--header-height)-1rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+		<div
+			className="relative flex h-[calc(100svh-var(--header-height)-1rem)] max-h-[calc(100svh-var(--header-height)-1rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
+			onDragEnter={handleDashboardDragEnter}
+			onDragOver={handleDashboardDragOver}
+			onDragLeave={handleDashboardDragLeave}
+			onDrop={handleDashboardDrop}
+		>
 			<div
 				ref={scrollContainerRef}
 				className="min-h-0 flex-1 overflow-y-auto px-4 pb-52 pt-6 sm:px-6 sm:pb-64 sm:pt-8"
@@ -741,6 +802,24 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</div>
+
+			{isDragUploadActive ? (
+				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
+					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+							<UploadCloud className="size-6" />
+						</span>
+						<div>
+							<p className="text-base font-semibold text-zinc-900">
+								Drag and drop to upload
+							</p>
+							<p className="mt-1 text-sm text-zinc-500">
+								Drop files anywhere to continue
+							</p>
+						</div>
+					</div>
+				</div>
+			) : null}
 		</div>
 	);
 }
