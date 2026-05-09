@@ -609,19 +609,23 @@ export async function updateCategory(
 ) {
   await ensureDocumentSchema();
   const name = input.name?.trim();
+  const shouldUpdateDescription = Object.hasOwn(input, "description");
   const description =
     typeof input.description === "string" ? input.description.trim() : null;
   const { rows } = await getDb().query<CategoryRow>(
     `UPDATE document_categories
      SET
-      name = COALESCE(NULLIF($2, ''), name),
-      description = $3,
-      metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
-        'description', $3
-      ))
+      name = COALESCE(NULLIF($2::text, ''), name),
+      description = CASE WHEN $3::boolean THEN $4::text ELSE description END,
+      metadata = CASE
+        WHEN $3::boolean THEN COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+          'description', $4::text
+        ))
+        ELSE metadata
+      END
      WHERE id = $1
      RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
-    [categoryId, name ?? null, description],
+    [categoryId, name ?? null, shouldUpdateDescription, description],
   );
   return rows[0] ?? null;
 }

@@ -421,6 +421,7 @@ router.patch(
 
 		const name =
 			typeof req.body?.name === "string" ? req.body.name.trim() : "";
+		const hasDescription = Object.hasOwn(req.body ?? {}, "description");
 		const description =
 			typeof req.body?.description === "string"
 				? req.body.description.trim()
@@ -435,7 +436,7 @@ router.patch(
 
 		const updatedCategory = await updateCategory(categoryId, {
 			name,
-			description,
+			...(hasDescription ? { description } : {}),
 		});
 		if (!updatedCategory) {
 			res.status(404).json({ error: "Category not found" });
