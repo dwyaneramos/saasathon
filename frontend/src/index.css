@@ -3,12 +3,18 @@
 @import "shadcn/tailwind.css";
 
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
 
 :root {
-	font-family: "Inter", sans-serif;
+	font-family: "Inter", Arial, Helvetica, sans-serif;
 	font-style: normal;
 	font-weight: 100 900;
 	font-display: swap;
+
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 @custom-variant dark (&:is(.dark *));
