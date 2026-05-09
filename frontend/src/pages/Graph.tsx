@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
   CategorySummary,
@@ -18,6 +18,7 @@ type AppLayoutContext = {
 };
 
 export default function Graph() {
+  const navigate = useNavigate();
   const { activeSpaceId } = useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
@@ -123,6 +124,11 @@ export default function Graph() {
       setHoveredNode(null);
       setActiveCategoryId(node.categoryId);
       setMode("files");
+      return;
+    }
+
+    if (mode === "files" && node.documentId) {
+      navigate(`/file/${node.documentId}`);
     }
   };
 
