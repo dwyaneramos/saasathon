@@ -5,9 +5,11 @@ import {
 	ExternalLink,
 	FileText,
 	Maximize2,
+	Minimize2,
 	Minus,
 	Plus,
 } from "lucide-react";
+import { useSidebar } from "@/components/ui/sidebar";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
@@ -52,10 +54,12 @@ export default function FileView() {
 			setError(null);
 
 			try {
-				const response = await fetch(`${apiBaseUrl}/documents/${documentId}`);
-				const payload = (await response.json().catch(() => null)) as
-					| DocumentResponse
-					| null;
+				const response = await fetch(
+					`${apiBaseUrl}/documents/${documentId}`,
+				);
+				const payload = (await response
+					.json()
+					.catch(() => null)) as DocumentResponse | null;
 
 				if (!response.ok) {
 					throw new Error(payload?.error ?? "Could not load file.");
@@ -66,7 +70,11 @@ export default function FileView() {
 				}
 			} catch (err) {
 				if (!ignore) {
-					setError(err instanceof Error ? err.message : "Could not load file.");
+					setError(
+						err instanceof Error
+							? err.message
+							: "Could not load file.",
+					);
 				}
 			} finally {
 				if (!ignore) {
@@ -100,7 +108,10 @@ export default function FileView() {
 						{error ?? "This file could not be loaded."}
 					</p>
 				</div>
-				<Link className="text-sm font-medium text-zinc-900 hover:underline" to="/upload">
+				<Link
+					className="text-sm font-medium text-zinc-900 hover:underline"
+					to="/upload"
+				>
 					Back to uploads
 				</Link>
 			</main>
@@ -125,7 +136,8 @@ export default function FileView() {
 							{displayName}
 						</h1>
 						<p className="mt-1 text-xs text-muted-foreground">
-							{document.mimeType} · {formatFileSize(document.fileSize)}
+							{document.mimeType} ·{" "}
+							{formatFileSize(document.fileSize)}
 						</p>
 					</div>
 					<div className="flex shrink-0 gap-2">
@@ -151,14 +163,20 @@ export default function FileView() {
 
 			<section className="h-[calc(100svh-var(--header-height)-73px)] p-4 md:p-6">
 				{canPreview ? (
-					<FilePreview document={document} fileUrl={fileUrl} displayName={displayName} />
+					<FilePreview
+						document={document}
+						fileUrl={fileUrl}
+						displayName={displayName}
+					/>
 				) : (
 					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
 						<FileText className="size-12 text-muted-foreground" />
-						<h2 className="mt-4 text-base font-semibold">Preview unavailable</h2>
+						<h2 className="mt-4 text-base font-semibold">
+							Preview unavailable
+						</h2>
 						<p className="mt-2 max-w-md text-sm text-muted-foreground">
-							This file type cannot be previewed inline. Open it in a new tab or
-							download it to view.
+							This file type cannot be previewed inline. Open it
+							in a new tab or download it to view.
 						</p>
 					</div>
 				)}
@@ -176,73 +194,16 @@ function FilePreview({
 	fileUrl: string;
 	displayName: string;
 }) {
-	const [pdfZoom, setPdfZoom] = useState(100);
-
-	if (document.mimeType.startsWith("image/")) {
+	if (
+		document.mimeType === "application/pdf" ||
+		document.mimeType.startsWith("image/")
+	) {
 		return (
-			<div className="flex h-full items-center justify-center overflow-auto rounded-lg border border-zinc-200 bg-white p-4">
-				<img
-					src={fileUrl}
-					alt={displayName}
-					className="max-h-full max-w-full object-contain"
-				/>
-			</div>
-		);
-	}
-
-	if (document.mimeType === "application/pdf") {
-		const pdfUrl = `${fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH&zoom=${pdfZoom}`;
-
-		return (
-			<div className="flex h-full flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 shadow-sm">
-				<div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-3">
-					<div className="flex min-w-0 items-center gap-2">
-						<div className="flex size-7 items-center justify-center rounded-md bg-zinc-100 text-zinc-600">
-							<FileText className="size-4" />
-						</div>
-						<span className="truncate text-sm font-medium text-zinc-800">
-							{displayName}
-						</span>
-					</div>
-					<div className="flex shrink-0 items-center gap-1">
-						<button
-							type="button"
-							className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-							onClick={() => setPdfZoom((zoom) => Math.max(50, zoom - 10))}
-							aria-label="Zoom out"
-						>
-							<Minus className="size-4" />
-						</button>
-						<span className="w-12 text-center text-xs tabular-nums text-muted-foreground">
-							{pdfZoom}%
-						</span>
-						<button
-							type="button"
-							className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-							onClick={() => setPdfZoom((zoom) => Math.min(200, zoom + 10))}
-							aria-label="Zoom in"
-						>
-							<Plus className="size-4" />
-						</button>
-						<button
-							type="button"
-							className="ml-1 inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-							onClick={() => setPdfZoom(100)}
-							aria-label="Reset zoom"
-						>
-							<Maximize2 className="size-4" />
-						</button>
-					</div>
-				</div>
-				<div className="flex-1 bg-zinc-100 p-3">
-					<iframe
-						key={pdfUrl}
-						src={pdfUrl}
-						title={displayName}
-						className="h-full w-full rounded-md border border-zinc-200 bg-white"
-					/>
-				</div>
-			</div>
+			<ZoomableFileViewer
+				document={document}
+				fileUrl={fileUrl}
+				displayName={displayName}
+			/>
 		);
 	}
 
@@ -255,6 +216,152 @@ function FilePreview({
 			/>
 		</div>
 	);
+}
+
+function ZoomableFileViewer({
+	document: fileDocument,
+	fileUrl,
+	displayName,
+}: {
+	document: PublicDocument;
+	fileUrl: string;
+	displayName: string;
+}) {
+	const [zoom, setZoom] = useState(100);
+	const [isExpanded, setIsExpanded] = useState(false);
+	const { setOpen } = useSidebar();
+	const scale = zoom / 100;
+	const isImage = fileDocument.mimeType.startsWith("image/");
+
+	useEffect(() => {
+		if (isExpanded) {
+			setOpen(false);
+		}
+	}, [isExpanded, setOpen]);
+
+	const toggleExpanded = () => {
+		setIsExpanded((current) => !current);
+	};
+
+	const pdfWidth = isExpanded ? 980 : 820;
+	const pdfHeight = isExpanded ? 780 : 720;
+	const imageWidth = isExpanded ? 1080 : 820;
+
+	const viewer = (
+		<div
+			className={
+				isExpanded
+					? "flex h-[90svh] w-[90vw] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 shadow-2xl"
+					: "flex h-full flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 shadow-sm"
+			}
+		>
+			<div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-3">
+				<div className="flex min-w-0 items-center gap-2">
+					<div className="flex size-7 items-center justify-center rounded-md bg-zinc-100 text-zinc-600">
+						<FileText className="size-4" />
+					</div>
+					<span className="truncate text-sm font-medium text-zinc-800">
+						{displayName}
+					</span>
+				</div>
+				<div className="flex shrink-0 items-center gap-1">
+					<button
+						type="button"
+						className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						onClick={() =>
+							setZoom((value) => Math.max(50, value - 10))
+						}
+						aria-label="Zoom out"
+					>
+						<Minus className="size-4" />
+					</button>
+					<button
+						type="button"
+						className="h-8 w-12 rounded-md text-center text-xs tabular-nums text-muted-foreground hover:bg-zinc-100 hover:text-zinc-900"
+						onClick={() => setZoom(100)}
+						aria-label="Reset zoom"
+					>
+						{zoom}%
+					</button>
+					<button
+						type="button"
+						className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						onClick={() =>
+							setZoom((value) => Math.min(250, value + 10))
+						}
+						aria-label="Zoom in"
+					>
+						<Plus className="size-4" />
+					</button>
+					<button
+						type="button"
+						className="ml-1 inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						onClick={toggleExpanded}
+						aria-label={
+							isExpanded ? "Shrink viewer" : "Expand viewer"
+						}
+					>
+						{isExpanded ? (
+							<Minimize2 className="size-4" />
+						) : (
+							<Maximize2 className="size-4" />
+						)}
+					</button>
+				</div>
+			</div>
+			<div className="flex-1 overflow-auto bg-zinc-100">
+				<div
+					style={{
+						display: "flex",
+						alignItems: "flex-start",
+						justifyContent: "center",
+						padding: "24px",
+						minHeight: "100%",
+					}}
+				>
+					{isImage ? (
+						<div className="rounded-md border border-zinc-200 bg-white shadow-sm">
+							<img
+								src={fileUrl}
+								alt={displayName}
+								className="block max-w-none object-contain"
+								draggable={false}
+								style={{
+									width: `${imageWidth}px`,
+									transform: `scale(${scale})`,
+									transformOrigin: "top center",
+									transition: "transform 0.15s ease-out",
+								}}
+							/>
+						</div>
+					) : (
+						<iframe
+							src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+							title={displayName}
+							className="block rounded-md border border-zinc-200 bg-white shadow-sm"
+							style={{
+								width: `${pdfWidth}px`,
+								height: `${pdfHeight}px`,
+								transform: `scale(${scale})`,
+								transformOrigin: "top center",
+								transition: "transform 0.15s ease-out",
+							}}
+						/>
+					)}
+				</div>
+			</div>
+		</div>
+	);
+
+	if (isExpanded) {
+		return (
+			<div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/30 p-6 backdrop-blur-sm">
+				{viewer}
+			</div>
+		);
+	}
+
+	return viewer;
 }
 
 function formatFileSize(bytes: number) {
