@@ -603,7 +603,7 @@ export function UploadWorkspace({
             {!hasCompactSelection ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  PDF and image uploads
+                  PDF and image uploads · Max 10 files · 10MB per file
                 </p>
                 <Button
                   type="button"
@@ -639,7 +639,7 @@ export function UploadWorkspace({
             </p>
             <small className="text-sm text-gray-500 mt-1">
               Supported: PDF and image files (JPEG, PNG, GIF, WebP, SVG, BMP,
-              TIFF)
+              TIFF). Max 10 files at a time, 10MB per file.
             </small>
             <input
               ref={inputRef}
