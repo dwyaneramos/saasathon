@@ -34,11 +34,9 @@ import {
 	toPublicDocument,
 	toPublicDocumentSearchResult,
 	updateCategory,
-	userCanAccessDocument,
-	userCanAccessSpace,
 	type DownloadableDocumentRow,
 } from "../services/documentAnalyzer.js";
-import { userCanAccessSpace } from "../services/spaceService.js";
+import { userCanAccessSpace as userCanAccessUserSpace } from "../services/spaceService.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -188,7 +186,7 @@ router.post(
 
 		if (
 			spaceId !== null &&
-			!(await userCanAccessSpace(spaceId, req.userId!))
+			!(await userCanAccessUserSpace(req.userId!, spaceId))
 		) {
 			res.status(404).json({ error: "Space not found" });
 			return;
@@ -269,7 +267,7 @@ router.get(
 		if (
 			!category ||
 			typeof category.space_id !== "number" ||
-			!(await userCanAccessSpace(category.space_id, req.userId!)) ||
+			!(await userCanAccessUserSpace(req.userId!, category.space_id)) ||
 			(typeof spaceId === "number" && category.space_id !== spaceId)
 		) {
 			res.status(404).json({ error: "Category not found" });
@@ -791,7 +789,7 @@ async function getManageableCategory(req: AuthRequest, categoryId: number) {
 		return null;
 	}
 
-	return (await userCanAccessSpace(req.userId, category.space_id))
+	return (await userCanAccessUserSpace(req.userId, category.space_id))
 		? category
 		: null;
 }
