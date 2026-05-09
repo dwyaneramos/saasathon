@@ -6,7 +6,7 @@ import {
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import Navbar from "./components/Navbar";
+import { Navbar } from "./components/Navbar";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import GraphPage from "./pages/Graph";
@@ -70,19 +70,19 @@ function App() {
 					</Routes>
 				</Router>
 			</TooltipProvider>
-      <Toaster
-        toastOptions={{
-          classNames: {
-            error: "!bg-red-100 !text-red-800 !border-red-300",
-            success:
-              "!bg-green-100 !text-green-800 !border-green-300",
-            warning: "!bg-yellow-100",
-            info: "!bg-blue-100",
-          },
-        }}
-      />
+			<Toaster
+				toastOptions={{
+					classNames: {
+						error: "!bg-red-100 !text-red-800 !border-red-300",
+						success:
+							"!bg-green-100 !text-green-800 !border-green-300",
+						warning: "!bg-yellow-100",
+						info: "!bg-blue-100",
+					},
+				}}
+			/>
 		</AuthProvider>
-    )
+	);
 }
 
 export default App;
