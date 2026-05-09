@@ -78,6 +78,8 @@ type UploadWorkspaceProps = {
 	showHeading?: boolean;
 	onBusyChange?: (isBusy: boolean) => void;
 	spaceId?: number | null;
+	incomingFiles?: File[];
+	incomingFilesToken?: number;
 };
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -97,6 +99,8 @@ export function UploadWorkspace({
 	showHeading = true,
 	onBusyChange,
 	spaceId,
+	incomingFiles = [],
+	incomingFilesToken = 0,
 }: UploadWorkspaceProps) {
 	const [files, setFiles] = useState<File[]>([]);
 	const [status, setStatus] = useState<string | null>(null);
@@ -124,6 +128,7 @@ export function UploadWorkspace({
 	} | null>(null);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const activePromptRef = useRef<HTMLElement | null>(null);
+	const processedIncomingFilesTokenRef = useRef(0);
 	const pendingCategoryConfirmationRef = useRef<{
 		fileName: string;
 		resolve: () => void;
@@ -142,6 +147,19 @@ export function UploadWorkspace({
 		setAnalysisResults([]);
 		setPendingCompletion(null);
 	};
+
+	useEffect(() => {
+		if (
+			incomingFilesToken === 0 ||
+			incomingFiles.length === 0 ||
+			processedIncomingFilesTokenRef.current === incomingFilesToken
+		) {
+			return;
+		}
+
+		processedIncomingFilesTokenRef.current = incomingFilesToken;
+		addFiles(incomingFiles);
+	}, [incomingFiles, incomingFilesToken]);
 
 	const notifyFileTreeUpdated = (
 		documentIds: Array<number | undefined> = [],
