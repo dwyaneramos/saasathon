@@ -19,6 +19,9 @@ import { apiBaseUrl } from "@/lib/api";
 import {
 	CreateCategoryModal,
 	CreateSpaceModal,
+	DeleteSpaceModal,
+	EditSpaceModal,
+	ManageCategoriesModal,
 } from "./app-sidebar/create-modals";
 import { SpaceSwitcher } from "./app-sidebar/space-switcher";
 import { FileTree } from "./app-sidebar/file-tree";
@@ -130,12 +133,40 @@ export function AppSidebar({
 		string | null
 	>(null);
 	const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
+	const [isManageCategoriesOpen, setIsManageCategoriesOpen] =
+		React.useState(false);
+	const [categoryActionError, setCategoryActionError] = React.useState<
+		string | null
+	>(null);
+	const [editingCategoryId, setEditingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [editingCategoryName, setEditingCategoryName] = React.useState("");
+	const [updatingCategoryId, setUpdatingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [deletingCategoryId, setDeletingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] =
+		React.useState<number | null>(null);
 	const [isCreateSpaceOpen, setIsCreateSpaceOpen] = React.useState(false);
 	const [newSpaceName, setNewSpaceName] = React.useState("");
 	const [isCreatingSpace, setIsCreatingSpace] = React.useState(false);
 	const [createSpaceError, setCreateSpaceError] = React.useState<
 		string | null
 	>(null);
+	const [isEditSpaceOpen, setIsEditSpaceOpen] = React.useState(false);
+	const [editSpaceName, setEditSpaceName] = React.useState("");
+	const [editSpaceError, setEditSpaceError] = React.useState<string | null>(
+		null,
+	);
+	const [isUpdatingSpace, setIsUpdatingSpace] = React.useState(false);
+	const [isDeleteSpaceOpen, setIsDeleteSpaceOpen] = React.useState(false);
+	const [deleteSpaceError, setDeleteSpaceError] = React.useState<
+		string | null
+	>(null);
+	const [isDeletingSpace, setIsDeletingSpace] = React.useState(false);
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 	const [searchQuery, setSearchQuery] = React.useState("");
 	const [contentSearchResults, setContentSearchResults] = React.useState<
@@ -152,10 +183,14 @@ export function AppSidebar({
 	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
+	const [expandedCategoryIds, setExpandedCategoryIds] = React.useState<
+		Set<number>
+	>(() => new Set());
 	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(
 		new Map(),
 	);
 	const fileTreeLoadedRef = React.useRef(false);
+	const categoryExpansionInitializedRef = React.useRef(false);
 	const pendingSpaceToastIdRef = React.useRef<number | null>(null);
 
 	const activeSpaceId =
@@ -296,6 +331,54 @@ export function AppSidebar({
 		setIsCreateCategoryOpen(true);
 	}, []);
 
+	const openManageCategoriesModal = React.useCallback(() => {
+		setEditingCategoryId(null);
+		setEditingCategoryName("");
+		setCategoryActionError(null);
+		setConfirmDeleteCategoryId(null);
+		setIsManageCategoriesOpen(true);
+	}, []);
+
+	const closeManageCategoriesModal = React.useCallback(() => {
+		setIsManageCategoriesOpen(false);
+		setEditingCategoryId(null);
+		setEditingCategoryName("");
+		setCategoryActionError(null);
+		setConfirmDeleteCategoryId(null);
+	}, []);
+
+	const handleCategoryOpenChange = React.useCallback(
+		(categoryId: number, open: boolean) => {
+			setExpandedCategoryIds((currentIds) => {
+				const nextIds = new Set(currentIds);
+				if (open) {
+					nextIds.add(categoryId);
+				} else {
+					nextIds.delete(categoryId);
+				}
+				return nextIds;
+			});
+		},
+		[],
+	);
+
+	const toggleAllCategories = React.useCallback(() => {
+		setExpandedCategoryIds((currentIds) => {
+			const expandableCategories = categories.filter(
+				(category) => category.files.length > 0,
+			);
+			const allExpanded =
+				expandableCategories.length > 0 &&
+				expandableCategories.every((category) =>
+					currentIds.has(category.id),
+				);
+
+			return allExpanded
+				? new Set()
+				: new Set(expandableCategories.map((category) => category.id));
+		});
+	}, [categories]);
+
 	const handleSelectSpace = React.useCallback(
 		(space: Space) => {
 			if (space.id === activeSpaceId) return;
@@ -312,6 +395,32 @@ export function AppSidebar({
 		setNewCategoryName("");
 		setCreateCategoryError(null);
 	}, [isCreatingCategory]);
+
+	const openEditSpaceModal = React.useCallback(() => {
+		if (!activeSpace) return;
+		setEditSpaceName(activeSpace.name);
+		setEditSpaceError(null);
+		setIsEditSpaceOpen(true);
+	}, [activeSpace]);
+
+	const openDeleteSpaceModal = React.useCallback(() => {
+		if (!activeSpace) return;
+		setDeleteSpaceError(null);
+		setIsDeleteSpaceOpen(true);
+	}, [activeSpace]);
+
+	const startEditingCategory = React.useCallback((category: Category) => {
+		setEditingCategoryId(category.id);
+		setEditingCategoryName(category.name);
+		setCategoryActionError(null);
+		setConfirmDeleteCategoryId(null);
+	}, []);
+
+	const cancelEditingCategory = React.useCallback(() => {
+		setEditingCategoryId(null);
+		setEditingCategoryName("");
+		setCategoryActionError(null);
+	}, []);
 
 	const clearNewFile = React.useCallback(
 		(categoryId: number, fileId: number) => {
@@ -511,6 +620,16 @@ export function AppSidebar({
 
 				categoryFileIdsRef.current = nextCategoryFileIds;
 				fileTreeLoadedRef.current = true;
+				if (!categoryExpansionInitializedRef.current) {
+					categoryExpansionInitializedRef.current = true;
+					setExpandedCategoryIds(
+						new Set(
+							nextCategories
+								.filter((category) => category.files.length > 0)
+								.map((category) => category.id),
+						),
+					);
+				}
 				setCategories((currentCategories) =>
 					reconcileCategories(currentCategories, nextCategories),
 				);
@@ -586,7 +705,9 @@ export function AppSidebar({
 
 		async function run() {
 			fileTreeLoadedRef.current = false;
+			categoryExpansionInitializedRef.current = false;
 			categoryFileIdsRef.current = new Map();
+			setExpandedCategoryIds(new Set());
 			setCategories([]);
 			setContentSearchResults([]);
 			setIsLoading(true);
@@ -848,6 +969,217 @@ export function AppSidebar({
 		}
 	};
 
+	const handleUpdateCategory = async (category: Category) => {
+		const trimmedName = editingCategoryName.trim();
+		const validationError =
+			trimmedName.toLowerCase() === category.name.trim().toLowerCase()
+				? null
+				: validateCategoryName(trimmedName);
+		if (validationError) {
+			setCategoryActionError(validationError);
+			return;
+		}
+
+		setUpdatingCategoryId(category.id);
+		setCategoryActionError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/categories/${category.id}`,
+				{
+					method: "PATCH",
+					headers: {
+						...authHeaders(),
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ name: trimmedName }),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				category?: { id?: number; name?: string };
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not rename category.");
+			}
+
+			setCategories((currentCategories) =>
+				currentCategories
+					.map((currentCategory) =>
+						currentCategory.id === category.id
+							? {
+									...currentCategory,
+									name:
+										payload?.category?.name ?? trimmedName,
+								}
+							: currentCategory,
+					)
+					.sort((a, b) => a.name.localeCompare(b.name)),
+			);
+			setEditingCategoryId(null);
+			setEditingCategoryName("");
+			toast.success(
+				`Category renamed to '${payload?.category?.name ?? trimmedName}'`,
+			);
+		} catch (err) {
+			setCategoryActionError(
+				err instanceof Error
+					? err.message
+					: "Could not rename category.",
+			);
+		} finally {
+			setUpdatingCategoryId(null);
+		}
+	};
+
+	const handleDeleteCategory = async (category: Category) => {
+		if (confirmDeleteCategoryId !== category.id) {
+			setConfirmDeleteCategoryId(category.id);
+			setCategoryActionError(null);
+			return;
+		}
+
+		setDeletingCategoryId(category.id);
+		setCategoryActionError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/categories/${category.id}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not delete category.");
+			}
+
+			setCategories((currentCategories) =>
+				currentCategories.filter(
+					(currentCategory) => currentCategory.id !== category.id,
+				),
+			);
+			setExpandedCategoryIds((currentIds) => {
+				const nextIds = new Set(currentIds);
+				nextIds.delete(category.id);
+				return nextIds;
+			});
+			setConfirmDeleteCategoryId(null);
+			toast.success(`Category '${category.name}' deleted`);
+		} catch (err) {
+			setCategoryActionError(
+				err instanceof Error
+					? err.message
+					: "Could not delete category.",
+			);
+		} finally {
+			setDeletingCategoryId(null);
+		}
+	};
+
+	const handleUpdateSpace = async (
+		event: React.FormEvent<HTMLFormElement>,
+	) => {
+		event.preventDefault();
+		if (!activeSpace) return;
+
+		const trimmedName = editSpaceName.trim();
+		const validationError = validateSpaceName(trimmedName);
+		if (validationError) {
+			setEditSpaceError(validationError);
+			return;
+		}
+
+		setIsUpdatingSpace(true);
+		setEditSpaceError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/spaces/${activeSpace.id}`,
+				{
+					method: "PATCH",
+					headers: {
+						...authHeaders(),
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ name: trimmedName }),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				space?: Space;
+				error?: string;
+			} | null;
+
+			if (!response.ok || !payload?.space) {
+				throw new Error(payload?.error ?? "Could not rename space.");
+			}
+
+			setSpaces((currentSpaces) =>
+				currentSpaces.map((space) =>
+					space.id === payload.space!.id ? payload.space! : space,
+				),
+			);
+			onSpacesLoaded?.((currentSpaces) =>
+				currentSpaces.map((space) =>
+					space.id === payload.space!.id ? payload.space! : space,
+				),
+			);
+			toast.success(`Space renamed to '${payload.space.name}'`);
+			setIsEditSpaceOpen(false);
+		} catch (err) {
+			setEditSpaceError(
+				err instanceof Error ? err.message : "Could not rename space.",
+			);
+		} finally {
+			setIsUpdatingSpace(false);
+		}
+	};
+
+	const handleDeleteSpace = async () => {
+		if (!activeSpace) return;
+
+		setIsDeletingSpace(true);
+		setDeleteSpaceError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/spaces/${activeSpace.id}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not delete space.");
+			}
+
+			const nextSpaces = spaces.filter(
+				(space) => space.id !== activeSpace.id,
+			);
+			setSpaces(nextSpaces);
+			onSpacesLoaded?.(nextSpaces);
+			setActiveSpaceId(nextSpaces[0]?.id ?? null);
+			setCategories([]);
+			setIsDeleteSpaceOpen(false);
+			toast.success(`Space '${activeSpace.name}' deleted`);
+		} catch (err) {
+			setDeleteSpaceError(
+				err instanceof Error ? err.message : "Could not delete space.",
+			);
+		} finally {
+			setIsDeletingSpace(false);
+		}
+	};
+
 	return (
 		<>
 			<Sidebar
@@ -865,6 +1197,8 @@ export function AppSidebar({
 								activeSpace={activeSpace}
 								onSelect={handleSelectSpace}
 								onCreateSpace={() => setIsCreateSpaceOpen(true)}
+								onEditActiveSpace={openEditSpaceModal}
+								onDeleteActiveSpace={openDeleteSpaceModal}
 							/>
 						</SidebarMenuItem>
 					</SidebarMenu>
@@ -913,6 +1247,10 @@ export function AppSidebar({
 						newCategoryIds={newCategoryIds}
 						newFileCategoryIds={newFileCategoryIds}
 						newFileIds={newFileIds}
+						expandedCategoryIds={expandedCategoryIds}
+						onCategoryOpenChange={handleCategoryOpenChange}
+						onManageCategories={openManageCategoriesModal}
+						onToggleAllCategories={toggleAllCategories}
 						onClearCategory={clearCategoryNotification}
 						onClearNewFile={clearNewFile}
 					/>
@@ -957,6 +1295,34 @@ export function AppSidebar({
 				spaceId={activeSpaceId}
 			/>
 
+			{isManageCategoriesOpen && (
+				<ManageCategoriesModal
+					activeSpaceName={activeSpace?.name ?? "this space"}
+					categories={categories}
+					categoryActionError={categoryActionError}
+					editingCategoryId={editingCategoryId}
+					editingCategoryName={editingCategoryName}
+					updatingCategoryId={updatingCategoryId}
+					deletingCategoryId={deletingCategoryId}
+					confirmDeleteCategoryId={confirmDeleteCategoryId}
+					onEditingNameChange={(value) => {
+						setEditingCategoryName(value);
+						if (categoryActionError) {
+							setCategoryActionError(null);
+						}
+					}}
+					onStartEditing={startEditingCategory}
+					onCancelEditing={cancelEditingCategory}
+					onUpdateCategory={handleUpdateCategory}
+					onDeleteCategory={handleDeleteCategory}
+					onClose={closeManageCategoriesModal}
+					onCreateCategory={() => {
+						closeManageCategoriesModal();
+						openCreateCategoryModal();
+					}}
+				/>
+			)}
+
 			{isCreateCategoryOpen && (
 				<CreateCategoryModal
 					activeSpaceName={activeSpace?.name ?? "Default Space"}
@@ -990,6 +1356,39 @@ export function AppSidebar({
 						setIsCreateSpaceOpen(false);
 						setNewSpaceName("");
 						setCreateSpaceError(null);
+					}}
+				/>
+			)}
+			{isEditSpaceOpen && activeSpace && (
+				<EditSpaceModal
+					space={activeSpace}
+					editSpaceName={editSpaceName}
+					editSpaceError={editSpaceError}
+					isUpdatingSpace={isUpdatingSpace}
+					onNameChange={(value) => {
+						setEditSpaceName(value);
+						if (editSpaceError) {
+							setEditSpaceError(null);
+						}
+					}}
+					onSubmit={handleUpdateSpace}
+					onClose={() => {
+						if (isUpdatingSpace) return;
+						setIsEditSpaceOpen(false);
+						setEditSpaceError(null);
+					}}
+				/>
+			)}
+			{isDeleteSpaceOpen && activeSpace && (
+				<DeleteSpaceModal
+					space={activeSpace}
+					deleteSpaceError={deleteSpaceError}
+					isDeletingSpace={isDeletingSpace}
+					onDelete={handleDeleteSpace}
+					onClose={() => {
+						if (isDeletingSpace) return;
+						setIsDeleteSpaceOpen(false);
+						setDeleteSpaceError(null);
 					}}
 				/>
 			)}

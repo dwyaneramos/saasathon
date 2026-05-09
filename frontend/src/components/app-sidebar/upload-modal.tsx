@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { UploadCloud, X } from "lucide-react";
 import {
 	Card,
 	CardContent,
@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UploadWorkspace } from "@/components/upload-workspace";
-import { cn } from "@/lib/utils";
 
 export function UploadModal({
 	open,
@@ -77,36 +76,41 @@ export function UploadModal({
 				}
 			}}
 		>
-			<Card className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card !py-0">
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-sm"
-					className="absolute top-4 right-4 z-10 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-					onClick={requestClose}
-					disabled={isUploadLocked}
-				>
-					<X className="size-4" />
-					<span className="sr-only">Close upload modal</span>
-				</Button>
-				<CardHeader className="border-b border-border px-6 py-5 pr-14">
-					<CardTitle
-						id="upload-files-title"
-						className="text-lg font-semibold text-foreground"
+			<Card
+				className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card py-0"
+				style={{ padding: 0 }}
+			>
+				<CardHeader className="!flex !flex-row items-start justify-between gap-4 border-b border-border bg-muted/40 px-6 py-5">
+					<div className="flex min-w-0 items-start gap-3">
+						<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+							<UploadCloud className="size-5" />
+						</span>
+						<div className="min-w-0">
+							<CardTitle
+								id="upload-files-title"
+								className="text-lg font-semibold text-foreground"
+							>
+								Upload files
+							</CardTitle>
+							<CardDescription className="mt-1 max-w-xl">
+								Add PDFs or images to analyse and organize them
+								into categories.
+							</CardDescription>
+						</div>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+						onClick={requestClose}
+						disabled={isUploadLocked}
+						aria-label="Close upload modal"
 					>
-						Upload files
-					</CardTitle>
-					<CardDescription className="max-w-xl">
-						Add PDFs or images to analyse and organize them into
-						categories.
-					</CardDescription>
+						<X className="size-4" />
+					</Button>
 				</CardHeader>
-				<CardContent
-					className={cn(
-						"max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 pt-6",
-						hasAnalysisStarted ? "pb-0" : "pb-6",
-					)}
-				>
+				<CardContent className="max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 py-6">
 					<UploadWorkspace
 						detailMode="compact"
 						showHeading={false}
@@ -115,8 +119,8 @@ export function UploadModal({
 					/>
 				</CardContent>
 				{hasAnalysisStarted ? (
-					<div className="flex items-center justify-between gap-4 border-t border-border bg-muted/50 px-6 py-4 text-muted-foreground">
-						<span className="min-w-0 text-sm leading-relaxed">
+					<div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-border bg-muted/50 px-6 py-3 text-muted-foreground">
+						<span className="flex min-h-full items-center text-sm leading-relaxed">
 							{isUploadLocked
 								? "Analysis is running. Keep this window open until it finishes."
 								: "Analysis complete. New files are ready in the sidebar."}
@@ -124,7 +128,7 @@ export function UploadModal({
 						<Button
 							type="button"
 							variant="accent"
-							className="shrink-0"
+							className="shrink-0 self-end"
 							size="default"
 							onClick={requestClose}
 							disabled={isUploadLocked}

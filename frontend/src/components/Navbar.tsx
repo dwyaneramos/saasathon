@@ -7,6 +7,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -64,13 +65,16 @@ export const NavbarContent = () => {
 								<LogIn size={16} strokeWidth={2.25} />
 								Log in
 							</Link>
-							<Link
-								to="/register"
-								className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover) transition-all transform active:scale-95 "
+							<Button
+								asChild
+								variant="accent"
+								size="lg"
 							>
-								<UserPlus size={16} strokeWidth={2.25} />
-								Sign up
-							</Link>
+								<Link to="/register">
+									<UserPlus size={16} strokeWidth={2.25} />
+									Sign up
+								</Link>
+							</Button>
 						</div>
 					</>
 				) : (
@@ -96,14 +100,16 @@ export const NavbarContent = () => {
 
 									<div className="border-t my-1 border-zinc-100" />
 
-									<button
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
 										onClick={handleLogout}
-										className="flex items-center gap-1.5 w-full text-left text-sm px-2 py-1.5 rounded-md text-red-600 hover:bg-zinc-200"
-										style={{ transition: "none" }}
+										className="w-full justify-start"
 									>
 										<LogOut size={16} strokeWidth={2.25} />
 										Log out
-									</button>
+									</Button>
 								</div>
 							</PopoverContent>
 						</Popover>

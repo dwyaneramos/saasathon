@@ -600,6 +600,43 @@ export async function createCategory(input: CategoryInput) {
   return rows[0];
 }
 
+export async function updateCategory(
+  categoryId: number,
+  input: {
+    name?: string;
+    description?: string | null;
+  },
+) {
+  await ensureDocumentSchema();
+  const name = input.name?.trim();
+  const description =
+    typeof input.description === "string" ? input.description.trim() : null;
+  const { rows } = await getDb().query<CategoryRow>(
+    `UPDATE document_categories
+     SET
+      name = COALESCE(NULLIF($2, ''), name),
+      description = $3,
+      metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+        'description', $3
+      ))
+     WHERE id = $1
+     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
+    [categoryId, name ?? null, description],
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteCategory(categoryId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<CategoryRow>(
+    `DELETE FROM document_categories
+     WHERE id = $1
+     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
+    [categoryId],
+  );
+  return rows[0] ?? null;
+}
+
 export function toPublicCategory(category: CategoryRow): PublicCategory {
   const metadata = normalizeCategoryMetadata(category);
   return {

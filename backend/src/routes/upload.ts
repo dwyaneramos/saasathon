@@ -14,6 +14,7 @@ import {
 	ensureSpaceExists,
 	getOrCreateDefaultSpace,
 	getOrCreateUserSpace,
+	userCanAccessSpace,
 } from "../services/spaceService.js";
 import {
 	assignDocumentCategory,
@@ -215,6 +216,10 @@ async function resolveSpace(req: UploadRequest) {
 	const space = await ensureSpaceExists(spaceId);
 	if (!space) {
 		throw new HttpError(404, "Space not found");
+	}
+
+	if (!req.userId || !(await userCanAccessSpace(req.userId, space.id))) {
+		throw new HttpError(403, "You do not have access to this space");
 	}
 
 	return space;

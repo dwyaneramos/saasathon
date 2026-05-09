@@ -4,7 +4,11 @@ import {
 	ChevronRight,
 	FolderClosed,
 	FolderOpen,
+	ListCollapse,
+	ListTree,
+	Settings,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -28,24 +32,27 @@ import type { Category } from "./types";
 
 type CategoryItemProps = {
 	category: Category;
+	open: boolean;
 	searchQuery: string;
 	hasNewCategory: boolean;
 	hasNewFiles: boolean;
 	newFileIds: Set<number>;
+	onOpenChange: (categoryId: number, open: boolean) => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 };
 
 function CategoryItemBase({
 	category,
+	open,
 	searchQuery,
 	hasNewCategory,
 	hasNewFiles,
 	newFileIds,
+	onOpenChange,
 	onClearCategory,
 	onClearNewFile,
 }: CategoryItemProps) {
-	const [open, setOpen] = React.useState(category.files.length > 0);
 	const [allowCategoryWrap, setAllowCategoryWrap] = React.useState(false);
 	const { state, setOpen: setSidebarOpen } = useSidebar();
 
@@ -65,7 +72,7 @@ function CategoryItemBase({
 	}, [state]);
 
 	function handleOpenChange(nextOpen: boolean) {
-		setOpen(nextOpen);
+		onOpenChange(category.id, nextOpen);
 		setSidebarOpen(true);
 	}
 
@@ -112,11 +119,17 @@ function CategoryItemBase({
 						>
 							{highlightSearchText(category.name, searchQuery)}
 						</span>
+						<span
+							className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center self-center rounded bg-zinc-100 px-1 text-[10px] font-medium leading-none tabular-nums text-muted-foreground ring-1 ring-border/60 group-data-[collapsible=icon]:hidden"
+							aria-label={`${category.files.length} files`}
+						>
+							{category.files.length}
+						</span>
 						<ChevronRight
 							className={
 								allowCategoryWrap
-									? "mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
-									: "ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
+									? "mt-0.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
+									: "transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
 							}
 						/>
 					</SidebarMenuButton>
@@ -205,9 +218,11 @@ const CategoryItem = React.memo(
 	CategoryItemBase,
 	(previous, next) =>
 		previous.category === next.category &&
+		previous.open === next.open &&
 		previous.searchQuery === next.searchQuery &&
 		previous.hasNewCategory === next.hasNewCategory &&
 		previous.hasNewFiles === next.hasNewFiles &&
+		previous.onOpenChange === next.onOpenChange &&
 		previous.onClearCategory === next.onClearCategory &&
 		previous.onClearNewFile === next.onClearNewFile &&
 		hasSameNewFileMarkers(
@@ -227,6 +242,10 @@ export function FileTree({
 	newCategoryIds,
 	newFileCategoryIds,
 	newFileIds,
+	expandedCategoryIds,
+	onCategoryOpenChange,
+	onManageCategories,
+	onToggleAllCategories,
 	onClearCategory,
 	onClearNewFile,
 }: {
@@ -239,14 +258,57 @@ export function FileTree({
 	newCategoryIds: Set<number>;
 	newFileCategoryIds: Set<number>;
 	newFileIds: Set<number>;
+	expandedCategoryIds: Set<number>;
+	onCategoryOpenChange: (categoryId: number, open: boolean) => void;
+	onManageCategories: () => void;
+	onToggleAllCategories: () => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 }) {
+	const hasCategories = categories.length > 0;
+	const allExpanded =
+		hasCategories &&
+		categories.every((category) => expandedCategoryIds.has(category.id));
+	const ToggleIcon = allExpanded ? ListCollapse : ListTree;
+
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-				Categories
-			</SidebarGroupLabel>
+			<div className="flex h-8 items-center justify-between gap-2 pr-1 group-data-[collapsible=icon]:hidden">
+				<SidebarGroupLabel className="h-auto flex-1 px-0">
+					CATEGORIES
+				</SidebarGroupLabel>
+				<div className="flex items-center gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onToggleAllCategories}
+						disabled={!hasCategories}
+						aria-label={
+							allExpanded
+								? "Collapse all categories"
+								: "Expand all categories"
+						}
+						title={
+							allExpanded
+								? "Collapse all categories"
+								: "Expand all categories"
+						}
+					>
+						<ToggleIcon className="size-3.5" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onManageCategories}
+						aria-label="Manage categories"
+						title="Manage categories"
+					>
+						<Settings className="size-3.5" />
+					</Button>
+				</div>
+			</div>
 			<SidebarMenu>
 				{isLoading && (
 					<SidebarMenuItem>
@@ -279,10 +341,12 @@ export function FileTree({
 						<CategoryItem
 							key={category.id}
 							category={category}
+							open={expandedCategoryIds.has(category.id)}
 							searchQuery={searchQuery}
 							hasNewCategory={newCategoryIds.has(category.id)}
 							hasNewFiles={newFileCategoryIds.has(category.id)}
 							newFileIds={newFileIds}
+							onOpenChange={onCategoryOpenChange}
 							onClearCategory={onClearCategory}
 							onClearNewFile={onClearNewFile}
 						/>

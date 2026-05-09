@@ -16,6 +16,7 @@ import {
 	analyzePdf,
 	assignDocumentCategory,
 	createCategory,
+	deleteCategory,
 	deleteDocument,
 	getCategory,
 	getDocument,
@@ -26,6 +27,7 @@ import {
 	toPublicCategory,
 	toPublicDocument,
 	toPublicDocumentSearchResult,
+	updateCategory,
 	userCanAccessDocument,
 	userCanAccessSpace,
 } from "../services/documentAnalyzer.js";
@@ -339,10 +341,10 @@ router.get(
 				return;
 			}
 
-				next(err);
-			});
-		},
-	);
+			next(err);
+		});
+	},
+);
 
 router.post(
 	"/categories",
@@ -392,6 +394,90 @@ router.post(
 		}
 
 		res.status(201).json({ category: toPublicCategory(responseCategory) });
+	},
+);
+
+router.patch(
+	"/categories/:categoryId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const categoryId = getCategoryIdFromParams(req);
+		if (!categoryId) {
+			res.status(400).json({
+				error: "categoryId must be a positive integer",
+			});
+			return;
+		}
+
+		const category = await getCategory(categoryId);
+		if (
+			!category ||
+			typeof category.space_id !== "number" ||
+			!(await userCanAccessSpace(category.space_id, req.userId!))
+		) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const name =
+			typeof req.body?.name === "string" ? req.body.name.trim() : "";
+		const description =
+			typeof req.body?.description === "string"
+				? req.body.description.trim()
+				: null;
+
+		if (!name || name.length > 80) {
+			res.status(400).json({
+				error: "Category name must be 1-80 characters",
+			});
+			return;
+		}
+
+		const updatedCategory = await updateCategory(categoryId, {
+			name,
+			description,
+		});
+		if (!updatedCategory) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		res.json({ category: toPublicCategory(updatedCategory) });
+	},
+);
+
+router.delete(
+	"/categories/:categoryId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const categoryId = getCategoryIdFromParams(req);
+		if (!categoryId) {
+			res.status(400).json({
+				error: "categoryId must be a positive integer",
+			});
+			return;
+		}
+
+		const category = await getCategory(categoryId);
+		if (
+			!category ||
+			typeof category.space_id !== "number" ||
+			!(await userCanAccessSpace(category.space_id, req.userId!))
+		) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const deletedCategory = await deleteCategory(categoryId);
+		if (!deletedCategory) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		res.json({
+			success: true,
+			category: toPublicCategory(deletedCategory),
+		});
 	},
 );
 
@@ -453,6 +539,15 @@ export async function analyzePdfUploadHandler(req: AuthRequest, res: Response) {
 	}
 
 	const requestedCategory = await getRequestedCategory(req);
+	const existingDocument = documentId ? await getDocument(documentId) : null;
+	if (
+		requestedCategory &&
+		existingDocument &&
+		requestedCategory.space_id !== existingDocument.space_id
+	) {
+		res.status(400).json({ error: "Category does not belong to this space" });
+		return;
+	}
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
@@ -511,6 +606,15 @@ export async function analyzeImageUploadHandler(req: AuthRequest, res: Response)
 	}
 
 	const requestedCategory = await getRequestedCategory(req);
+	const existingDocument = documentId ? await getDocument(documentId) : null;
+	if (
+		requestedCategory &&
+		existingDocument &&
+		requestedCategory.space_id !== existingDocument.space_id
+	) {
+		res.status(400).json({ error: "Category does not belong to this space" });
+		return;
+	}
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
@@ -593,6 +697,11 @@ function getSpaceId(req: Request) {
 function getDocumentIdFromParams(req: Request) {
 	const documentId = Number(req.params.documentId);
 	return Number.isInteger(documentId) && documentId > 0 ? documentId : null;
+}
+
+function getCategoryIdFromParams(req: Request) {
+	const categoryId = Number(req.params.categoryId);
+	return Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null;
 }
 
 function resolveStoredFilePath(filepath: string) {

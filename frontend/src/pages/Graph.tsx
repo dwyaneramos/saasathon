@@ -23,6 +23,7 @@ import GraphView from "@/components/GraphView";
 import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
+import { Button } from "@/components/ui/button";
 import type {
   CategorySummary,
   DocumentSummary,
@@ -549,13 +550,29 @@ export default function Graph() {
       ) : null}
 
       <div className="absolute right-5 bottom-5 z-20 flex gap-3">
-        <button
+        <Button
+          type="button"
+          variant="accent"
+          size="lg"
           onClick={() => setIs2D((current) => !current)}
-          className="rounded bg-accent px-4 py-2 text-black transition hover:bg-gray-700"
         >
           {is2D ? "Switch to 3D" : "Switch to 2D"}
-        </button>
+        </Button>
 
+        {mode === "files" ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => {
+              hideTooltip();
+              setMode("categories");
+              setActiveCategoryId(null);
+            }}
+          >
+            Back
+          </Button>
+        ) : null}
       </div>
 
       {/* Anchored tooltip with a hover bridge so the card can be entered. */}
@@ -634,13 +651,14 @@ export default function Graph() {
                 </ul>
 
                 <div className="border-t border-stone-100 px-4 py-2">
-                  <button
+                  <Button
                     type="button"
                     onClick={handleTooltipAction}
-                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                    size="sm"
+                    className="w-full"
                   >
                     Explore files
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -681,13 +699,14 @@ export default function Graph() {
                 </div>
 
                 <div className="px-4 py-2">
-                  <button
+                  <Button
                     type="button"
                     onClick={handleTooltipAction}
-                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                    size="sm"
+                    className="w-full"
                   >
                     Open file page
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
