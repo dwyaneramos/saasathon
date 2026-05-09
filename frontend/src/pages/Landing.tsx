@@ -1,5 +1,6 @@
 import LandingAnimation from "@/components/LandingAnimation";
 import { CloudSync, Database, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export const Landing = () => {
 	return (
@@ -19,13 +20,19 @@ export const Landing = () => {
 						</p>
 
 						<div className="flex flex-col sm:flex-row gap-4 items-center">
-							<button className="bg-(--color-accent) px-8 py-4 rounded-lg font-semibold hover:bg-(--color-accent-hover) transition-all transform active:scale-95">
+							<Link
+								to="/register"
+								className="bg-(--color-accent) px-8 py-4 rounded-lg font-semibold hover:bg-(--color-accent-hover) transition-all transform active:scale-95"
+							>
 								Get Started for Free
-							</button>
+							</Link>
 
-							<button className="text-zinc-600 border border-zinc-200 bg-white px-8 py-4 rounded-lg font-medium hover:bg-zinc-50 transition-all">
+							<Link
+								to="https://github.com/dwyaneramos/saasathon"
+								className="text-zinc-600 border border-zinc-200 bg-white px-8 py-4 rounded-lg font-medium hover:bg-zinc-50 transition-all"
+							>
 								Read Documentation →
-							</button>
+							</Link>
 						</div>
 					</div>
 					<div className="relative flex items-start justify-start overflow-visible position-absolute right-0 top-0">
