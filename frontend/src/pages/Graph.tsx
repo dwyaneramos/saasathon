@@ -7,6 +7,14 @@ import {
   useState,
 } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import GraphView from "@/components/GraphView";
 import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
@@ -23,11 +31,13 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 
 type AppLayoutContext = {
   activeSpaceId: number | null;
+  activeSpaceName: string | null;
 };
 
 export default function Graph() {
   const navigate = useNavigate();
-  const { activeSpaceId } = useOutletContext<AppLayoutContext>();
+  const { activeSpaceId, activeSpaceName } =
+    useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
   const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -393,6 +403,55 @@ export default function Graph() {
       ref={containerRef}
       className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
     >
+      <div className="absolute left-5 top-5 z-20">
+        <Breadcrumb>
+          <BreadcrumbList className="rounded-lg border border-stone-200/80 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+            <BreadcrumbItem>
+              {activeCategory ? (
+                <BreadcrumbLink asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hideTooltip();
+                      setMode("categories");
+                      setActiveCategoryId(null);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    {activeSpaceName ?? "Space"}
+                  </button>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{activeSpaceName ?? "Space"}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+            {activeCategory ? (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{activeCategory.name}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            ) : null}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
+      {mode === "files" ? (
+        <div className="absolute bottom-5 left-5 z-20">
+          <button
+            onClick={() => {
+              hideTooltip();
+              setMode("categories");
+              setActiveCategoryId(null);
+            }}
+            className="rounded border border-stone-300 bg-white px-4 py-2 text-stone-700 shadow-sm transition hover:bg-stone-100"
+          >
+            Back
+          </button>
+        </div>
+      ) : null}
+
       <div className="absolute right-5 bottom-5 z-20 flex gap-3">
         <button
           onClick={() => setIs2D((current) => !current)}
@@ -401,18 +460,6 @@ export default function Graph() {
           {is2D ? "Switch to 3D" : "Switch to 2D"}
         </button>
 
-        {mode === "files" ? (
-          <button
-            onClick={() => {
-              hideTooltip();
-              setMode("categories");
-              setActiveCategoryId(null);
-            }}
-            className="rounded border border-stone-300 bg-white px-4 py-2 text-stone-700 transition hover:bg-stone-100"
-          >
-            Back
-          </button>
-        ) : null}
       </div>
 
       {/* Anchored tooltip with a hover bridge so the card can be entered. */}

@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+	Link,
+	useNavigate,
+	useOutletContext,
+	useParams,
+} from "react-router-dom";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import {
 	Download,
 	Edit3,
@@ -24,11 +37,13 @@ const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type PublicDocument = {
 	id: number;
+	spaceId: number | null;
 	filename: string;
 	fileName: string;
 	originalFileName: string | null;
 	mimeType: string;
 	fileSize: number;
+	categoryId: number | null;
 	summary: string;
 	createdAt: string;
 };
@@ -40,6 +55,20 @@ type DocumentResponse = {
 
 type ApiErrorPayload = {
 	error?: string;
+};
+
+type CategorySummary = {
+	id: number;
+	name: string;
+};
+
+type CategoriesResponse = {
+	categories?: CategorySummary[];
+};
+
+type AppLayoutContext = {
+	activeSpaceId: number | null;
+	activeSpaceName: string | null;
 };
 
 function authHeaders() {
@@ -157,7 +186,10 @@ function toFriendlyDocumentError(
 export default function FileView() {
 	const { documentId } = useParams();
 	const navigate = useNavigate();
+	const { activeSpaceId, activeSpaceName } =
+		useOutletContext<AppLayoutContext>();
 	const [document, setDocument] = useState<PublicDocument | null>(null);
+	const [categoryName, setCategoryName] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [editableName, setEditableName] = useState("");
@@ -302,6 +334,50 @@ export default function FileView() {
 			}
 		};
 	}, [document, fileUrl, navigate]);
+
+	useEffect(() => {
+		let ignore = false;
+
+		async function loadCategoryName() {
+			if (!document?.categoryId || !activeSpaceId) {
+				setCategoryName(null);
+				return;
+			}
+
+			try {
+				const response = await fetch(
+					`${apiBaseUrl}/categories?spaceId=${activeSpaceId}`,
+					{ headers: authHeaders() },
+				);
+
+				if (!response.ok) {
+					throw new Error("Unable to load categories");
+				}
+
+				const payload = (await response
+					.json()
+					.catch(() => null)) as CategoriesResponse | null;
+				const matchingCategory =
+					payload?.categories?.find(
+						(category) => category.id === document.categoryId,
+					) ?? null;
+
+				if (!ignore) {
+					setCategoryName(matchingCategory?.name ?? null);
+				}
+			} catch {
+				if (!ignore) {
+					setCategoryName(null);
+				}
+			}
+		}
+
+		void loadCategoryName();
+
+		return () => {
+			ignore = true;
+		};
+	}, [activeSpaceId, document?.categoryId]);
 
 	if (isLoading) {
 		return (
@@ -452,8 +528,34 @@ export default function FileView() {
 	const fileSummary = document.summary?.trim();
 
 	return (
-		<main className="min-h-[calc(100svh-var(--header-height))] bg-muted/40">
-			<header className="border-b border-border bg-background px-6 py-4">
+		<div className="graph-page relative min-h-[calc(100vh-var(--header-height)-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50">
+			<main className="min-h-[calc(100svh-var(--header-height)-1rem)] bg-muted/40">
+				<header className="border-b border-border bg-background px-6 py-4">
+				<Breadcrumb className="mb-4">
+					<BreadcrumbList>
+						<BreadcrumbItem>
+							<BreadcrumbLink asChild>
+								<Link to="/graph">
+									{activeSpaceName ?? "Space"}
+								</Link>
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						{categoryName ? (
+							<>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbLink asChild>
+										<Link to="/graph">{categoryName}</Link>
+									</BreadcrumbLink>
+								</BreadcrumbItem>
+							</>
+						) : null}
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbPage>{displayName}</BreadcrumbPage>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-2">
@@ -567,90 +669,91 @@ export default function FileView() {
 						</p>
 					</div>
 				) : null}
-			</header>
+				</header>
 
-			<section className="min-h-[480px] flex-1 p-4 md:p-6">
-				{canPreview ? (
-					isFileLoading || !fileObjectUrl ? (
-						<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
-							Loading preview...
-						</div>
-					) : (
-						<FilePreview
-							document={document}
-							fileUrl={fileObjectUrl}
-							displayName={displayName}
-						/>
-					)
-				) : (
-					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
-						<FileText className="size-12 text-muted-foreground" />
-						<h2 className="mt-4 text-base font-semibold">
-							Preview unavailable
-						</h2>
-						<p className="mt-2 max-w-md text-sm text-muted-foreground">
-							This file type cannot be previewed inline. Open it
-							in a new tab or download it to view.
-						</p>
-					</div>
-				)}
-			</section>
-
-			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<div className="flex items-start justify-between gap-4">
-							<div>
-								<h2 className="text-base font-semibold text-foreground">
-									Delete file?
-								</h2>
-								<p className="mt-2 text-sm text-muted-foreground">
-									Are you sure you want to delete{" "}
-									<span className="font-medium text-foreground">
-										{displayName}
-									</span>
-									? This action cannot be undone.
-								</p>
+				<section className="min-h-[480px] flex-1 p-4 md:p-6">
+					{canPreview ? (
+						isFileLoading || !fileObjectUrl ? (
+							<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
+								Loading preview...
 							</div>
-							<button
-								type="button"
-								onClick={() => {
-									if (isDeleting) return;
-									setIsDeleteModalOpen(false);
-								}}
-								className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-								aria-label="Close delete modal"
-							>
-								<X className="size-4" />
-							</button>
-						</div>
-						{actionError ? (
-							<p className="mt-4 text-sm text-destructive">
-								{actionError}
+						) : (
+							<FilePreview
+								document={document}
+								fileUrl={fileObjectUrl}
+								displayName={displayName}
+							/>
+						)
+					) : (
+						<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
+							<FileText className="size-12 text-muted-foreground" />
+							<h2 className="mt-4 text-base font-semibold">
+								Preview unavailable
+							</h2>
+							<p className="mt-2 max-w-md text-sm text-muted-foreground">
+								This file type cannot be previewed inline. Open it
+								in a new tab or download it to view.
 							</p>
-						) : null}
-						<div className="mt-6 flex justify-end gap-2">
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => setIsDeleteModalOpen(false)}
-								disabled={isDeleting}
-							>
-								Cancel
-							</Button>
-							<Button
-								type="button"
-								variant="destructive"
-								onClick={handleDelete}
-								disabled={isDeleting}
-							>
-								{isDeleting ? "Deleting..." : "Delete item"}
-							</Button>
+						</div>
+					)}
+				</section>
+
+				{isDeleteModalOpen ? (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-xs">
+						<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
+							<div className="flex items-start justify-between gap-4">
+								<div>
+									<h2 className="text-base font-semibold text-foreground">
+										Delete file?
+									</h2>
+									<p className="mt-2 text-sm text-muted-foreground">
+										Are you sure you want to delete{" "}
+										<span className="font-medium text-foreground">
+											{displayName}
+										</span>
+										? This action cannot be undone.
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={() => {
+										if (isDeleting) return;
+										setIsDeleteModalOpen(false);
+									}}
+									className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+									aria-label="Close delete modal"
+								>
+									<X className="size-4" />
+								</button>
+							</div>
+							{actionError ? (
+								<p className="mt-4 text-sm text-destructive">
+									{actionError}
+								</p>
+							) : null}
+							<div className="mt-6 flex justify-end gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => setIsDeleteModalOpen(false)}
+									disabled={isDeleting}
+								>
+									Cancel
+								</Button>
+								<Button
+									type="button"
+									variant="destructive"
+									onClick={handleDelete}
+									disabled={isDeleting}
+								>
+									{isDeleting ? "Deleting..." : "Delete item"}
+								</Button>
+							</div>
 						</div>
 					</div>
-				</div>
-			) : null}
-		</main>
+				) : null}
+			</main>
+		</div>
 	);
 }
 
