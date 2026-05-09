@@ -296,21 +296,24 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-					...authHeaders(),
+			const response = await fetch(
+				`${apiBaseUrl}/documents/${documentId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeaders(),
+					},
+					body: JSON.stringify({ name: trimmedName }),
 				},
-				body: JSON.stringify({ name: trimmedName }),
-			});
+			);
 
 			if (!response.ok) {
 				throw new Error(
 					toFriendlyDocumentError(
 						"rename",
 						response.status,
-					await readApiError(response),
+						await readApiError(response),
 					),
 				);
 			}
@@ -351,17 +354,20 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
-				method: "DELETE",
-				headers: authHeaders(),
-			});
+			const response = await fetch(
+				`${apiBaseUrl}/documents/${documentId}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
 
 			if (!response.ok) {
 				throw new Error(
 					toFriendlyDocumentError(
 						"delete",
 						response.status,
-					await readApiError(response),
+						await readApiError(response),
 					),
 				);
 			}
@@ -376,6 +382,8 @@ export default function FileView() {
 			setIsDeleting(false);
 		}
 	}
+
+	const fileSummary = document.summary?.trim();
 
 	return (
 		<main className="min-h-[calc(100svh-var(--header-height))] bg-muted/40">
@@ -480,9 +488,19 @@ export default function FileView() {
 						</a>
 					</div>
 				</div>
+				{fileSummary ? (
+					<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+						<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+							Summary
+						</p>
+						<p className="mt-1 text-sm leading-6 text-zinc-700">
+							{fileSummary}
+						</p>
+					</div>
+				) : null}
 			</header>
 
-			<section className="h-[calc(100svh-var(--header-height)-73px)] p-4 md:p-6">
+			<section className="min-h-[480px] flex-1 p-4 md:p-6">
 				{canPreview ? (
 					<FilePreview
 						document={document}
