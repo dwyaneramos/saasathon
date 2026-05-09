@@ -36,6 +36,10 @@ type DocumentResponse = {
 	error?: string;
 };
 
+type ApiErrorPayload = {
+	error?: string;
+};
+
 function authHeaders() {
 	const token = localStorage.getItem("token");
 	return token
@@ -47,23 +51,23 @@ function validateDocumentName(name: string) {
 	const trimmed = name.trim();
 
 	if (!trimmed) {
-		return "File name is required.";
+		return "Enter a file name.";
 	}
 
 	if (trimmed.length > 180) {
-		return "File name must be 180 characters or fewer.";
+		return "File names can be up to 180 characters.";
 	}
 
 	if (trimmed === "." || trimmed === "..") {
-		return "File name is invalid.";
+		return "Choose a different file name.";
 	}
 
 	if (/[\\/]/.test(trimmed)) {
-		return "File name cannot contain slashes.";
+		return "File names can't include / or \\.";
 	}
 
 	if (/[\u0000-\u001F]/.test(trimmed)) {
-		return "File name contains invalid characters.";
+		return "That file name contains characters that aren't allowed.";
 	}
 
 	return null;
@@ -77,23 +81,75 @@ function notifyFileTreeUpdated(documentIds: number[] = []) {
 	);
 }
 
-async function parseApiError(response: Response, fallbackMessage: string) {
+async function readApiError(response: Response) {
 	const rawText = await response.text().catch(() => "");
 
 	if (!rawText.trim()) {
-		return `${response.status} ${response.statusText || fallbackMessage}`;
+		return "";
 	}
 
 	try {
-		const payload = JSON.parse(rawText) as { error?: string };
-		if (payload?.error) {
-			return `${response.status} ${payload.error}`;
-		}
+		const payload = JSON.parse(rawText) as ApiErrorPayload;
+		return payload?.error?.trim() ?? "";
 	} catch {
-		// Fall through to expose the raw response body temporarily.
+		return rawText.trim();
+	}
+}
+
+function toFriendlyDocumentError(
+	action: "load" | "rename" | "delete",
+	status?: number,
+	apiError?: string,
+) {
+	const normalizedError = apiError?.trim().toLowerCase() ?? "";
+
+	if (status === 401) {
+		return "Your session has expired. Please sign in again and try once more.";
 	}
 
-	return `${response.status} ${rawText}`;
+	if (status === 404) {
+		if (action === "load") {
+			return "This file could not be found. It may have been moved or deleted.";
+		}
+
+		if (action === "rename") {
+			return "We couldn't rename this file because it no longer exists.";
+		}
+
+		return "This file was already removed.";
+	}
+
+	if (status === 400) {
+		if (
+			normalizedError.includes("slash") ||
+			normalizedError.includes("invalid characters")
+		) {
+			return "Please use a file name without slashes or unsupported characters.";
+		}
+
+		if (normalizedError.includes("180 characters")) {
+			return "File names can be up to 180 characters.";
+		}
+
+		if (
+			normalizedError.includes("required") ||
+			normalizedError.includes("invalid")
+		) {
+			return action === "load"
+				? "This file link is invalid."
+				: "Please enter a valid file name.";
+		}
+	}
+
+	if (action === "load") {
+		return "We couldn't load this file right now. Please try again.";
+	}
+
+	if (action === "rename") {
+		return "We couldn't save the new file name. Please try again.";
+	}
+
+	return "We couldn't delete this file right now. Please try again.";
 }
 
 export default function FileView() {
@@ -131,13 +187,20 @@ export default function FileView() {
 				const response = await fetch(
 					`${apiBaseUrl}/documents/${documentId}`,
 				);
+
+				if (!response.ok) {
+					throw new Error(
+						toFriendlyDocumentError(
+							"load",
+							response.status,
+							await readApiError(response),
+						),
+					);
+				}
+
 				const payload = (await response
 					.json()
 					.catch(() => null)) as DocumentResponse | null;
-
-				if (!response.ok) {
-					throw new Error(payload?.error ?? "Could not load file.");
-				}
 
 				if (!ignore) {
 					const nextDocument = payload?.document ?? null;
@@ -242,7 +305,11 @@ export default function FileView() {
 
 			if (!response.ok) {
 				throw new Error(
-					await parseApiError(response, "Could not rename file."),
+					toFriendlyDocumentError(
+						"rename",
+						response.status,
+						await readApiError(response),
+					),
 				);
 			}
 
@@ -251,7 +318,9 @@ export default function FileView() {
 				.catch(() => null)) as DocumentResponse | null;
 
 			if (!payload?.document) {
-				throw new Error("Rename succeeded but no document was returned.");
+				throw new Error(
+					"The file name was saved, but the page could not refresh. Please reload and check again.",
+				);
 			}
 
 			setDocument(payload.document);
@@ -284,12 +353,15 @@ export default function FileView() {
 				method: "DELETE",
 				headers: authHeaders(),
 			});
-			const payload = (await response
-				.json()
-				.catch(() => null)) as { error?: string } | null;
 
 			if (!response.ok) {
-				throw new Error(payload?.error ?? "Could not delete file.");
+				throw new Error(
+					toFriendlyDocumentError(
+						"delete",
+						response.status,
+						await readApiError(response),
+					),
+				);
 			}
 
 			notifyFileTreeUpdated();
