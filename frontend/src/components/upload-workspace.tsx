@@ -600,7 +600,7 @@ export function UploadWorkspace({
                   type="button"
                   variant="ghost"
                   size="lg"
-                  className="mt-4 min-w-56 gap-2 rounded-xl !bg-bg !text-white shadow-sm hover:!bg-bg/90"
+                  className="mt-4 min-w-56 gap-2 rounded-xl !bg-(--color-accent) !text-black shadow-sm hover:!bg-(--color-accent-hover) disabled:!bg-zinc-400 disabled:!text-zinc-100"
                   onClick={() => inputRef.current?.click()}
                 >
                   <UploadCloud className="size-4" />
@@ -668,12 +668,12 @@ export function UploadWorkspace({
         )}
 
         {!isAnalyzing && (
-          <div className="mt-6">
+          <div className="mt-6 flex justify-center">
             <Button
               variant="ghost"
               onClick={upload}
               disabled={files.length === 0}
-              className="min-w-60 rounded-xl !bg-bg !text-white shadow-sm hover:!bg-bg/90"
+              className="min-w-60 rounded-xl !bg-(--color-accent) !text-black shadow-sm hover:!bg-(--color-accent-hover) disabled:!bg-zinc-400 disabled:!text-zinc-100"
             >
               {files.length > 0 ? `Analyze ${files.length} File(s)` : "Analyze Files"}
             </Button>
@@ -788,7 +788,7 @@ export function UploadWorkspace({
                                     result.isCreatingCategory ||
                                     !result.categoryInput.trim()
                                   }
-                                  className="!bg-bg !text-white hover:!bg-bg/90"
+                                  className="!bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover)"
                                 >
                                   {result.isCreatingCategory ? "Creating..." : "Confirm"}
                                 </Button>
