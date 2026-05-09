@@ -294,7 +294,7 @@ function QuickActions({
 								className="inline-flex min-h-12 w-full min-w-0 flex-col items-start justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 sm:min-h-20 sm:rounded-2xl sm:px-4 sm:py-3"
 								title={suggestion.sub}
 							>
-								<span className="flex items-start gap-2">
+								<span className="flex w-full min-w-0 items-start gap-2">
 									{(() => {
 										const Icon =
 											quickActionIconForSuggestion(
@@ -304,11 +304,11 @@ function QuickActions({
 											<Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500 sm:size-4" />
 										);
 									})()}
-									<span className="line-clamp-2 text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
+									<span className="min-w-0 truncate text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
 										{suggestion.label}
 									</span>
 								</span>
-								<span className="mt-1 hidden line-clamp-2 text-xs leading-snug text-zinc-500 sm:block">
+								<span className="mt-1 hidden w-full min-w-0 truncate text-xs leading-snug text-zinc-500 sm:block">
 									{suggestion.sub}
 								</span>
 							</button>
@@ -330,14 +330,14 @@ function QuickActions({
 						<button
 							key={suggestion.prompt}
 							onClick={() => onSelect(suggestion.prompt)}
-							className={`group bg-white text-left transition-colors hover:bg-zinc-50 ${
+							className={`group min-w-0 bg-white text-left transition-colors hover:bg-zinc-50 ${
 								compact ? "p-3" : "p-4"
 							}`}
 						>
-							<p className="text-xs font-semibold leading-snug text-zinc-900">
+							<p className="truncate text-xs font-semibold leading-snug text-zinc-900">
 								{suggestion.label}
 							</p>
-							<p className="mt-1 line-clamp-2 text-[11px] text-zinc-400">
+							<p className="mt-1 truncate text-[11px] text-zinc-400">
 								{suggestion.sub}
 							</p>
 						</button>
