@@ -29,6 +29,7 @@ export interface GraphNode {
   categoryId?: number;
   documentId?: number;
   fileCount?: number;
+  fileSize?: number;
   summary?: string;
   mimeType?: string;
 }

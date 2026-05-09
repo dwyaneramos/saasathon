@@ -375,8 +375,10 @@ export default function FileView() {
 		}
 	}
 
+	const fileSummary = document.summary?.trim();
+
 	return (
-		<main className="min-h-[calc(100svh-var(--header-height))] bg-zinc-50/60">
+		<main className="flex min-h-[calc(100svh-var(--header-height))] flex-col bg-zinc-50/60">
 			<header className="border-b border-zinc-100 bg-white px-6 py-4">
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
@@ -478,9 +480,19 @@ export default function FileView() {
 						</a>
 					</div>
 				</div>
+				{fileSummary ? (
+					<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+						<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+							Summary
+						</p>
+						<p className="mt-1 text-sm leading-6 text-zinc-700">
+							{fileSummary}
+						</p>
+					</div>
+				) : null}
 			</header>
 
-			<section className="h-[calc(100svh-var(--header-height)-73px)] p-4 md:p-6">
+			<section className="min-h-[480px] flex-1 p-4 md:p-6">
 				{canPreview ? (
 					<FilePreview
 						document={document}

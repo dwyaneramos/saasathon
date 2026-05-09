@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Billboard, Float, Line, OrbitControls, Text } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { GraphNode } from "@/types/graph";
 
@@ -80,9 +80,9 @@ interface ForceSimulationProps {
   edges: Edge[];
   is2D: boolean;
   selectedNodeIndex: number | null;
-  nodeSizeScale: (fileCount: number) => number;
+  nodeSizeScale: (node: GraphNode) => number;
   onNodeClick?: (index: number) => void;
-  onNodeHover?: (index: number | null) => void;
+  onNodeHover?: (index: number | null, anchor?: { x: number; y: number }) => void;
 }
 
 const ForceSimulation: React.FC<ForceSimulationProps> = ({
@@ -97,21 +97,34 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   const nodesRef = useRef(nodes);
   const prevIs2DRef = useRef(is2D);
   const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
+  const graphRotationRef = useRef(new THREE.Euler(0.1, 0, 0));
   const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, forceUpdate] = useState({});
 
-  const handlePointerOver = (index: number) => {
-    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
-    onNodeHover?.(index);
+  const handlePointerOver = (index: number, event: ThreeEvent<PointerEvent>) => {
+    if (hoverOutTimer.current) {
+      clearTimeout(hoverOutTimer.current);
+      hoverOutTimer.current = null;
+    }
+    onNodeHover?.(index, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY });
   };
 
   const handlePointerOut = () => {
-    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 50);
+    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 90);
   };
 
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverOutTimer.current) {
+        clearTimeout(hoverOutTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (prevIs2DRef.current && !is2D) {
@@ -122,16 +135,13 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     prevIs2DRef.current = is2D;
   }, [is2D]);
 
-  // Track normalised cursor position in NDC space (-1..1)
-  const { gl } = useThree();
+  // Track cursor position in canvas pixels so hover-freeze matches the visible graph.
+  const { camera, gl, size } = useThree();
   useEffect(() => {
     const canvas = gl.domElement;
     const onMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      cursorRef.current.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
+      cursorRef.current.set(e.clientX - rect.left, e.clientY - rect.top);
     };
     const onLeave = () => cursorRef.current.set(9999, 9999);
     canvas.addEventListener("mousemove", onMove);
@@ -151,20 +161,32 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     const t = clock.getElapsedTime();
     const currentNodes = nodesRef.current;
 
-    // Approximate cursor in world space (NDC scaled to ~3 unit graph bounds)
-    const cursorWorld = new THREE.Vector3(
-      cursorRef.current.x * 3,
-      cursorRef.current.y * 3,
-      0,
-    );
-    // Radius is sized to roughly match a node's visual footprint in world units
-    const CURSOR_RADIUS = 0.3;
+    const graphRotation = graphRotationRef.current;
+    const nodeScreenPosition = new THREE.Vector3();
+    const FREEZE_PADDING_PX = 34;
+    const isCursorOnCanvas = cursorRef.current.x !== 9999;
 
     currentNodes.forEach((node, i) => {
-      const distToCursor = cursorWorld.distanceTo(node.position);
+      const radius = nodeSizeScale(node);
+      let isNearCursor = false;
 
-      if (distToCursor < CURSOR_RADIUS) {
-        // Hard freeze — zero velocity and skip all further updates for this node
+      if (isCursorOnCanvas) {
+        nodeScreenPosition.copy(node.position).applyEuler(graphRotation).project(camera);
+        nodeScreenPosition.set(
+          ((nodeScreenPosition.x + 1) / 2) * size.width,
+          ((-nodeScreenPosition.y + 1) / 2) * size.height,
+          nodeScreenPosition.z,
+        );
+
+        const nodeRadiusPx = Math.max(18, radius * 220);
+        const distanceToCursor = Math.hypot(
+          cursorRef.current.x - nodeScreenPosition.x,
+          cursorRef.current.y - nodeScreenPosition.y,
+        );
+        isNearCursor = distanceToCursor <= nodeRadiusPx + FREEZE_PADDING_PX;
+      }
+
+      if (isNearCursor) {
         node.velocity.set(0, 0, 0);
         return;
       }
@@ -250,7 +272,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   });
 
   return (
-    <group scale={1} rotation={[0.1, 0, 0]}>
+    <group scale={1} rotation={graphRotationRef.current}>
       {edges.map((edge, index) => {
         const start = nodesRef.current[edge.source]?.position;
         const end = nodesRef.current[edge.target]?.position;
@@ -278,14 +300,14 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
       {nodesRef.current.map((node, index) => {
         const isSelected = selectedNodeIndex === index;
-        const radius = nodeSizeScale(node.fileCount ?? 0);
+        const radius = nodeSizeScale(node);
 
         return (
           <group key={node.id} position={node.position.clone()}>
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
               <mesh
                 onClick={() => onNodeClick?.(index)}
-                onPointerOver={() => handlePointerOver(index)}
+                onPointerOver={(event) => handlePointerOver(index, event)}
                 onPointerOut={() => handlePointerOut()}
               >
                 <sphereGeometry
@@ -324,7 +346,7 @@ interface GraphViewProps {
   weightMatrix?: number[][];
   threshold?: number;
   onNodeClick?: (node: GraphNode, index: number) => void;
-  onNodeHover?: (node: GraphNode | null) => void;
+  onNodeHover?: (node: GraphNode | null, anchor?: { x: number; y: number }) => void;
 }
 
 const GraphView: React.FC<GraphViewProps> = ({
@@ -349,17 +371,29 @@ const GraphView: React.FC<GraphViewProps> = ({
     [graphNodes],
   );
 
-  // Build a size scale based on fileCount range across all nodes
+  // Build a size scale from category file counts or document file sizes.
   const nodeSizeScale = useMemo(() => {
-    const counts = graphNodes.map((n) => n.fileCount ?? 0);
-    const max = Math.max(...counts, 1);
-    const min = Math.min(...counts, 0);
-    const BASE = 0.07;
-    const MAX_R = 0.18;
-    return (fileCount: number) => {
-      if (max === min) return BASE + (MAX_R - BASE) * 0.5;
-      const t = (fileCount - min) / (max - min);
-      return BASE + (MAX_R - BASE) * t;
+    const isDocumentGraph = graphNodes.some((node) => node.documentId != null);
+    const transformValue = (node: GraphNode) => {
+      if (!isDocumentGraph) return Math.pow(node.fileCount ?? 0, 1.2);
+
+      const fileSize = Math.max(node.fileSize ?? 0, 0);
+      return Math.pow(fileSize, 0.65);
+    };
+    const values = graphNodes.map(transformValue);
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const BASE = 0.085;
+    const MAX_CATEGORY_R = 0.245;
+    const MAX_DOCUMENT_R = 0.34;
+    const maxRadius = isDocumentGraph ? MAX_DOCUMENT_R : MAX_CATEGORY_R;
+
+    return (node: GraphNode) => {
+      const value = transformValue(node);
+
+      if (max === min) return BASE + (maxRadius - BASE) * 0.5;
+      const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+      return BASE + (maxRadius - BASE) * t;
     };
   }, [graphNodes]);
 
@@ -395,8 +429,8 @@ const GraphView: React.FC<GraphViewProps> = ({
           selectedNodeIndex={selectedNodeIndex}
           nodeSizeScale={nodeSizeScale}
           onNodeClick={handleNodeClick}
-          onNodeHover={(index) => {
-            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null));
+          onNodeHover={(index, anchor) => {
+            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null), anchor);
           }}
         />
       </Suspense>
