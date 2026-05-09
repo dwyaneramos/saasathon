@@ -65,6 +65,7 @@ export type PublicDocument = {
 };
 
 type DocumentSearchRow = DocumentRow & {
+  extracted_text: string;
   category_name: string | null;
   score: number;
 };
@@ -72,6 +73,7 @@ type DocumentSearchRow = DocumentRow & {
 export type PublicDocumentSearchResult = PublicDocument & {
   categoryName: string | null;
   score: number;
+  snippet: string | null;
 };
 
 export type DashboardAssistantSuggestion = {
@@ -215,21 +217,21 @@ export async function getDocument(documentId: number) {
   return rows[0] ?? null;
 }
 
-export async function searchDocuments(
-  query: string,
-  spaceId?: number | null,
-  limit = 8,
-) {
+export async function searchDocuments(input: {
+  query: string;
+  spaceId?: number | null;
+  limit?: number;
+}) {
   await ensureDocumentSchema();
 
-  const trimmedQuery = query.trim();
+  const trimmedQuery = input.query.trim();
   if (!trimmedQuery) {
     return [];
   }
 
   const normalizedQuery = trimmedQuery.toLowerCase();
   const tokens = normalizeSearchTokens(trimmedQuery);
-  const safeLimit = Math.min(Math.max(limit, 1), 20);
+  const safeLimit = Math.min(Math.max(input.limit ?? 8, 1), 20);
 
   const { rows } = await getDb().query<DocumentSearchRow>(
     `SELECT
@@ -245,6 +247,7 @@ export async function searchDocuments(
         d.category_id,
         d.summary,
         d.keywords,
+        d.extracted_text,
         d.created_at,
         c.name AS category_name,
         (
@@ -305,7 +308,7 @@ export async function searchDocuments(
      WHERE ($1::integer IS NULL OR d.space_id = $1)
      ORDER BY score DESC, d.created_at DESC
      LIMIT $4`,
-    [spaceId ?? null, normalizedQuery, tokens, safeLimit],
+    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit],
   );
 
   return rows.filter((row) => row.score > 0);
@@ -326,11 +329,14 @@ export async function askDashboardAssistant({
   const categories = await listCategories(spaceId ?? null);
   const documents = await listDocuments(spaceId ?? null);
   const searchRows = trimmedPrompt
-    ? await searchDocuments(trimmedPrompt, spaceId ?? null, 6)
+    ? await searchDocuments({
+        query: trimmedPrompt,
+        spaceId: spaceId ?? null,
+        limit: 6,
+      })
     : [];
   const publicSearchResults = searchRows.map(toPublicDocumentSearchResult);
   const suggestionsSeed = buildSuggestedActions({
-    prompt: trimmedPrompt,
     pathname: pathname ?? "/dashboard",
     categories,
     documents,
@@ -414,6 +420,7 @@ export async function askDashboardAssistant({
     searchResults: publicSearchResults,
   };
 }
+
 export async function renameDocument(documentId: number, name: string) {
   await ensureDocumentSchema();
   const trimmedName = name.trim();
@@ -558,6 +565,7 @@ export function toPublicDocumentSearchResult(
     ...toPublicDocument(document),
     categoryName: document.category_name,
     score: document.score,
+    snippet: buildSearchSnippet(document),
   };
 }
 
@@ -1387,13 +1395,11 @@ Rules:
 }
 
 function buildSuggestedActions({
-  prompt,
   pathname,
   categories,
   documents,
   searchResults,
 }: {
-  prompt: string;
   pathname: string;
   categories: CategoryRow[];
   documents: DocumentRow[];
@@ -1577,6 +1583,10 @@ function displayDocumentName(document: Pick<DocumentRow, "original_file_name" | 
 
 function containsSearchPhrase(text: string, values: string[]) {
   return values.some((value) => text.includes(value));
+}
+
+function buildSearchSnippet(row: DocumentSearchRow) {
+  return row.summary ? normalizeWhitespace(row.summary).slice(0, 140) : null;
 }
 
 function normalizeWhitespace(text: string) {

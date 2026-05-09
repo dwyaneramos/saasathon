@@ -91,6 +91,15 @@ type ApiDocument = {
   categoryId: number | null;
 };
 
+type ApiSearchResult = {
+  id: number;
+  filename: string;
+  fileName: string;
+  originalFileName: string | null;
+  mimeType: string;
+  snippet: string | null;
+};
+
 type FileTreeUpdatedEvent = CustomEvent<{
   documentIds?: number[];
 }>;
@@ -102,6 +111,57 @@ function authHeaders() {
 
 function fileDisplayName(file: ApiDocument) {
   return file.originalFileName || file.fileName || file.filename;
+}
+
+function searchResultDisplayName(file: ApiSearchResult) {
+  return file.originalFileName || file.fileName || file.filename;
+}
+
+function dedupeSearchResults(results: ApiSearchResult[]) {
+  const uniqueResults = new Map<string, ApiSearchResult>();
+
+  for (const result of results) {
+    const documentKey = String(result.id);
+    if (!uniqueResults.has(documentKey)) {
+      uniqueResults.set(documentKey, result);
+    }
+  }
+
+  return [...uniqueResults.values()];
+}
+
+function highlightMatch(text: string, query: string) {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return text;
+  }
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let startIndex = 0;
+  let matchIndex = lowerText.indexOf(lowerQuery);
+
+  while (matchIndex >= 0) {
+    if (matchIndex > startIndex) {
+      parts.push(text.slice(startIndex, matchIndex));
+    }
+
+    const endIndex = matchIndex + trimmedQuery.length;
+    parts.push(
+      <mark key={`${matchIndex}-${endIndex}`} className="rounded bg-(--color-accent)/50 px-0.5 text-current">
+        {text.slice(matchIndex, endIndex)}
+      </mark>,
+    );
+    startIndex = endIndex;
+    matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+  }
+
+  if (startIndex < text.length) {
+    parts.push(text.slice(startIndex));
+  }
+
+  return parts;
 }
 
 function fileExtension(file: KibiFile) {
@@ -424,6 +484,85 @@ function FileTree({
   );
 }
 
+function SearchResults({
+  results,
+  query,
+  isSearching,
+  error,
+}: {
+  results: ApiSearchResult[];
+  query: string;
+  isSearching: boolean;
+  error: string | null;
+}) {
+  const dedupedResults = React.useMemo(
+    () => dedupeSearchResults(results),
+    [results],
+  );
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+        Search
+      </SidebarGroupLabel>
+      <SidebarMenu>
+        {isSearching && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              Searching...
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching && error && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-destructive group-data-[collapsible=icon]:hidden">
+              {error}
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching && !error && dedupedResults.length === 0 && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              No matches for "{query}"
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching &&
+          !error &&
+          dedupedResults.map((result) => (
+            <SidebarMenuItem key={result.id}>
+              <SidebarMenuButton asChild className="hover:bg-zinc-200 h-auto">
+                <Link to={`/file/${result.id}`} className="flex items-start gap-2 py-2">
+                  <span className="mt-0.5 shrink-0">
+                    {React.createElement(
+                      fileIconFor({
+                        id: result.id,
+                        name: searchResultDisplayName(result),
+                        filename: result.filename,
+                        mimeType: result.mimeType,
+                      }),
+                      { className: "size-4 text-muted-foreground/80" },
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                    <span className="block truncate text-sm text-foreground">
+                      {highlightMatch(searchResultDisplayName(result), query)}
+                    </span>
+                    {result.snippet ? (
+                      <span className="mt-1 block whitespace-normal break-words text-xs leading-relaxed text-muted-foreground">
+                        {highlightMatch(result.snippet, query)}
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+      </SidebarMenu>
+    </SidebarGroup>
+  );
+}
+
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
 function AddButton({
@@ -608,6 +747,9 @@ export function AppSidebar({
   const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [searchResults, setSearchResults] = React.useState<ApiSearchResult[]>([]);
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
     () => new Set(),
   );
@@ -640,34 +782,7 @@ export function AppSidebar({
     spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
   const { setOpen: setSidebarOpen } = useSidebar();
   const trimmedSearchQuery = searchQuery.trim().toLowerCase();
-  const visibleCategories = React.useMemo(() => {
-    if (!trimmedSearchQuery) {
-      return categories;
-    }
-
-    return categories
-      .map((category) => {
-        const categoryMatches = category.name.toLowerCase().includes(trimmedSearchQuery);
-        const matchingFiles = category.files.filter((file) =>
-          file.name.toLowerCase().includes(trimmedSearchQuery) ||
-          file.filename.toLowerCase().includes(trimmedSearchQuery),
-        );
-
-        if (categoryMatches) {
-          return category;
-        }
-
-        if (matchingFiles.length > 0) {
-          return {
-            ...category,
-            files: matchingFiles,
-          };
-        }
-
-        return null;
-      })
-      .filter((category): category is Category => category !== null);
-  }, [categories, trimmedSearchQuery]);
+  const hasActiveSearch = trimmedSearchQuery.length > 0;
   const validateCategoryName = React.useCallback(
     (value: string) => {
       const trimmed = value.trim();
@@ -969,6 +1084,58 @@ export function AppSidebar({
   }, [onSpacesLoaded, setActiveSpaceId]);
 
   React.useEffect(() => {
+    if (!hasActiveSearch) {
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setIsSearching(true);
+      setSearchError(null);
+
+      try {
+        const query = new URLSearchParams({
+          q: searchQuery.trim(),
+          ...(activeSpaceId ? { spaceId: String(activeSpaceId) } : {}),
+        });
+        const response = await fetch(
+          `${apiBaseUrl}/documents/search?${query.toString()}`,
+          {
+            headers: authHeaders(),
+          },
+        );
+
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              results?: ApiSearchResult[];
+              documents?: ApiSearchResult[];
+              error?: string;
+            }
+          | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Unable to search documents");
+        }
+
+        setSearchResults(
+          dedupeSearchResults(payload?.results ?? payload?.documents ?? []),
+        );
+      } catch (error) {
+        setSearchResults([]);
+        setSearchError(
+          error instanceof Error ? error.message : "Unable to search documents",
+        );
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [activeSpaceId, hasActiveSearch, searchQuery]);
+
+  React.useEffect(() => {
     if (!spacesLoaded) return;
 
     async function run() {
@@ -1031,7 +1198,6 @@ export function AppSidebar({
       }
 
       await loadFileTree();
-
       const createdCategoryId = payload?.category?.id;
       if (typeof createdCategoryId === "number") {
         setNewCategoryIds((currentIds) => {
@@ -1101,19 +1267,29 @@ export function AppSidebar({
           </div>
         </SidebarHeader>
 
-        {/* Content: file tree for active space */}
-        <SidebarContent>
-          <FileTree
-            categories={visibleCategories}
-            isLoading={isLoading}
-            error={error}
-            newCategoryIds={newCategoryIds}
-            newFileCategoryIds={newFileCategoryIds}
-            newFileIds={newFileIds}
-            onClearCategory={clearCategoryNotification}
-            onClearNewFile={clearNewFile}
-          />
-        </SidebarContent>
+				{/* Content: file tree for active space */}
+				<SidebarContent>
+          {!hasActiveSearch ? (
+						<FileTree
+							categories={categories}
+							isLoading={isLoading}
+							error={error}
+							newCategoryIds={newCategoryIds}
+							newFileCategoryIds={newFileCategoryIds}
+							newFileIds={newFileIds}
+							onClearCategory={clearCategoryNotification}
+							onClearNewFile={clearNewFile}
+						/>
+          ) : null}
+          {hasActiveSearch ? (
+            <SearchResults
+              results={searchResults}
+              query={searchQuery.trim()}
+              isSearching={isSearching}
+              error={searchError}
+            />
+          ) : null}
+				</SidebarContent>
 
         {/* Footer: add button */}
         <SidebarFooter>
@@ -1165,7 +1341,6 @@ export function AppSidebar({
                   {createCategoryError}
                 </p>
               )}
-
               <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"

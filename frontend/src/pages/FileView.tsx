@@ -52,16 +52,13 @@ function validateDocumentName(name: string) {
 
 	if (!trimmed) {
 		return "Enter a file name.";
-		return "Enter a file name.";
 	}
 
 	if (trimmed.length > 180) {
 		return "File names can be up to 180 characters.";
-		return "File names can be up to 180 characters.";
 	}
 
 	if (trimmed === "." || trimmed === "..") {
-		return "Choose a different file name.";
 		return "Choose a different file name.";
 	}
 
@@ -297,37 +294,34 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(
-				`${apiBaseUrl}/documents/${documentId}`,
-				{
-					method: "PATCH",
-					headers: {
-						"Content-Type": "application/json",
-						...authHeaders(),
-					},
-					body: JSON.stringify({ name: trimmedName }),
+			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
+				method: "PATCH",
+				headers: {
+					"Content-Type": "application/json",
+					...authHeaders(),
 				},
-			);
+				body: JSON.stringify({ name: trimmedName }),
+			});
 
-				if (!response.ok) {
-					throw new Error(
-						toFriendlyDocumentError(
-							"rename",
-							response.status,
-							await readApiError(response),
-						),
-					);
-				}
+			if (!response.ok) {
+				throw new Error(
+					toFriendlyDocumentError(
+						"rename",
+						response.status,
+					await readApiError(response),
+					),
+				);
+			}
 
 			const payload = (await response
 				.json()
 				.catch(() => null)) as DocumentResponse | null;
 
-				if (!payload?.document) {
-					throw new Error(
-						"The file name was saved, but the page could not refresh. Please reload and check again.",
-					);
-				}
+			if (!payload?.document) {
+				throw new Error(
+					"The file name was saved, but the page could not refresh. Please reload and check again.",
+				);
+			}
 
 			setDocument(payload.document);
 			setEditableName(
@@ -355,23 +349,20 @@ export default function FileView() {
 		setActionError(null);
 
 		try {
-			const response = await fetch(
-				`${apiBaseUrl}/documents/${documentId}`,
-				{
-					method: "DELETE",
-					headers: authHeaders(),
-				},
-			);
+			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
+				method: "DELETE",
+				headers: authHeaders(),
+			});
 
-				if (!response.ok) {
-					throw new Error(
-						toFriendlyDocumentError(
-							"delete",
-							response.status,
-							await readApiError(response),
-						),
-					);
-				}
+			if (!response.ok) {
+				throw new Error(
+					toFriendlyDocumentError(
+						"delete",
+						response.status,
+					await readApiError(response),
+					),
+				);
+			}
 
 			notifyFileTreeUpdated();
 			setIsDeleteModalOpen(false);

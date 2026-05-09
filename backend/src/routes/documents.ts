@@ -103,15 +103,16 @@ router.get("/documents/search", async (req, res) => {
 		typeof req.query.limit === "string"
 			? Number(req.query.limit)
 			: undefined;
-	const documents = await searchDocuments(
+	const documents = await searchDocuments({
 		query,
 		spaceId,
-		Number.isInteger(requestedLimit) ? requestedLimit : undefined,
-	);
+		limit: Number.isInteger(requestedLimit) ? requestedLimit : undefined,
+	});
 
 	res.json({
 		query,
 		documents: documents.map(toPublicDocumentSearchResult),
+		results: documents.map(toPublicDocumentSearchResult),
 	});
 });
 
