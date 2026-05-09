@@ -6,6 +6,8 @@ const MIN_CONFIDENCE = 0.28;
 const TEXT_PREVIEW_LIMIT = 4000;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
+const CATEGORY_SUMMARY_DOCUMENT_LIMIT = 24;
+const CATEGORY_SUMMARY_SOURCE_LIMIT = 280;
 
 type CategoryRow = {
   id: number;
@@ -13,6 +15,7 @@ type CategoryRow = {
   space_id: number | null;
   metadata: CategoryMetadata;
   description: string | null;
+  summary: string;
   keywords: string[];
   created_at: Date;
 };
@@ -29,7 +32,17 @@ export type PublicCategory = {
   spaceId: number | null;
   metadata: CategoryMetadata;
   description: string | null;
+  summary: string;
   keywords: string[];
+};
+
+type CategorySummaryDocumentRow = {
+  id: number;
+  filename: string;
+  file_name: string;
+  original_file_name: string | null;
+  summary: string;
+  created_at: Date;
 };
 
 type DocumentRow = {
@@ -131,13 +144,25 @@ export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
   await ensureDefaultCategoriesForSpace(spaceId ?? null);
   const { rows } = await getDb().query<CategoryRow>(
-    `SELECT id, name, space_id, metadata, description, keywords, created_at
+    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
 		 FROM document_categories
 		 WHERE space_id = $1
 		 ORDER BY name ASC`,
     [spaceId ?? null],
   );
   return rows;
+}
+
+export async function getCategory(categoryId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<CategoryRow>(
+    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
+		 FROM document_categories
+		 WHERE id = $1
+		 LIMIT 1`,
+    [categoryId],
+  );
+  return rows[0] ?? null;
 }
 
 export async function listDocuments(spaceId?: number | null) {
@@ -235,7 +260,11 @@ export async function deleteDocument(documentId: number) {
       created_at`,
     [documentId],
   );
-  return rows[0] ?? null;
+  const deletedDocument = rows[0] ?? null;
+  if (deletedDocument?.category_id) {
+    await refreshCategorySummary(deletedDocument.category_id);
+  }
+  return deletedDocument;
 }
 
 export async function createCategory(input: CategoryInput) {
@@ -251,7 +280,7 @@ export async function createCategory(input: CategoryInput) {
     keywords,
   });
   const existing = await getDb().query<CategoryRow>(
-    `SELECT id, name, space_id, metadata, description, keywords, created_at
+    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
 		 FROM document_categories
 		 WHERE lower(name) = lower($1)
 			AND space_id IS NOT DISTINCT FROM $2
@@ -267,7 +296,7 @@ export async function createCategory(input: CategoryInput) {
 				description = COALESCE($3, description),
 				keywords = $4
 			 WHERE id = $1
-			 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
+			 RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
       [
         existing.rows[0].id,
         metadata,
@@ -279,9 +308,9 @@ export async function createCategory(input: CategoryInput) {
   }
 
   const { rows } = await getDb().query<CategoryRow>(
-    `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
+    `INSERT INTO document_categories (name, space_id, metadata, description, summary, keywords)
+		 VALUES ($1, $2, $3, $4, '', $5)
+		 RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
     [
       input.name.trim(),
       spaceId,
@@ -301,6 +330,7 @@ export function toPublicCategory(category: CategoryRow): PublicCategory {
     spaceId: category.space_id,
     metadata,
     description: getCategoryDescription(category),
+    summary: category.summary,
     keywords: getCategoryKeywords(category),
   };
 }
@@ -327,6 +357,7 @@ export async function assignDocumentCategory(
   categoryId: number,
 ) {
   await ensureDocumentSchema();
+  const previousCategoryId = await getDocumentCategoryId(documentId);
   const { rows } = await getDb().query(
     `UPDATE documents
 		 SET
@@ -338,7 +369,13 @@ export async function assignDocumentCategory(
 		 RETURNING id`,
     [categoryId, documentId],
   );
-  return rows.length > 0;
+
+  if (!rows.length) {
+    return false;
+  }
+
+  await refreshCategorySummaries([previousCategoryId, categoryId]);
+  return true;
 }
 
 export async function analyzePdf(
@@ -381,6 +418,7 @@ async function saveAnalysis(
   modelAnalysis: ClaudeAnalysis,
   documentId?: number,
 ) {
+  const previousCategoryId = await getDocumentCategoryId(documentId);
   const match = toCategoryMatch(modelAnalysis);
   const extractedText = normalizeWhitespace(modelAnalysis.extractedText);
   const documentMetadata = buildDocumentMetadata({
@@ -423,6 +461,7 @@ async function saveAnalysis(
     );
 
     if (rows[0]) {
+      await refreshCategorySummaries([previousCategoryId, match.category?.id ?? null]);
       return buildDocumentAnalysis(
         rows[0].id,
         file,
@@ -465,6 +504,8 @@ async function saveAnalysis(
       match.needsNewCategory,
     ],
   );
+
+  await refreshCategorySummaries([match.category?.id ?? null]);
 
   return buildDocumentAnalysis(
     rows[0].id,
@@ -886,6 +927,169 @@ function clampConfidence(value: unknown) {
   return Number(Math.max(0, Math.min(1, parsed)).toFixed(4));
 }
 
+async function refreshCategorySummaries(categoryIds: Array<number | null | undefined>) {
+  const uniqueCategoryIds = [...new Set(
+    categoryIds.filter((categoryId): categoryId is number => typeof categoryId === "number"),
+  )];
+
+  for (const categoryId of uniqueCategoryIds) {
+    await refreshCategorySummary(categoryId);
+  }
+}
+
+export async function refreshCategorySummary(categoryId: number) {
+  await ensureDocumentSchema();
+  const category = await getCategory(categoryId);
+  if (!category) {
+    return null;
+  }
+
+  const { rows } = await getDb().query<CategorySummaryDocumentRow>(
+    `SELECT id, filename, file_name, original_file_name, summary, created_at
+     FROM documents
+     WHERE category_id = $1
+     ORDER BY created_at DESC`,
+    [categoryId],
+  );
+
+  const summary = await generateCategorySummary(category, rows);
+  const { rows: updatedRows } = await getDb().query<CategoryRow>(
+    `UPDATE document_categories
+     SET summary = $2
+     WHERE id = $1
+     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
+    [categoryId, summary],
+  );
+  return updatedRows[0] ?? null;
+}
+
+async function generateCategorySummary(
+  category: CategoryRow,
+  documents: CategorySummaryDocumentRow[],
+) {
+  if (documents.length === 0) {
+    return `No files in ${category.name} yet.`;
+  }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return buildFallbackCategorySummary(category, documents);
+  }
+
+  const model = process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const body = {
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You maintain concise category summaries for a document workspace and return only valid JSON.",
+      },
+      {
+        role: "user",
+        content: buildCategorySummaryPrompt(category, documents),
+      },
+    ],
+    temperature: 0.1,
+    max_tokens: 220,
+  };
+
+  try {
+    const { payload } = await sendOpenRouterRequest(body, apiKey);
+    const rawContent = payload?.choices?.[0]?.message?.content;
+    if (!rawContent) {
+      return buildFallbackCategorySummary(category, documents);
+    }
+
+    const parsed = parseJsonObject(rawContent);
+    const summary = normalizeWhitespace(cleanString(parsed.summary));
+    return summary || buildFallbackCategorySummary(category, documents);
+  } catch {
+    return buildFallbackCategorySummary(category, documents);
+  }
+}
+
+function buildCategorySummaryPrompt(
+  category: CategoryRow,
+  documents: CategorySummaryDocumentRow[],
+) {
+  const categoryDetails = {
+    name: category.name,
+    description: getCategoryDescription(category),
+    keywords: getCategoryKeywords(category),
+    documentCount: documents.length,
+    documents: documents.slice(0, CATEGORY_SUMMARY_DOCUMENT_LIMIT).map((document) => ({
+      name: getCategorySummaryDocumentName(document),
+      summary: normalizeWhitespace(document.summary).slice(0, CATEGORY_SUMMARY_SOURCE_LIMIT),
+    })),
+  };
+
+  return `Summarize this document category for a user-facing workspace.
+
+Return exactly this JSON shape:
+{
+  "summary": "2-4 sentences that explain what kinds of documents are in the category and the main themes across them"
+}
+
+Category data:
+${JSON.stringify(categoryDetails, null, 2)}
+
+Rules:
+- Be specific and synthesize across the documents instead of listing them one by one.
+- Mention dominant document types or recurring topics when they are clear.
+- Keep the summary concise and readable.
+- Do not use markdown.`;
+}
+
+function buildFallbackCategorySummary(
+  category: CategoryRow,
+  documents: CategorySummaryDocumentRow[],
+) {
+  const names = documents
+    .slice(0, 3)
+    .map(getCategorySummaryDocumentName)
+    .filter(Boolean);
+  const exampleText = names.length
+    ? ` Recent examples include ${joinNaturalLanguage(names)}.`
+    : "";
+  const sourceSummaries = documents
+    .map((document) => normalizeWhitespace(document.summary))
+    .filter(Boolean)
+    .slice(0, 2);
+  const themeText = sourceSummaries.length
+    ? ` Main themes: ${sourceSummaries.join(" ").slice(0, 320)}`
+    : "";
+  return `${category.name} contains ${documents.length} document${documents.length === 1 ? "" : "s"}.${exampleText}${themeText}`.trim();
+}
+
+function getCategorySummaryDocumentName(document: CategorySummaryDocumentRow) {
+  return document.original_file_name || document.file_name || document.filename;
+}
+
+function joinNaturalLanguage(values: string[]) {
+  if (values.length <= 1) {
+    return values[0] ?? "";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+async function getDocumentCategoryId(documentId?: number) {
+  if (!documentId) {
+    return null;
+  }
+
+  const { rows } = await getDb().query<{ category_id: number | null }>(
+    `SELECT category_id FROM documents WHERE id = $1`,
+    [documentId],
+  );
+  return rows[0]?.category_id ?? null;
+}
+
 async function getDocumentSpaceId(documentId?: number) {
   if (!documentId) {
     return null;
@@ -912,8 +1116,8 @@ async function ensureDefaultCategoriesForSpace(spaceId: number | null) {
   const promise = (async () => {
     for (const category of DEFAULT_CATEGORIES) {
       await getDb().query(
-        `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
-         SELECT $1, $2, $3, $4, $5
+        `INSERT INTO document_categories (name, space_id, metadata, description, summary, keywords)
+         SELECT $1, $2, $3, $4, '', $5
          WHERE NOT EXISTS (
            SELECT 1 FROM document_categories
            WHERE lower(name) = lower($1) AND space_id = $2

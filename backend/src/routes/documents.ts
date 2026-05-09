@@ -15,6 +15,7 @@ import {
 	assignDocumentCategory,
 	createCategory,
 	deleteDocument,
+	getCategory,
 	getDocument,
 	listCategories,
 	listDocuments,
@@ -218,6 +219,7 @@ router.post(
 	async (req, res) => {
 		const { documentId, ...categoryInput } = req.body;
 		const category = await createCategory({ ...categoryInput, documentId });
+		let responseCategory = category;
 
 		if (documentId) {
 			const assigned = await assignDocumentCategory(documentId, category.id);
@@ -225,9 +227,11 @@ router.post(
 				res.status(404).json({ error: "Document not found" });
 				return;
 			}
+
+			responseCategory = (await getCategory(category.id)) ?? category;
 		}
 
-		res.status(201).json({ category: toPublicCategory(category) });
+		res.status(201).json({ category: toPublicCategory(responseCategory) });
 	},
 );
 

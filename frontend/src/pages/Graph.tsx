@@ -97,6 +97,7 @@ export default function Graph() {
       fileCount: documents.filter(
         (document) => document.categoryId === category.id,
       ).length,
+      summary: category.summary,
     }));
   }, [categories, documents]);
 
@@ -203,7 +204,10 @@ export default function Graph() {
             <p className="text-sm font-semibold text-stone-900">
               {hoveredNode!.label}
             </p>
-            <p className="text-xs text-stone-500">
+            <p className="mt-1 text-xs leading-5 text-stone-600">
+              {hoveredNode!.summary || "No category summary yet."}
+            </p>
+            <p className="mt-2 text-xs text-stone-500">
               {hoveredCategoryFiles.length} file
               {hoveredCategoryFiles.length === 1 ? "" : "s"}
             </p>
