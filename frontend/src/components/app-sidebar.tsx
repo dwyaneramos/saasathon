@@ -1076,16 +1076,17 @@ export function AppSidebar({
 					(currentCategory) => currentCategory.id !== category.id,
 				),
 			);
-			setExpandedCategoryIds((currentIds) => {
-				const nextIds = new Set(currentIds);
-				nextIds.delete(category.id);
-				return nextIds;
-			});
-			setConfirmDeleteCategoryId(null);
-			toast.success(`Category '${category.name}' deleted`);
-		} catch (err) {
-			setCategoryActionError(
-				err instanceof Error
+				setExpandedCategoryIds((currentIds) => {
+					const nextIds = new Set(currentIds);
+					nextIds.delete(category.id);
+					return nextIds;
+				});
+				setConfirmDeleteCategoryId(null);
+				toast.success(`Category '${category.name}' deleted`);
+				window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+			} catch (err) {
+				setCategoryActionError(
+					err instanceof Error
 					? err.message
 					: "Could not delete category.",
 			);
