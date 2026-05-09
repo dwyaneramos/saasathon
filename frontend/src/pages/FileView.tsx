@@ -308,7 +308,7 @@ export default function FileView() {
 					toFriendlyDocumentError(
 						"rename",
 						response.status,
-						await readApiError(response),
+					await readApiError(response),
 					),
 				);
 			}
@@ -359,7 +359,7 @@ export default function FileView() {
 					toFriendlyDocumentError(
 						"delete",
 						response.status,
-						await readApiError(response),
+					await readApiError(response),
 					),
 				);
 			}

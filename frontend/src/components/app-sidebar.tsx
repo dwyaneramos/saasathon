@@ -1100,19 +1100,28 @@ export function AppSidebar({
           q: searchQuery.trim(),
           ...(activeSpaceId ? { spaceId: String(activeSpaceId) } : {}),
         });
-        const response = await fetch(`${apiBaseUrl}/documents/search?${query.toString()}`, {
-          headers: authHeaders(),
-        });
+        const response = await fetch(
+          `${apiBaseUrl}/documents/search?${query.toString()}`,
+          {
+            headers: authHeaders(),
+          },
+        );
 
         const payload = (await response.json().catch(() => null)) as
-          | { results?: ApiSearchResult[]; error?: string }
+          | {
+              results?: ApiSearchResult[];
+              documents?: ApiSearchResult[];
+              error?: string;
+            }
           | null;
 
         if (!response.ok) {
           throw new Error(payload?.error ?? "Unable to search documents");
         }
 
-        setSearchResults(dedupeSearchResults(payload?.results ?? []));
+        setSearchResults(
+          dedupeSearchResults(payload?.results ?? payload?.documents ?? []),
+        );
       } catch (error) {
         setSearchResults([]);
         setSearchError(
@@ -1189,7 +1198,6 @@ export function AppSidebar({
       }
 
       await loadFileTree();
-
       const createdCategoryId = payload?.category?.id;
       if (typeof createdCategoryId === "number") {
         setNewCategoryIds((currentIds) => {
@@ -1333,7 +1341,6 @@ export function AppSidebar({
                   {createCategoryError}
                 </p>
               )}
-
               <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"

@@ -10,6 +10,7 @@ import {
 	updateDocumentSchema,
 } from "../validation/documents.js";
 import {
+	askDashboardAssistant,
 	analyzeImage,
 	analyzePdf,
 	assignDocumentCategory,
@@ -23,6 +24,7 @@ import {
 	searchDocuments,
 	toPublicCategory,
 	toPublicDocument,
+	toPublicDocumentSearchResult,
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
@@ -51,7 +53,11 @@ export const uploadImageMiddleware = multer({
 		files: 1,
 	},
 	fileFilter: (req, file, cb) => {
-		if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.mimetype)) {
+		if (
+			!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+				file.mimetype,
+			)
+		) {
 			cb(new Error("Only PNG, JPEG, WebP, or GIF images are supported"));
 			return;
 		}
@@ -90,21 +96,61 @@ router.get("/documents/search", async (req, res) => {
 
 	const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
 	if (!query) {
-		res.json({ results: [] });
+		res.json({ query: "", documents: [] });
 		return;
 	}
 
-	const results = await searchDocuments({
+	const requestedLimit =
+		typeof req.query.limit === "string"
+			? Number(req.query.limit)
+			: undefined;
+	const documents = await searchDocuments({
 		query,
 		spaceId,
+		limit: Number.isInteger(requestedLimit) ? requestedLimit : undefined,
 	});
-	res.json({ results });
+
+	res.json({
+		query,
+		documents: documents.map(toPublicDocumentSearchResult),
+		results: documents.map(toPublicDocumentSearchResult),
+	});
+});
+
+router.post("/assistant/dashboard", requireAuth, async (req, res) => {
+	const spaceId =
+		typeof req.body?.spaceId === "number"
+			? req.body.spaceId
+			: typeof req.body?.spaceId === "string"
+				? Number(req.body.spaceId)
+				: null;
+
+	if (spaceId !== null && (!Number.isInteger(spaceId) || spaceId < 1)) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const prompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
+	const pathname =
+		typeof req.body?.pathname === "string"
+			? req.body.pathname
+			: "/dashboard";
+
+	const response = await askDashboardAssistant({
+		prompt,
+		spaceId,
+		pathname,
+	});
+
+	res.json(response);
 });
 
 router.get("/documents/:documentId", async (req, res) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -124,7 +170,9 @@ router.patch(
 	async (req, res) => {
 		const documentId = getDocumentIdFromParams(req);
 		if (!documentId) {
-			res.status(400).json({ error: "documentId must be a positive integer" });
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
 			return;
 		}
 
@@ -141,7 +189,9 @@ router.patch(
 router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -170,7 +220,9 @@ router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 router.get("/documents/:documentId/file", async (req, res, next) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -251,6 +303,7 @@ router.post(
 
 			responseCategory = (await getCategory(category.id)) ?? category;
 		}
+	}
 
 		res.status(201).json({ category: toPublicCategory(responseCategory) });
 	},
@@ -289,7 +342,8 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
+		suggestedCategoryDescription:
+			analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -327,7 +381,8 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
+		suggestedCategoryDescription:
+			analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -360,7 +415,10 @@ function getDocumentId(req: Request) {
 }
 
 function getSpaceId(req: Request) {
-	if (typeof req.query.spaceId !== "string" || req.query.spaceId.trim() === "") {
+	if (
+		typeof req.query.spaceId !== "string" ||
+		req.query.spaceId.trim() === ""
+	) {
 		return null;
 	}
 
