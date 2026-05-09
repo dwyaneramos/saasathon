@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { Sparkles, Share2 } from "lucide-react";
+import { Share2 } from "lucide-react";
 import kibiLogo from "../assets/kibi-logo.png";
 
 const Footer = () => {

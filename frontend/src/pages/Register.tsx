@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,12 @@ export default function Register() {
 	const [error, setError] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 
-	const handleChange = (e) => {
+	const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
 		setFormData({ ...formData, [e.target.name]: e.target.value });
 		if (error) setError("");
 	};
 
-	const handleSubmit = async (e) => {
+	const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		setIsLoading(true);
 
@@ -70,7 +70,7 @@ export default function Register() {
 			} else {
 				setError(data.error || data.message || "Registration failed");
 			}
-		} catch (err) {
+		} catch {
 			setError("Server connection failed");
 		} finally {
 			setIsLoading(false);

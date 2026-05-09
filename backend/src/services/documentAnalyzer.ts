@@ -31,6 +31,36 @@ export type PublicCategory = {
   keywords: string[];
 };
 
+type DocumentRow = {
+  id: number;
+  space_id: number | null;
+  filename: string;
+  filepath: string | null;
+  file_name: string;
+  original_file_name: string | null;
+  stored_file_name: string | null;
+  mime_type: string;
+  file_size: number;
+  category_id: number | null;
+  summary: string;
+  created_at: Date;
+};
+
+export type PublicDocument = {
+  id: number;
+  spaceId: number | null;
+  filename: string;
+  filepath: string | null;
+  fileName: string;
+  originalFileName: string | null;
+  storedFileName: string | null;
+  mimeType: string;
+  fileSize: number;
+  categoryId: number | null;
+  summary: string;
+  createdAt: Date;
+};
+
 export type CategoryInput = {
   name: string;
   spaceId?: number | null;
@@ -203,6 +233,30 @@ export async function listCategories(spaceId?: number | null) {
   return rows;
 }
 
+export async function listDocuments(spaceId?: number | null) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<DocumentRow>(
+    `SELECT
+        id,
+        space_id,
+        filename,
+        filepath,
+        file_name,
+        original_file_name,
+        stored_file_name,
+        mime_type,
+        file_size,
+        category_id,
+        summary,
+        created_at
+     FROM documents
+     WHERE $1::integer IS NULL OR space_id = $1
+     ORDER BY created_at DESC`,
+    [spaceId ?? null],
+  );
+  return rows;
+}
+
 export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);
@@ -266,6 +320,23 @@ export function toPublicCategory(category: CategoryRow): PublicCategory {
   };
 }
 
+export function toPublicDocument(document: DocumentRow): PublicDocument {
+  return {
+    id: document.id,
+    spaceId: document.space_id,
+    filename: document.filename,
+    filepath: document.filepath,
+    fileName: document.file_name,
+    originalFileName: document.original_file_name,
+    storedFileName: document.stored_file_name,
+    mimeType: document.mime_type,
+    fileSize: document.file_size,
+    categoryId: document.category_id,
+    summary: document.summary,
+    createdAt: document.created_at,
+  };
+}
+
 export async function assignDocumentCategory(
   documentId: number,
   categoryId: number,
@@ -274,10 +345,10 @@ export async function assignDocumentCategory(
   const { rows } = await getDb().query(
     `UPDATE documents
 		 SET
-			category_id = $1,
+			category_id = $1::integer,
 			needs_new_category = FALSE,
 			confidence = 1,
-			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('categoryId', $1)
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('categoryId', $1::integer)
 		 WHERE id = $2
 		 RETURNING id`,
     [categoryId, documentId],

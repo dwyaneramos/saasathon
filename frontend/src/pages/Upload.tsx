@@ -47,6 +47,7 @@ type CategoryListResponse = {
 
 type CategoryUpsertResponse = {
   category?: {
+    id?: number;
     name?: string;
     metadata?: {
       description?: string | null;
@@ -56,6 +57,8 @@ type CategoryUpsertResponse = {
   };
   error?: string;
 };
+
+const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 export default function Upload() {
   const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -121,6 +124,7 @@ export default function Upload() {
           ? `Upload complete. Analysis failed for ${failedCount} file(s).`
           : "Upload and analysis complete",
       );
+      notifyFileTreeUpdated(results.map((result) => result.documentId));
       setFiles([]);
     } catch (err: any) {
       setStatus(`Upload failed: ${err.message ?? err}`);
@@ -283,7 +287,10 @@ export default function Upload() {
       throw new Error(payload?.error ?? `${res.status} ${res.statusText}`);
     }
 
+    notifyFileTreeUpdated([documentId]);
+
     return {
+      id: payload?.category?.id,
       name: payload?.category?.name ?? name,
       description:
         getCategoryDescription(payload?.category) ??
@@ -304,6 +311,18 @@ export default function Upload() {
   const authHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const notifyFileTreeUpdated = (documentIds: Array<number | undefined> = []) => {
+    window.dispatchEvent(
+      new CustomEvent(fileTreeUpdatedEvent, {
+        detail: {
+          documentIds: documentIds.filter(
+            (documentId): documentId is number => typeof documentId === "number",
+          ),
+        },
+      }),
+    );
   };
 
   const confirmCategory = async (result: FileAnalysisResult) => {
