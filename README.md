@@ -11,7 +11,8 @@
 </div>
 
 <p align="center">
-  <img src="" />
+  <img width="1920" height="872" alt="image" src="https://github.com/user-attachments/assets/a07d0c6c-0df7-4aa4-a8f8-e485749d2d5a" />
+
 </p>
 
 <!-- ABOUT THE PROJECT -->
