@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
 	Outlet,
 	Route,
@@ -19,8 +20,20 @@ import AppNavbar from "@/components/AppNavbar";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/sonner";
 import Footer from "./components/Footer";
+import { usePageTitle } from "@/hooks/usePageTitle";
+
+type Space = { id: number; name: string };
 
 function AppLayout() {
+	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(
+		null,
+	);
+	const [spaces, setSpaces] = React.useState<Space[]>([]);
+
+	const activeSpace = spaces.find((s) => s.id === activeSpaceId) ?? null;
+
+	usePageTitle(activeSpace ? `${activeSpace.name} | Kibi` : "Kibi");
+
 	return (
 		<div className="[--header-height:73px]">
 			<SidebarProvider
@@ -28,7 +41,11 @@ function AppLayout() {
 				style={{ "--header-height": "65px" } as React.CSSProperties}
 			>
 				<AppNavbar />
-				<AppSidebar />
+				<AppSidebar
+					activeSpaceId={activeSpaceId}
+					onSpaceChange={setActiveSpaceId}
+					onSpacesLoaded={setSpaces}
+				/>
 				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0">
 					<Outlet />
 				</SidebarInset>

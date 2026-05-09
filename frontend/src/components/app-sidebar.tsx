@@ -450,11 +450,17 @@ function AddButton() {
 
 // ── AppSidebar ────────────────────────────────────────────────────────────────
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+	activeSpaceId,
+	onSpaceChange,
+	onSpacesLoaded,
+	...props
+}: React.ComponentProps<typeof Sidebar> & {
+	activeSpaceId: number | null;
+	onSpaceChange: (id: number | null) => void;
+	onSpacesLoaded: (spaces: Space[]) => void;
+}) {
 	const [spaces, setSpaces] = React.useState<Space[]>([]);
-	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(
-		null,
-	);
 	const [categories, setCategories] = React.useState<Category[]>([]);
 	const [isLoading, setIsLoading] = React.useState(true);
 	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
@@ -702,16 +708,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				if (ignore) return;
 
 				setSpaces(nextSpaces);
-				setActiveSpaceId((currentSpaceId) => {
-					if (
-						currentSpaceId &&
-						nextSpaces.some((space) => space.id === currentSpaceId)
-					) {
-						return currentSpaceId;
-					}
-
-					return nextSpaces[0]?.id ?? null;
-				});
+				onSpacesLoaded(nextSpaces);
+				onSpaceChange(
+					nextSpaces.some((s) => s.id === activeSpaceId)
+						? activeSpaceId
+						: (nextSpaces[0]?.id ?? null),
+				);
 				setSpacesLoaded(true);
 			} catch {
 				if (!ignore) {
@@ -764,7 +766,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						<SpaceSwitcher
 							spaces={spaces}
 							activeSpace={activeSpace}
-							onSelect={(space) => setActiveSpaceId(space.id)}
+							onSelect={(space) => onSpaceChange(space.id)}
 						/>
 					</SidebarMenuItem>
 				</SidebarMenu>
