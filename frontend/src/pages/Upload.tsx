@@ -12,7 +12,14 @@ type AnalysisResponse = {
     summary?: string;
   };
   category?: {
+    id?: number;
     name?: string;
+    spaceId?: number | null;
+    metadata?: {
+      description?: string | null;
+      keywords?: string[];
+    };
+    description?: string | null;
   } | null;
   needsNewCategory?: boolean;
   suggestedCategoryName?: string;
@@ -29,6 +36,11 @@ type CreatedCategory = {
 type CategoryListResponse = {
   categories?: Array<{
     name: string;
+    spaceId?: number | null;
+    metadata?: {
+      description?: string | null;
+      keywords?: string[];
+    };
     description: string | null;
   }>;
 };
@@ -36,6 +48,10 @@ type CategoryListResponse = {
 type CategoryUpsertResponse = {
   category?: {
     name?: string;
+    metadata?: {
+      description?: string | null;
+      keywords?: string[];
+    };
     description?: string | null;
   };
   error?: string;
@@ -80,6 +96,7 @@ export default function Upload() {
       files.forEach((f) => body.append("files", f));
       const res = await fetch(`${apiBaseUrl}/upload/multiple`, {
         method: "POST",
+        headers: authHeaders(),
         body,
       });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -139,6 +156,7 @@ export default function Upload() {
 
       const res = await fetch(`${apiBaseUrl}${endpoint}`, {
         method: "POST",
+        headers: authHeaders(),
         body,
       });
       const payload = (await res.json()) as AnalysisResponse;
@@ -208,8 +226,18 @@ export default function Upload() {
   const buildFallbackCategoryDescription = (name: string) =>
     `Documents related to ${name.toLowerCase()}.`;
 
+  const getCategoryDescription = (category?: {
+    metadata?: { description?: string | null };
+    description?: string | null;
+  }) =>
+    category?.metadata?.description?.trim() ||
+    category?.description?.trim() ||
+    null;
+
   const loadKnownCategories = async () => {
-    const res = await fetch(`${apiBaseUrl}/categories`);
+    const res = await fetch(`${apiBaseUrl}/categories`, {
+      headers: authHeaders(),
+    });
     if (!res.ok) return new Map<string, CreatedCategory>();
 
     const payload = (await res.json().catch(() => null)) as CategoryListResponse | null;
@@ -220,7 +248,8 @@ export default function Upload() {
         {
           name: category.name,
           description:
-            category.description ?? buildFallbackCategoryDescription(category.name),
+            getCategoryDescription(category) ??
+            buildFallbackCategoryDescription(category.name),
         },
       ]),
     );
@@ -234,12 +263,17 @@ export default function Upload() {
     const res = await fetch(`${apiBaseUrl}/categories`, {
       method: "POST",
       headers: {
+        ...authHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         name,
         description,
         keywords: [name],
+        metadata: {
+          description,
+          keywords: [name],
+        },
         documentId,
       }),
     });
@@ -252,7 +286,7 @@ export default function Upload() {
     return {
       name: payload?.category?.name ?? name,
       description:
-        payload?.category?.description ??
+        getCategoryDescription(payload?.category) ??
         (description || buildFallbackCategoryDescription(name)),
     };
   };
@@ -265,6 +299,11 @@ export default function Upload() {
           : result,
       ),
     );
+  };
+
+  const authHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
   const confirmCategory = async (result: FileAnalysisResult) => {

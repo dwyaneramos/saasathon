@@ -1,11 +1,19 @@
 export interface UploadedFile {
   documentId: number;
   spaceId: number;
+  categoryId: number | null;
   originalName: string;
   filename: string;
   mimeType: string;
   size: number;
   path: string;
+  item?: {
+    id: number;
+    filename: string;
+    categoryId: number | null;
+    filepath: string;
+    metadata: Record<string, unknown>;
+  };
 }
 
 export interface MultipleUploadResponse {

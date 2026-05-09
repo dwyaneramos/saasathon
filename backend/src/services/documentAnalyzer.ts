@@ -9,15 +9,35 @@ const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
 type CategoryRow = {
   id: number;
   name: string;
+  space_id: number | null;
+  metadata: CategoryMetadata;
   description: string | null;
   keywords: string[];
   created_at: Date;
 };
 
+type CategoryMetadata = {
+  description?: string | null;
+  keywords?: string[];
+  [key: string]: unknown;
+};
+
+export type PublicCategory = {
+  id: number;
+  name: string;
+  spaceId: number | null;
+  metadata: CategoryMetadata;
+  description: string | null;
+  keywords: string[];
+};
+
 export type CategoryInput = {
   name: string;
+  spaceId?: number | null;
   description?: string;
   keywords?: string[];
+  metadata?: CategoryMetadata;
+  documentId?: number;
 };
 
 export type CategoryMatch = {
@@ -71,9 +91,18 @@ const DEFAULT_CATEGORIES: CategoryInput[] = [
 
 export async function ensureDocumentSchema() {
   await getDb().query(`
+		CREATE TABLE IF NOT EXISTS spaces (
+			id SERIAL PRIMARY KEY,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
 		CREATE TABLE IF NOT EXISTS document_categories (
 			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			metadata JSONB NOT NULL DEFAULT '{}',
 			description TEXT,
 			keywords TEXT[] NOT NULL DEFAULT '{}',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -81,6 +110,10 @@ export async function ensureDocumentSchema() {
 
 		CREATE TABLE IF NOT EXISTS documents (
 			id SERIAL PRIMARY KEY,
+			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			filename TEXT NOT NULL,
+			filepath TEXT,
+			metadata JSONB NOT NULL DEFAULT '{}',
 			file_name TEXT NOT NULL,
 			mime_type TEXT NOT NULL,
 			page_count INTEGER NOT NULL DEFAULT 0,
@@ -92,20 +125,19 @@ export async function ensureDocumentSchema() {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		CREATE TABLE IF NOT EXISTS spaces (
-			id SERIAL PRIMARY KEY,
-			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-			name TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
 		ALTER TABLE document_categories
+			DROP CONSTRAINT IF EXISTS document_categories_name_key,
+			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
 			ADD COLUMN IF NOT EXISTS description TEXT,
 			ADD COLUMN IF NOT EXISTS keywords TEXT[] NOT NULL DEFAULT '{}',
 			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 		ALTER TABLE documents
 			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT 'unknown',
+			ADD COLUMN IF NOT EXISTS filepath TEXT,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
 			ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'unknown',
 			ADD COLUMN IF NOT EXISTS original_file_name TEXT,
 			ADD COLUMN IF NOT EXISTS stored_file_name TEXT,
@@ -119,24 +151,54 @@ export async function ensureDocumentSchema() {
 			ADD COLUMN IF NOT EXISTS confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
 			ADD COLUMN IF NOT EXISTS needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
 			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+		UPDATE document_categories
+		SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+			'description', description,
+			'keywords', keywords
+		));
+
+		UPDATE documents
+		SET
+			filename = COALESCE(NULLIF(filename, ''), stored_file_name, file_name, 'unknown'),
+			filepath = COALESCE(filepath, storage_path),
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+				'originalName', original_file_name,
+				'mimeType', mime_type,
+				'size', file_size,
+				'spaceId', space_id
+			));
+
+		CREATE UNIQUE INDEX IF NOT EXISTS document_categories_space_name_unique_idx
+			ON document_categories (COALESCE(space_id, 0), lower(name));
 	`);
 
   for (const category of DEFAULT_CATEGORIES) {
     await getDb().query(
-      `INSERT INTO document_categories (name, description, keywords)
-			 VALUES ($1, $2, $3)
-			 ON CONFLICT (name) DO NOTHING`,
-      [category.name, category.description ?? null, category.keywords ?? []],
+      `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
+			 SELECT $1, NULL, $2, $3, $4
+			 WHERE NOT EXISTS (
+				SELECT 1 FROM document_categories
+				WHERE lower(name) = lower($1) AND space_id IS NULL
+			 )`,
+      [
+        category.name,
+        buildCategoryMetadata(category),
+        category.description ?? null,
+        category.keywords ?? [],
+      ],
     );
   }
 }
 
-export async function listCategories() {
+export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
   const { rows } = await getDb().query<CategoryRow>(
-    `SELECT id, name, description, keywords, created_at
+    `SELECT id, name, space_id, metadata, description, keywords, created_at
 		 FROM document_categories
+		 WHERE $1::integer IS NULL OR space_id IS NULL OR space_id = $1
 		 ORDER BY name ASC`,
+    [spaceId ?? null],
   );
   return rows;
 }
@@ -144,17 +206,64 @@ export async function listCategories() {
 export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);
+  const spaceId = input.spaceId ?? await getDocumentSpaceId(input.documentId);
+  const metadata = buildCategoryMetadata({
+    ...input,
+    keywords,
+  });
+  const existing = await getDb().query<CategoryRow>(
+    `SELECT id, name, space_id, metadata, description, keywords, created_at
+		 FROM document_categories
+		 WHERE lower(name) = lower($1)
+			AND space_id IS NOT DISTINCT FROM $2
+		 LIMIT 1`,
+    [input.name.trim(), spaceId ?? null],
+  );
+
+  if (existing.rows[0]) {
+    const { rows } = await getDb().query<CategoryRow>(
+      `UPDATE document_categories
+			 SET
+				metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+				description = COALESCE($3, description),
+				keywords = $4
+			 WHERE id = $1
+			 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
+      [
+        existing.rows[0].id,
+        metadata,
+        input.description?.trim() || null,
+        keywords,
+      ],
+    );
+    return rows[0];
+  }
+
   const { rows } = await getDb().query<CategoryRow>(
-    `INSERT INTO document_categories (name, description, keywords)
-		 VALUES ($1, $2, $3)
-		 ON CONFLICT (name)
-		 DO UPDATE SET
-			description = COALESCE(EXCLUDED.description, document_categories.description),
-			keywords = EXCLUDED.keywords
-		 RETURNING id, name, description, keywords, created_at`,
-    [input.name.trim(), input.description?.trim() || null, keywords],
+    `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
+    [
+      input.name.trim(),
+      spaceId ?? null,
+      metadata,
+      input.description?.trim() || null,
+      keywords,
+    ],
   );
   return rows[0];
+}
+
+export function toPublicCategory(category: CategoryRow): PublicCategory {
+  const metadata = normalizeCategoryMetadata(category);
+  return {
+    id: category.id,
+    name: category.name,
+    spaceId: category.space_id,
+    metadata,
+    description: getCategoryDescription(category),
+    keywords: getCategoryKeywords(category),
+  };
 }
 
 export async function assignDocumentCategory(
@@ -164,7 +273,11 @@ export async function assignDocumentCategory(
   await ensureDocumentSchema();
   const { rows } = await getDb().query(
     `UPDATE documents
-		 SET category_id = $1, needs_new_category = FALSE, confidence = 1
+		 SET
+			category_id = $1,
+			needs_new_category = FALSE,
+			confidence = 1,
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('categoryId', $1)
 		 WHERE id = $2
 		 RETURNING id`,
     [categoryId, documentId],
@@ -178,7 +291,7 @@ export async function analyzePdf(
   documentId?: number,
 ): Promise<DocumentAnalysis> {
   await ensureDocumentSchema();
-  const categories = await listCategories();
+  const categories = await listCategories(await getDocumentSpaceId(documentId));
   const modelAnalysis = await analyzeWithClaude({
     file,
     sourceType: "pdf",
@@ -195,7 +308,7 @@ export async function analyzeImage(
   documentId?: number,
 ): Promise<DocumentAnalysis> {
   await ensureDocumentSchema();
-  const categories = await listCategories();
+  const categories = await listCategories(await getDocumentSpaceId(documentId));
   const modelAnalysis = await analyzeWithClaude({
     file,
     sourceType: "image",
@@ -214,11 +327,20 @@ async function saveAnalysis(
 ) {
   const match = toCategoryMatch(modelAnalysis);
   const extractedText = normalizeWhitespace(modelAnalysis.extractedText);
+  const documentMetadata = buildDocumentMetadata({
+    file,
+    sourceType,
+    modelAnalysis,
+    match,
+  });
 
   if (documentId) {
     const { rows } = await getDb().query<{ id: number }>(
       `UPDATE documents
        SET
+        filename = COALESCE(NULLIF(filename, ''), stored_file_name, $2),
+        filepath = COALESCE(filepath, storage_path),
+        metadata = COALESCE(metadata, '{}'::jsonb) || $10::jsonb,
         file_name = COALESCE(NULLIF(file_name, ''), $2),
         original_file_name = COALESCE(original_file_name, $2),
         mime_type = $3,
@@ -240,6 +362,7 @@ async function saveAnalysis(
         match.category?.id ?? null,
         match.confidence,
         match.needsNewCategory,
+        documentMetadata,
       ],
     );
 
@@ -257,6 +380,9 @@ async function saveAnalysis(
 
   const { rows } = await getDb().query<{ id: number }>(
 	    `INSERT INTO documents (
+				filename,
+				filepath,
+				metadata,
 				file_name,
 				mime_type,
 				file_size,
@@ -267,9 +393,11 @@ async function saveAnalysis(
 				confidence,
 				needs_new_category
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`,
     [
+      file.originalname,
+      documentMetadata,
       file.originalname,
       file.mimetype,
       file.size,
@@ -558,8 +686,8 @@ function buildAnalysisPrompt(
   const categoryList = categories.map((category) => ({
     id: category.id,
     name: category.name,
-    description: category.description,
-    keywords: category.keywords,
+    spaceId: category.space_id,
+    metadata: normalizeCategoryMetadata(category),
   }));
 
   return `
@@ -700,6 +828,93 @@ function clampConfidence(value: unknown) {
     return 0;
   }
   return Number(Math.max(0, Math.min(1, parsed)).toFixed(4));
+}
+
+async function getDocumentSpaceId(documentId?: number) {
+  if (!documentId) {
+    return null;
+  }
+
+  const { rows } = await getDb().query<{ space_id: number | null }>(
+    `SELECT space_id FROM documents WHERE id = $1`,
+    [documentId],
+  );
+  return rows[0]?.space_id ?? null;
+}
+
+function buildCategoryMetadata(input: CategoryInput): CategoryMetadata {
+  const metadata =
+    input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {};
+  const description =
+    input.description?.trim() ||
+    (typeof metadata.description === "string" ? metadata.description.trim() : null);
+  const keywords = normalizeKeywords(
+    input.keywords?.length
+      ? input.keywords
+      : Array.isArray(metadata.keywords)
+        ? metadata.keywords
+        : [input.name],
+  );
+
+  return {
+    ...metadata,
+    description,
+    keywords,
+  };
+}
+
+function normalizeCategoryMetadata(category: CategoryRow): CategoryMetadata {
+  return buildCategoryMetadata({
+    name: category.name,
+    description:
+      typeof category.metadata?.description === "string"
+        ? category.metadata.description
+        : category.description ?? undefined,
+    keywords: getCategoryKeywords(category),
+    metadata: category.metadata,
+  });
+}
+
+function getCategoryDescription(category: CategoryRow) {
+  return (
+    (typeof category.metadata?.description === "string"
+      ? category.metadata.description.trim()
+      : "") ||
+    category.description ||
+    null
+  );
+}
+
+function getCategoryKeywords(category: CategoryRow) {
+  if (Array.isArray(category.metadata?.keywords)) {
+    return normalizeKeywords(category.metadata.keywords);
+  }
+  return normalizeKeywords(category.keywords?.length ? category.keywords : [category.name]);
+}
+
+function buildDocumentMetadata({
+  file,
+  sourceType,
+  modelAnalysis,
+  match,
+}: {
+  file: Express.Multer.File;
+  sourceType: "pdf" | "image";
+  modelAnalysis: ClaudeAnalysis;
+  match: CategoryMatch;
+}) {
+  return {
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+    sourceType,
+    pageCount: sourceType === "pdf" ? modelAnalysis.pageCount ?? 0 : 0,
+    summary: modelAnalysis.summary,
+    categoryId: match.category?.id ?? null,
+    needsNewCategory: match.needsNewCategory,
+    suggestedCategoryName: match.suggestedCategoryName,
+    suggestedCategoryDescription: match.suggestedCategoryDescription,
+  };
 }
 
 function normalizeKeywords(keywords: string[]) {

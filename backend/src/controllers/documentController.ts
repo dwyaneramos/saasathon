@@ -6,6 +6,7 @@ import {
 	assignDocumentCategory,
 	createCategory,
 	listCategories,
+	toPublicCategory,
 	type DocumentAnalysis,
 } from "../services/documentAnalyzer.js";
 
@@ -41,12 +42,12 @@ export const uploadImageMiddleware = multer({
 
 export async function getCategories(req: Request, res: Response) {
 	const categories = await listCategories();
-	res.json({ categories });
+	res.json({ categories: categories.map(toPublicCategory) });
 }
 
 export async function postCategory(req: Request, res: Response) {
 	const { documentId, ...categoryInput } = req.body;
-	const category = await createCategory(categoryInput);
+	const category = await createCategory({ ...categoryInput, documentId });
 
 	if (documentId) {
 		const assigned = await assignDocumentCategory(documentId, category.id);
@@ -56,7 +57,7 @@ export async function postCategory(req: Request, res: Response) {
 		}
 	}
 
-	res.status(201).json({ category });
+	res.status(201).json({ category: toPublicCategory(category) });
 }
 
 export async function analyzePdfUpload(req: Request, res: Response) {
@@ -120,7 +121,9 @@ function sendAnalysisResponse(res: Response, analysis: DocumentAnalysis) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category,
+		category: analysis.match.category
+			? toPublicCategory(analysis.match.category)
+			: null,
 		confidence: analysis.match.confidence,
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,

@@ -7,14 +7,6 @@ CREATE TABLE users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE document_categories (
-  id          SERIAL PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,
-  description TEXT,
-  keywords    TEXT[] NOT NULL DEFAULT '{}',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE spaces (
   id         SERIAL PRIMARY KEY,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -22,9 +14,25 @@ CREATE TABLE spaces (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE document_categories (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  space_id    INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+  metadata    JSONB NOT NULL DEFAULT '{}',
+  description TEXT,
+  keywords    TEXT[] NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX document_categories_space_name_unique_idx
+  ON document_categories (COALESCE(space_id, 0), lower(name));
+
 CREATE TABLE documents (
   id                 SERIAL PRIMARY KEY,
   space_id           INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+  filename           TEXT NOT NULL,
+  filepath           TEXT,
+  metadata           JSONB NOT NULL DEFAULT '{}',
   file_name          TEXT NOT NULL,
   original_file_name TEXT,
   stored_file_name   TEXT,

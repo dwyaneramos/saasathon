@@ -10,9 +10,15 @@ export async function ensureSpaceSchema() {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
+		CREATE UNIQUE INDEX IF NOT EXISTS spaces_created_by_unique_idx
+			ON spaces(created_by)
+			WHERE created_by IS NOT NULL;
+
 		CREATE TABLE IF NOT EXISTS document_categories (
 			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			metadata JSONB NOT NULL DEFAULT '{}',
 			description TEXT,
 			keywords TEXT[] NOT NULL DEFAULT '{}',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -33,10 +39,38 @@ export async function ensureSpaceSchema() {
 
 		ALTER TABLE documents
 			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT 'unknown',
+			ADD COLUMN IF NOT EXISTS filepath TEXT,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
 			ADD COLUMN IF NOT EXISTS original_file_name TEXT,
 			ADD COLUMN IF NOT EXISTS stored_file_name TEXT,
 			ADD COLUMN IF NOT EXISTS storage_path TEXT,
 			ADD COLUMN IF NOT EXISTS file_size INTEGER NOT NULL DEFAULT 0;
+
+		ALTER TABLE document_categories
+			DROP CONSTRAINT IF EXISTS document_categories_name_key,
+			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';
+
+		UPDATE document_categories
+		SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+			'description', description,
+			'keywords', keywords
+		));
+
+		UPDATE documents
+		SET
+			filename = COALESCE(NULLIF(filename, ''), stored_file_name, file_name, 'unknown'),
+			filepath = COALESCE(filepath, storage_path),
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+				'originalName', original_file_name,
+				'mimeType', mime_type,
+				'size', file_size,
+				'spaceId', space_id
+			));
+
+		CREATE UNIQUE INDEX IF NOT EXISTS document_categories_space_name_unique_idx
+			ON document_categories (COALESCE(space_id, 0), lower(name));
 	`);
 }
 
@@ -59,6 +93,18 @@ export async function listSpaces() {
 	return rows;
 }
 
+export async function listSpacesForUser(userId: number) {
+	await ensureSpaceSchema();
+	const { rows } = await getDb().query<Space>(
+		`SELECT id, created_by, name, created_at
+		 FROM spaces
+		 WHERE created_by = $1
+		 ORDER BY created_at DESC`,
+		[userId],
+	);
+	return rows;
+}
+
 export async function createSpace(input: {
 	name: string;
 	createdBy?: number | null;
@@ -69,6 +115,32 @@ export async function createSpace(input: {
 		 VALUES ($1, $2)
 		 RETURNING id, created_by, name, created_at`,
 		[input.name.trim(), input.createdBy ?? null],
+	);
+	return rows[0];
+}
+
+export async function getOrCreateUserSpace(input: {
+	userId: number;
+	name?: string;
+}) {
+	await ensureSpaceSchema();
+	const existing = await getDb().query<Space>(
+		`SELECT id, created_by, name, created_at
+		 FROM spaces
+		 WHERE created_by = $1
+		 ORDER BY id ASC
+		 LIMIT 1`,
+		[input.userId],
+	);
+	if (existing.rows[0]) {
+		return existing.rows[0];
+	}
+
+	const { rows } = await getDb().query<Space>(
+		`INSERT INTO spaces (name, created_by)
+		 VALUES ($1, $2)
+		 RETURNING id, created_by, name, created_at`,
+		[input.name?.trim() || "My Space", input.userId],
 	);
 	return rows[0];
 }
