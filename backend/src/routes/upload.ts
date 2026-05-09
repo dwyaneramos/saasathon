@@ -28,7 +28,7 @@ const uploadDir = path.resolve(__dirname, "../../upload");
 
 const router = express.Router({ mergeParams: true });
 
-const MAX_FILES = 10;
+const MAX_FILES = 20;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const allowedMimeTypes = new Set([
 	"application/pdf",
@@ -359,7 +359,7 @@ router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
 
 		if (err.code === "LIMIT_FILE_COUNT") {
 			res.status(400).json({
-				error: `Too many files. Max count is ${MAX_FILES}.`,
+				error: `Too many files. You can upload up to ${MAX_FILES} files at once.`,
 			});
 			return;
 		}
