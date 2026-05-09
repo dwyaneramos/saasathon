@@ -162,9 +162,6 @@ export default function Upload() {
         )}
       </main>
 
-      <footer className="upload-footer">
-        <small>&copy; 2026 My App</small>
-      </footer>
     </div>
   );
 }

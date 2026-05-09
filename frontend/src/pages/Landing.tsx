@@ -87,13 +87,6 @@ export const Landing = () => {
 				</div>
 			</section>
 
-			<footer className="border-t border-zinc-100 py-12 px-6 bg-white">
-				<div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-					<p className="text-xs text-zinc-400">
-						© {new Date().getFullYear()} Kibi.
-					</p>
-				</div>
-			</footer>
 		</>
 	);
 };

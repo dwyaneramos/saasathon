@@ -183,11 +183,6 @@ export default function Register() {
 				</Card>
 			</main>
 
-			<footer className="p-4 text-center">
-				<small className="text-muted-foreground">
-					&copy; 2026 My App
-				</small>
-			</footer>
 		</div>
 	);
 }
