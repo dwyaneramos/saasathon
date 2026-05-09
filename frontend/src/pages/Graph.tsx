@@ -29,7 +29,6 @@ export default function Graph() {
     let ignore = false;
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
     async function loadGraphData() {
       const [categoriesResponse, documentsResponse] = await Promise.all([
         fetch(`${apiBaseUrl}/categories`, { headers }),
