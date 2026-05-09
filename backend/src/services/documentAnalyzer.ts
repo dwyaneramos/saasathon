@@ -4,7 +4,6 @@ import { HttpError } from "../utils/httpError.js";
 
 const MIN_CONFIDENCE = 0.28;
 const TEXT_PREVIEW_LIMIT = 4000;
-const DOCUMENT_KEYWORD_LIMIT = 24;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
 
@@ -38,8 +37,6 @@ type DocumentRow = {
   space_id: number | null;
   filename: string;
   filepath: string | null;
-  metadata: Record<string, unknown>;
-  keywords: string[];
   file_name: string;
   original_file_name: string | null;
   stored_file_name: string | null;
@@ -55,8 +52,6 @@ export type PublicDocument = {
   spaceId: number | null;
   filename: string;
   filepath: string | null;
-  metadata: Record<string, unknown>;
-  keywords: string[];
   fileName: string;
   originalFileName: string | null;
   storedFileName: string | null;
@@ -65,26 +60,6 @@ export type PublicDocument = {
   categoryId: number | null;
   summary: string;
   createdAt: Date;
-};
-
-type SearchDocumentRow = {
-  id: number;
-  filename: string;
-  file_name: string;
-  original_file_name: string | null;
-  mime_type: string;
-  summary: string;
-  extracted_text: string;
-  keywords: string[];
-};
-
-export type DocumentSearchResult = {
-  id: number;
-  filename: string;
-  fileName: string;
-  originalFileName: string | null;
-  mimeType: string;
-  snippet: string | null;
 };
 
 export type CategoryInput = {
@@ -153,6 +128,96 @@ export async function ensureDocumentSchema() {
 
   if (defaultCategoriesReady) {
     return;
+		CREATE TABLE IF NOT EXISTS document_categories (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL,
+			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			metadata JSONB NOT NULL DEFAULT '{}',
+			description TEXT,
+			keywords TEXT[] NOT NULL DEFAULT '{}',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS documents (
+			id SERIAL PRIMARY KEY,
+			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			filename TEXT NOT NULL,
+			filepath TEXT,
+			metadata JSONB NOT NULL DEFAULT '{}',
+			file_name TEXT NOT NULL,
+			mime_type TEXT NOT NULL,
+			page_count INTEGER NOT NULL DEFAULT 0,
+			extracted_text TEXT NOT NULL,
+			summary TEXT NOT NULL,
+			category_id INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
+			confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
+			needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		ALTER TABLE document_categories
+			DROP CONSTRAINT IF EXISTS document_categories_name_key,
+			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS description TEXT,
+			ADD COLUMN IF NOT EXISTS keywords TEXT[] NOT NULL DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+		ALTER TABLE documents
+			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+			ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT 'unknown',
+			ADD COLUMN IF NOT EXISTS filepath TEXT,
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'unknown',
+			ADD COLUMN IF NOT EXISTS original_file_name TEXT,
+			ADD COLUMN IF NOT EXISTS stored_file_name TEXT,
+			ADD COLUMN IF NOT EXISTS storage_path TEXT,
+			ADD COLUMN IF NOT EXISTS file_size INTEGER NOT NULL DEFAULT 0,
+			ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+			ADD COLUMN IF NOT EXISTS page_count INTEGER NOT NULL DEFAULT 0,
+			ADD COLUMN IF NOT EXISTS extracted_text TEXT NOT NULL DEFAULT '',
+			ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '',
+			ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
+			ADD COLUMN IF NOT EXISTS confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
+			ADD COLUMN IF NOT EXISTS needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
+			ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+		UPDATE document_categories
+		SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+			'description', description,
+			'keywords', keywords
+		));
+
+		UPDATE documents
+		SET
+			filename = COALESCE(NULLIF(filename, ''), stored_file_name, file_name, 'unknown'),
+			filepath = COALESCE(filepath, storage_path),
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
+				'originalName', original_file_name,
+				'mimeType', mime_type,
+				'size', file_size,
+				'spaceId', space_id
+			));
+
+		CREATE UNIQUE INDEX IF NOT EXISTS document_categories_space_name_unique_idx
+			ON document_categories (COALESCE(space_id, 0), lower(name));
+	`);
+
+  for (const category of DEFAULT_CATEGORIES) {
+    await getDb().query(
+      `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
+			 SELECT $1, NULL, $2, $3, $4
+			 WHERE NOT EXISTS (
+				SELECT 1 FROM document_categories
+				WHERE lower(name) = lower($1) AND space_id IS NULL
+			 )`,
+      [
+        category.name,
+        buildCategoryMetadata(category),
+        category.description ?? null,
+        category.keywords ?? [],
+      ],
+    );
   }
 
   if (!defaultCategoriesPromise) {
@@ -204,8 +269,6 @@ export async function listDocuments(spaceId?: number | null) {
         space_id,
         filename,
         filepath,
-        metadata,
-        keywords,
         file_name,
         original_file_name,
         stored_file_name,
@@ -230,8 +293,6 @@ export async function getDocument(documentId: number) {
         space_id,
         filename,
         filepath,
-        metadata,
-        keywords,
         file_name,
         original_file_name,
         stored_file_name,
@@ -246,69 +307,6 @@ export async function getDocument(documentId: number) {
     [documentId],
   );
   return rows[0] ?? null;
-}
-
-export async function searchDocuments(input: {
-  query: string;
-  spaceId?: number | null;
-  limit?: number;
-}) {
-  await ensureDocumentSchema();
-
-  const query = input.query.trim();
-  if (!query) {
-    return [];
-  }
-
-  const limit = clampSearchLimit(input.limit);
-  const spaceId = input.spaceId ?? null;
-
-  const tokenPatterns = buildSearchPatterns(query);
-  const { rows } = await getDb().query<SearchDocumentRow>(
-    `SELECT
-        id,
-        filename,
-        file_name,
-        original_file_name,
-        mime_type,
-        summary,
-        extracted_text,
-        keywords
-     FROM documents
-     WHERE ($1::integer IS NULL OR space_id = $1)
-       AND (
-         COALESCE(original_file_name, file_name, filename) ILIKE $2
-         OR filename ILIKE $2
-         OR summary ILIKE $2
-         OR extracted_text ILIKE $2
-         OR EXISTS (
-           SELECT 1
-           FROM unnest(COALESCE(keywords, '{}'::text[])) AS keyword
-           WHERE keyword ILIKE $2
-         )
-         OR EXISTS (
-           SELECT 1
-           FROM unnest($3::text[]) AS pattern
-           WHERE extracted_text ILIKE pattern
-              OR summary ILIKE pattern
-              OR COALESCE(original_file_name, file_name, filename) ILIKE pattern
-         )
-       )
-     ORDER BY created_at DESC
-     LIMIT $4`,
-    [spaceId, `%${escapeLikePattern(query)}%`, tokenPatterns, Math.max(limit * 4, limit)],
-  );
-
-  return rows
-    .map((row) => ({
-      row,
-      score: scoreSearchResult(row, query),
-      snippet: buildSnippet(row, query),
-    }))
-    .filter((result) => Number.isFinite(result.score) && result.score > 0)
-    .sort((a, b) => b.score - a.score || a.row.filename.localeCompare(b.row.filename))
-    .slice(0, limit)
-    .map(({ row, snippet }) => toPublicSearchResult(row, snippet));
 }
 
 export async function createCategory(input: CategoryInput) {
@@ -380,8 +378,6 @@ export function toPublicDocument(document: DocumentRow): PublicDocument {
     spaceId: document.space_id,
     filename: document.filename,
     filepath: document.filepath,
-    metadata: document.metadata ?? {},
-    keywords: normalizeKeywords(document.keywords ?? []),
     fileName: document.file_name,
     originalFileName: document.original_file_name,
     storedFileName: document.stored_file_name,
@@ -398,44 +394,16 @@ export async function assignDocumentCategory(
   categoryId: number,
 ) {
   await ensureDocumentSchema();
-  const category = await getCategoryById(categoryId);
-  const mergedKeywords = normalizeKeywords([
-    ...getCategoryKeywords(category ?? null),
-  ]);
   const { rows } = await getDb().query(
     `UPDATE documents
 		 SET
 			category_id = $1::integer,
-			keywords = CASE
-				WHEN cardinality($3::text[]) = 0 THEN keywords
-				ELSE (
-					SELECT ARRAY(
-						SELECT DISTINCT keyword
-						FROM unnest(COALESCE(keywords, '{}'::text[]) || $3::text[]) AS keyword
-						WHERE keyword <> ''
-						ORDER BY keyword
-					)
-				)
-			END,
 			needs_new_category = FALSE,
 			confidence = 1,
-			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-				'categoryId', $1::integer,
-				'keywords', CASE
-					WHEN cardinality($3::text[]) = 0 THEN COALESCE(metadata->'keywords', '[]'::jsonb)
-					ELSE to_jsonb((
-						SELECT ARRAY(
-							SELECT DISTINCT keyword
-							FROM unnest(COALESCE(keywords, '{}'::text[]) || $3::text[]) AS keyword
-							WHERE keyword <> ''
-							ORDER BY keyword
-						)
-					))
-				END
-			)
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('categoryId', $1::integer)
 		 WHERE id = $2
 		 RETURNING id`,
-    [categoryId, documentId, mergedKeywords],
+    [categoryId, documentId],
   );
   return rows.length > 0;
 }
@@ -482,18 +450,11 @@ async function saveAnalysis(
 ) {
   const match = toCategoryMatch(modelAnalysis);
   const extractedText = normalizeWhitespace(modelAnalysis.extractedText);
-  const documentKeywords = buildDocumentKeywords({
-    file,
-    extractedText,
-    modelAnalysis,
-    match,
-  });
   const documentMetadata = buildDocumentMetadata({
     file,
     sourceType,
     modelAnalysis,
     match,
-    keywords: documentKeywords,
   });
 
   if (documentId) {
@@ -503,7 +464,6 @@ async function saveAnalysis(
         filename = COALESCE(NULLIF(filename, ''), stored_file_name, $2),
         filepath = COALESCE(filepath, storage_path),
         metadata = COALESCE(metadata, '{}'::jsonb) || $10::jsonb,
-        keywords = $11,
         file_name = COALESCE(NULLIF(file_name, ''), $2),
         original_file_name = COALESCE(original_file_name, $2),
         mime_type = $3,
@@ -526,7 +486,6 @@ async function saveAnalysis(
         match.confidence,
         match.needsNewCategory,
         documentMetadata,
-        documentKeywords,
       ],
     );
 
@@ -547,7 +506,6 @@ async function saveAnalysis(
 				filename,
 				filepath,
 				metadata,
-				keywords,
 				file_name,
 				mime_type,
 				file_size,
@@ -558,12 +516,11 @@ async function saveAnalysis(
 				confidence,
 				needs_new_category
 			)
-			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`,
     [
       file.originalname,
       documentMetadata,
-      documentKeywords,
       file.originalname,
       file.mimetype,
       file.size,
@@ -1051,10 +1008,7 @@ function getCategoryDescription(category: CategoryRow) {
   );
 }
 
-function getCategoryKeywords(category: CategoryRow | null) {
-  if (!category) {
-    return [];
-  }
+function getCategoryKeywords(category: CategoryRow) {
   if (Array.isArray(category.metadata?.keywords)) {
     return normalizeKeywords(category.metadata.keywords);
   }
@@ -1066,13 +1020,11 @@ function buildDocumentMetadata({
   sourceType,
   modelAnalysis,
   match,
-  keywords,
 }: {
   file: Express.Multer.File;
   sourceType: "pdf" | "image";
   modelAnalysis: ClaudeAnalysis;
   match: CategoryMatch;
-  keywords: string[];
 }) {
   return {
     originalName: file.originalname,
@@ -1082,245 +1034,16 @@ function buildDocumentMetadata({
     pageCount: sourceType === "pdf" ? modelAnalysis.pageCount ?? 0 : 0,
     summary: modelAnalysis.summary,
     categoryId: match.category?.id ?? null,
-    keywords,
     needsNewCategory: match.needsNewCategory,
     suggestedCategoryName: match.suggestedCategoryName,
     suggestedCategoryDescription: match.suggestedCategoryDescription,
   };
 }
 
-async function getCategoryById(categoryId: number) {
-  const { rows } = await getDb().query<CategoryRow>(
-    `SELECT id, name, space_id, metadata, description, keywords, created_at
-     FROM document_categories
-     WHERE id = $1
-     LIMIT 1`,
-    [categoryId],
-  );
-  return rows[0] ?? null;
-}
-
-function buildDocumentKeywords({
-  file,
-  extractedText,
-  modelAnalysis,
-  match,
-}: {
-  file: Express.Multer.File;
-  extractedText: string;
-  modelAnalysis: ClaudeAnalysis;
-  match: CategoryMatch;
-}) {
-  return normalizeKeywords([
-    ...extractKeywordsFromFilename(file.originalname),
-    ...modelAnalysis.matchedKeywords,
-    ...getCategoryKeywords(match.category),
-    ...tokenizeKeywords(modelAnalysis.summary),
-    ...tokenizeKeywords(extractedText),
-    ...tokenizeKeywords(match.suggestedCategoryName),
-    ...tokenizeKeywords(match.suggestedCategoryDescription),
-  ]).slice(0, DOCUMENT_KEYWORD_LIMIT);
-}
-
-function extractKeywordsFromFilename(filename: string) {
-  const extension = filename.includes(".")
-    ? filename.slice(0, filename.lastIndexOf("."))
-    : filename;
-  return tokenizeKeywords(extension);
-}
-
-function tokenizeKeywords(text: string) {
-  const normalized = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-
-  if (!normalized) {
-    return [];
-  }
-
-  const counts = new Map<string, number>();
-  for (const token of normalized.split(/\s+/)) {
-    if (!isSearchableKeyword(token)) {
-      continue;
-    }
-    counts.set(token, (counts.get(token) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))
-    .map(([token]) => token)
-    .slice(0, DOCUMENT_KEYWORD_LIMIT);
-}
-
-function isSearchableKeyword(token: string) {
-  if (token.length < 3 || /^\d+$/.test(token)) {
-    return false;
-  }
-
-  return !DOCUMENT_KEYWORD_STOPWORDS.has(token);
-}
-
-const DOCUMENT_KEYWORD_STOPWORDS = new Set([
-  "about",
-  "after",
-  "also",
-  "among",
-  "because",
-  "before",
-  "between",
-  "could",
-  "document",
-  "from",
-  "have",
-  "into",
-  "just",
-  "more",
-  "much",
-  "only",
-  "other",
-  "over",
-  "page",
-  "pages",
-  "should",
-  "some",
-  "than",
-  "that",
-  "their",
-  "them",
-  "there",
-  "these",
-  "they",
-  "this",
-  "through",
-  "under",
-  "very",
-  "what",
-  "when",
-  "where",
-  "which",
-  "while",
-  "with",
-  "would",
-]);
-
 function normalizeKeywords(keywords: string[]) {
-  return [...new Set(keywords.map((keyword) => keyword.trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(keywords.map((keyword) => keyword.trim()).filter(Boolean))];
 }
 
 function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
-}
-
-function toPublicSearchResult(
-  row: SearchDocumentRow,
-  snippet: string | null = null,
-): DocumentSearchResult {
-  return {
-    id: row.id,
-    filename: row.filename,
-    fileName: row.file_name,
-    originalFileName: row.original_file_name,
-    mimeType: row.mime_type,
-    snippet,
-  };
-}
-
-function scoreSearchResult(row: SearchDocumentRow, query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return 0;
-  }
-
-  const title = normalizeWhitespace(
-    row.original_file_name || row.file_name || row.filename,
-  ).toLowerCase();
-  const summary = normalizeWhitespace(row.summary).toLowerCase();
-  const normalizedText = normalizeWhitespace(row.extracted_text).toLowerCase();
-  let score = 0;
-  const titleIndex = title.indexOf(normalizedQuery);
-  if (titleIndex >= 0) {
-    score += 320 - Math.min(titleIndex, 160);
-  }
-
-  const summaryIndex = summary.indexOf(normalizedQuery);
-  if (summaryIndex >= 0) {
-    score += 220 - Math.min(summaryIndex, 150);
-  }
-
-  const directIndex = normalizedText.indexOf(normalizedQuery);
-  if (directIndex >= 0) {
-    score += 140 - Math.min(directIndex, 120);
-  }
-
-  for (const token of tokenizeKeywords(query)) {
-    if (title.includes(token)) score += 40;
-    if (summary.includes(token)) score += 28;
-    if (normalizedText.includes(token)) score += 18;
-  }
-
-  for (const keyword of row.keywords ?? []) {
-    if (normalizedQuery.includes(keyword) || keyword.includes(normalizedQuery)) {
-      score += 18;
-    }
-  }
-
-  return score;
-}
-
-function buildSnippet(row: SearchDocumentRow, query: string) {
-  const snippet = buildSnippetFromText(row.summary, query);
-  if (snippet) {
-    return snippet;
-  }
-
-  return buildSnippetFromText(row.extracted_text, query);
-}
-
-function buildSnippetFromText(sourceText: string, query: string) {
-  const normalizedText = normalizeWhitespace(sourceText);
-  if (!normalizedText) {
-    return null;
-  }
-
-  const lowerText = normalizedText.toLowerCase();
-  const searchTerms = [query.trim().toLowerCase(), ...tokenizeKeywords(query)].filter(Boolean);
-  const matchIndex = searchTerms
-    .map((term) => lowerText.indexOf(term))
-    .filter((index) => index >= 0)
-    .sort((a, b) => a - b)[0];
-
-  if (matchIndex === undefined) {
-    return null;
-  }
-
-  const sentenceStart = normalizedText.lastIndexOf(". ", Math.max(matchIndex - 1, 0));
-  const sentenceEnd = normalizedText.indexOf(". ", matchIndex);
-  const start = Math.max(sentenceStart >= 0 ? sentenceStart + 2 : 0, matchIndex - 70);
-  const end = Math.min(
-    sentenceEnd >= 0 ? sentenceEnd + 1 : normalizedText.length,
-    matchIndex + 130,
-  );
-  const snippet = normalizedText.slice(start, end).trim();
-
-  if (!snippet) {
-    return null;
-  }
-
-  return `${start > 0 ? "... " : ""}${snippet}${end < normalizedText.length ? " ..." : ""}`;
-}
-
-function clampSearchLimit(limit?: number) {
-  if (!limit || !Number.isInteger(limit) || limit < 1) {
-    return 20;
-  }
-  return Math.min(limit, 50);
-}
-
-function buildSearchPatterns(query: string) {
-  return tokenizeKeywords(query).map((token) => `%${escapeLikePattern(token)}%`);
-}
-
-function escapeLikePattern(value: string) {
-  return value.replace(/[%_\\]/g, "\\$&");
 }
