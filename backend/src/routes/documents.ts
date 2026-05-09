@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { HttpError } from "../utils/httpError.js";
 import {
@@ -26,6 +26,8 @@ import {
 	toPublicCategory,
 	toPublicDocument,
 	toPublicDocumentSearchResult,
+	userCanAccessDocument,
+	userCanAccessSpace,
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
@@ -66,10 +68,18 @@ export const uploadImageMiddleware = multer({
 	},
 });
 
-router.get("/categories", async (req, res) => {
+router.get("/categories", requireAuth, async (req: AuthRequest, res) => {
 	const spaceId = getSpaceId(req);
 	if (spaceId === false) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	if (
+		typeof spaceId === "number" &&
+		!(await userCanAccessSpace(spaceId, req.userId!))
+	) {
+		res.status(404).json({ error: "Space not found" });
 		return;
 	}
 
@@ -77,18 +87,18 @@ router.get("/categories", async (req, res) => {
 	res.json({ categories: categories.map(toPublicCategory) });
 });
 
-router.get("/documents", async (req, res) => {
+router.get("/documents", requireAuth, async (req: AuthRequest, res) => {
 	const spaceId = getSpaceId(req);
 	if (spaceId === false) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
 		return;
 	}
 
-	const documents = await listDocuments(spaceId);
+	const documents = await listDocuments(spaceId, req.userId);
 	res.json({ documents: documents.map(toPublicDocument) });
 });
 
-router.get("/documents/search", async (req, res) => {
+router.get("/documents/search", requireAuth, async (req: AuthRequest, res) => {
 	const spaceId = getSpaceId(req);
 	if (spaceId === false) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
@@ -108,17 +118,22 @@ router.get("/documents/search", async (req, res) => {
 	const documents = await searchDocuments({
 		query,
 		spaceId,
+		userId: req.userId,
 		limit: Number.isInteger(requestedLimit) ? requestedLimit : undefined,
 	});
 
 	res.json({
 		query,
-		documents: documents.map(toPublicDocumentSearchResult),
-		results: documents.map(toPublicDocumentSearchResult),
+		documents: documents.map((document) =>
+			toPublicDocumentSearchResult(document, query),
+		),
+		results: documents.map((document) =>
+			toPublicDocumentSearchResult(document, query),
+		),
 	});
 });
 
-router.post("/assistant/dashboard", requireAuth, async (req, res) => {
+router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) => {
 	const spaceId =
 		typeof req.body?.spaceId === "number"
 			? req.body.spaceId
@@ -128,6 +143,14 @@ router.post("/assistant/dashboard", requireAuth, async (req, res) => {
 
 	if (spaceId !== null && (!Number.isInteger(spaceId) || spaceId < 1)) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	if (
+		spaceId !== null &&
+		!(await userCanAccessSpace(spaceId, req.userId!))
+	) {
+		res.status(404).json({ error: "Space not found" });
 		return;
 	}
 
@@ -141,39 +164,54 @@ router.post("/assistant/dashboard", requireAuth, async (req, res) => {
 		prompt,
 		spaceId,
 		pathname,
+		userId: req.userId,
 	});
 
 	res.json(response);
 });
 
-router.get("/documents/:documentId", async (req, res) => {
-	const documentId = getDocumentIdFromParams(req);
-	if (!documentId) {
-		res.status(400).json({
-			error: "documentId must be a positive integer",
-		});
-		return;
-	}
-
-	const document = await getDocument(documentId);
-	if (!document) {
-		res.status(404).json({ error: "Document not found" });
-		return;
-	}
-
-	res.json({ document: toPublicDocument(document) });
-});
-
-router.patch(
+router.get(
 	"/documents/:documentId",
 	requireAuth,
-	validate(updateDocumentSchema),
-	async (req, res) => {
+	async (req: AuthRequest, res) => {
 		const documentId = getDocumentIdFromParams(req);
 		if (!documentId) {
 			res.status(400).json({
 				error: "documentId must be a positive integer",
 			});
+			return;
+		}
+
+		if (!(await userCanAccessDocument(documentId, req.userId!))) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		const document = await getDocument(documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		res.json({ document: toPublicDocument(document) });
+	},
+);
+
+router.patch(
+	"/documents/:documentId",
+	requireAuth,
+	validate(updateDocumentSchema),
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
+
+		if (!(await userCanAccessDocument(documentId, req.userId!))) {
+			res.status(404).json({ error: "Document not found" });
 			return;
 		}
 
@@ -187,125 +225,177 @@ router.patch(
 	},
 );
 
-router.delete("/documents/:documentId", requireAuth, async (req, res) => {
-	const documentId = getDocumentIdFromParams(req);
-	if (!documentId) {
-		res.status(400).json({
-			error: "documentId must be a positive integer",
-		});
-		return;
-	}
-
-	const document = await deleteDocument(documentId);
-	if (!document) {
-		res.status(404).json({ error: "Document not found" });
-		return;
-	}
-
-	if (document.filepath) {
-		const filePath = resolveStoredFilePath(document.filepath);
-		if (filePath) {
-			try {
-				await fs.promises.unlink(filePath);
-			} catch (error) {
-				if (!isNotFoundError(error)) {
-					throw error;
-				}
-			}
-		}
-	}
-
-	res.json({ success: true });
-});
-
-router.get("/documents/:documentId/file", async (req, res, next) => {
-	const documentId = getDocumentIdFromParams(req);
-	if (!documentId) {
-		res.status(400).json({
-			error: "documentId must be a positive integer",
-		});
-		return;
-	}
-
-	const document = await getDocument(documentId);
-	if (!document) {
-		res.status(404).json({ error: "Document not found" });
-		return;
-	}
-
-	if (!document.filepath) {
-		res.status(404).json({ error: "Stored file not found" });
-		return;
-	}
-
-	const filePath = resolveStoredFilePath(document.filepath);
-	if (!filePath) {
-		res.status(400).json({ error: "Invalid stored file path" });
-		return;
-	}
-
-	try {
-		await fs.promises.access(filePath, fs.constants.R_OK);
-	} catch {
-		res.status(404).json({ error: "Stored file not found" });
-		return;
-	}
-
-	const publicDocument = toPublicDocument(document);
-	const displayName =
-		publicDocument.originalFileName ??
-		publicDocument.fileName ??
-		publicDocument.filename;
-	const disposition = req.query.download === "1" ? "attachment" : "inline";
-	const downloadName = resolveDownloadFilename(displayName, [
-		publicDocument.originalFileName,
-		publicDocument.storedFileName,
-		publicDocument.filename,
-		publicDocument.filepath,
-	]);
-
-	res.setHeader("Content-Type", publicDocument.mimeType);
-	res.setHeader(
-		"Content-Disposition",
-		`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
-	);
-
-	res.sendFile(filePath, (err) => {
-		if (!err) {
+router.delete(
+	"/documents/:documentId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
 			return;
 		}
 
-		if (
-			err.message === "Request aborted" ||
-			(err as NodeJS.ErrnoException).code === "ECONNABORTED" ||
-			res.headersSent
-		) {
-			return;
-		}
-
-		next(err);
-	});
-});
-
-router.post("/categories", validate(createCategorySchema), async (req, res) => {
-	const { documentId, ...categoryInput } = req.body;
-	const category = await createCategory({ ...categoryInput, documentId });
-	let responseCategory = category;
-
-	if (documentId) {
-		const assigned = await assignDocumentCategory(documentId, category.id);
-		if (!assigned) {
+		if (!(await userCanAccessDocument(documentId, req.userId!))) {
 			res.status(404).json({ error: "Document not found" });
 			return;
 		}
 
+		const document = await deleteDocument(documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		if (document.filepath) {
+			const filePath = resolveStoredFilePath(document.filepath);
+			if (filePath) {
+				try {
+					await fs.promises.unlink(filePath);
+				} catch (error) {
+					if (!isNotFoundError(error)) {
+						throw error;
+					}
+				}
+			}
+		}
+
+		res.json({ success: true });
+	},
+);
+
+router.get(
+	"/documents/:documentId/file",
+	requireAuth,
+	async (req: AuthRequest, res, next) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
+
+		if (!(await userCanAccessDocument(documentId, req.userId!))) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		const document = await getDocument(documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		if (!document.filepath) {
+			res.status(404).json({ error: "Stored file not found" });
+			return;
+		}
+
+		const filePath = resolveStoredFilePath(document.filepath);
+		if (!filePath) {
+			res.status(400).json({ error: "Invalid stored file path" });
+			return;
+		}
+
+		try {
+			await fs.promises.access(filePath, fs.constants.R_OK);
+		} catch {
+			res.status(404).json({ error: "Stored file not found" });
+			return;
+		}
+
+		const publicDocument = toPublicDocument(document);
+		const displayName =
+			publicDocument.originalFileName ??
+			publicDocument.fileName ??
+			publicDocument.filename;
+		const disposition =
+			req.query.download === "1" ? "attachment" : "inline";
+		const downloadName = resolveDownloadFilename(displayName, [
+			publicDocument.originalFileName,
+			publicDocument.storedFileName,
+			publicDocument.filename,
+			publicDocument.filepath,
+		]);
+
+		res.setHeader("Content-Type", publicDocument.mimeType);
+		res.setHeader(
+			"Content-Disposition",
+			`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
+		);
+
+			res.sendFile(filePath, (err) => {
+			if (!err) {
+				return;
+			}
+
+			if (
+				err.message === "Request aborted" ||
+				(err as NodeJS.ErrnoException).code === "ECONNABORTED" ||
+				res.headersSent
+			) {
+				return;
+			}
+
+				next(err);
+			});
+		},
+	);
+
+router.post(
+	"/categories",
+	requireAuth,
+	validate(createCategorySchema),
+	async (req: AuthRequest, res) => {
+		const { documentId, ...categoryInput } = req.body;
+		const spaceId =
+			typeof categoryInput.spaceId === "number"
+				? categoryInput.spaceId
+				: typeof categoryInput.spaceId === "string"
+					? Number(categoryInput.spaceId)
+					: null;
+
+		if (
+			typeof documentId === "number" &&
+			!(await userCanAccessDocument(documentId, req.userId!))
+		) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		if (
+			spaceId !== null &&
+			(!Number.isInteger(spaceId) ||
+				spaceId < 1 ||
+				!(await userCanAccessSpace(spaceId, req.userId!)))
+		) {
+			res.status(404).json({ error: "Space not found" });
+			return;
+		}
+
+		const category = await createCategory({ ...categoryInput, documentId });
+		let responseCategory = category;
+
+		if (documentId) {
+			const assigned = await assignDocumentCategory(
+				documentId,
+				category.id,
+			);
+			if (!assigned) {
+				res.status(404).json({ error: "Document not found" });
+				return;
+			}
+
 			responseCategory = (await getCategory(category.id)) ?? category;
 		}
 
-	res.status(201).json({ category: toPublicCategory(responseCategory) });
-});
+		res.status(201).json({ category: toPublicCategory(responseCategory) });
+	},
+);
 
-async function getRequestedCategory(req: Request) {
+async function getRequestedCategory(req: AuthRequest) {
 	const rawCategoryId = req.body?.categoryId;
 	if (!rawCategoryId) {
 		return null;
@@ -318,6 +408,13 @@ async function getRequestedCategory(req: Request) {
 
 	const category = await getCategory(categoryId);
 	if (!category) {
+		throw new HttpError(404, "Category not found");
+	}
+
+	if (
+		typeof category.space_id !== "number" ||
+		!(await userCanAccessSpace(category.space_id, req.userId!))
+	) {
 		throw new HttpError(404, "Category not found");
 	}
 
@@ -336,7 +433,7 @@ async function applyRequestedCategory(
 	return category;
 }
 
-export async function analyzePdfUploadHandler(req: Request, res: Response) {
+export async function analyzePdfUploadHandler(req: AuthRequest, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "PDF file is required" });
 		return;
@@ -346,11 +443,20 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		typeof req.body?.minConfidence === "string"
 			? Number(req.body.minConfidence)
 			: undefined;
+	const documentId = getDocumentId(req);
+	if (
+		documentId &&
+		!(await userCanAccessDocument(documentId, req.userId!))
+	) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
 	const requestedCategory = await getRequestedCategory(req);
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
-		getDocumentId(req),
+		documentId,
 	);
 	const assignedCategory = await applyRequestedCategory(
 		analysis.documentId,
@@ -385,7 +491,7 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	});
 }
 
-export async function analyzeImageUploadHandler(req: Request, res: Response) {
+export async function analyzeImageUploadHandler(req: AuthRequest, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "Image file is required" });
 		return;
@@ -395,11 +501,20 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		typeof req.body?.minConfidence === "string"
 			? Number(req.body.minConfidence)
 			: undefined;
+	const documentId = getDocumentId(req);
+	if (
+		documentId &&
+		!(await userCanAccessDocument(documentId, req.userId!))
+	) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
 	const requestedCategory = await getRequestedCategory(req);
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
-		getDocumentId(req),
+		documentId,
 	);
 	const assignedCategory = await applyRequestedCategory(
 		analysis.documentId,
@@ -436,12 +551,14 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 
 router.post(
 	"/documents/analyze",
+	requireAuth,
 	uploadPdfMiddleware.single("file"),
 	analyzePdfUploadHandler,
 );
 
 router.post(
 	"/images/analyze",
+	requireAuth,
 	uploadImageMiddleware.single("file"),
 	analyzeImageUploadHandler,
 );

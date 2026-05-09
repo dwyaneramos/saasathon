@@ -1,98 +1,43 @@
 "use client";
 
 import * as React from "react";
-import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
-import {
-	ChevronRight,
-	FolderOpen,
-	Layers,
-	FolderClosed,
-	Search,
-	X,
-	FolderPlus,
-	LayersPlus,
-	UploadCloud,
-} from "lucide-react";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Search, FolderPlus, UploadCloud } from "lucide-react";
 import {
 	Sidebar,
 	SidebarContent,
 	SidebarFooter,
-	SidebarGroup,
-	SidebarGroupLabel,
 	SidebarHeader,
 	SidebarInput,
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
-	SidebarMenuSub,
-	SidebarMenuSubButton,
-	SidebarMenuSubItem,
 	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { UploadWorkspace } from "@/components/upload-workspace";
 import { apiBaseUrl } from "@/lib/api";
-import { fileIconFor } from "@/lib/file-icons";
-import { cn } from "@/lib/utils";
+import {
+	CreateCategoryModal,
+	CreateSpaceModal,
+} from "./app-sidebar/create-modals";
+import { SpaceSwitcher } from "./app-sidebar/space-switcher";
+import { FileTree } from "./app-sidebar/file-tree";
+import { UploadModal } from "./app-sidebar/upload-modal";
+import {
+	fileTreeUpdatedEvent,
+	openUploadModalEvent,
+	type ApiCategory,
+	type ApiDocument,
+	type ApiDocumentSearchResult,
+	type ApiSpace,
+	type AppSidebarProps,
+	type Category,
+	type FileTreeUpdatedEvent,
+	type Space,
+} from "./app-sidebar/types";
 
-export const fileTreeUpdatedEvent = "kibi:file-tree-updated";
-export const openUploadModalEvent = "kibi:open-upload-modal";
-
-export type KibiFile = {
-	id: number;
-	name: string;
-	filename: string;
-	mimeType: string;
-};
-type Category = { id: number; name: string; files: KibiFile[] };
-type Space = { id: number; name: string };
-
-type ApiSpace = {
-	id: number;
-	name: string;
-};
-
-type ApiCategory = {
-	id: number;
-	name: string;
-	spaceId: number | null;
-};
-
-type ApiDocument = {
-	id: number;
-	filename: string;
-	fileName: string;
-	originalFileName: string | null;
-	mimeType: string;
-	categoryId: number | null;
-};
-
-type FileTreeUpdatedEvent = CustomEvent<{
-	documentIds?: number[];
-}>;
+export { fileTreeUpdatedEvent, openUploadModalEvent };
+export type { KibiFile } from "./app-sidebar/types";
 
 function authHeaders() {
 	const token = localStorage.getItem("token");
@@ -103,432 +48,67 @@ function fileDisplayName(file: ApiDocument) {
 	return file.originalFileName || file.fileName || file.filename;
 }
 
-// ── Space switcher (header) ───────────────────────────────────────────────────
+function reconcileFiles(
+	currentFiles: Category["files"],
+	nextFiles: Category["files"],
+) {
+	const currentById = new Map(currentFiles.map((file) => [file.id, file]));
+	let changed = currentFiles.length !== nextFiles.length;
 
-function SpaceSwitcher({
-	spaces,
-	activeSpace,
-	onSelect,
-	onCreateSpace,
-}: {
-	spaces: Space[];
-	activeSpace: Space | null;
-	onSelect: (space: Space) => void;
-	onCreateSpace?: () => void;
-}) {
-	const { isMobile } = useSidebar();
-	const activeSpaceName = activeSpace?.name ?? "No spaces";
+	const files = nextFiles.map((nextFile) => {
+		const currentFile = currentById.get(nextFile.id);
+		if (
+			currentFile &&
+			currentFile.name === nextFile.name &&
+			currentFile.filename === nextFile.filename &&
+			currentFile.mimeType === nextFile.mimeType
+		) {
+			return currentFile;
+		}
 
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton
-					tooltip={activeSpaceName}
-					className="hover:bg-muted py-6"
-					style={{ transition: "none" }}
-				>
-					<div className="flex items-center gap-2 w-full">
-						<Layers />
-						<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-							<span className="truncate font-semibold">
-								{activeSpaceName}
-							</span>
-							<span className="truncate text-xs text-muted-foreground">
-								Active space
-							</span>
-						</div>
-						<div className="flex items-center gap-2">
-							<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-						</div>
-					</div>
-				</SidebarMenuButton>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent
-				side={isMobile ? "bottom" : "right"}
-				align="start"
-				className="min-w-48 rounded-lg"
-			>
-				{spaces.length > 0 ? (
-					spaces.map((space) => (
-						<DropdownMenuItem
-							key={space.id}
-							onSelect={() => onSelect(space)}
-							className="gap-2"
-						>
-							<div className="flex size-6 items-center justify-center rounded-md">
-								<Layers className="size-3.5 shrink-0" />
-							</div>
-							{space.name}
-							{space.id === activeSpace?.id && (
-								<span className="ml-auto text-xs text-muted-foreground">
-									Active
-								</span>
-							)}
-						</DropdownMenuItem>
-					))
-				) : (
-					<DropdownMenuItem disabled>
-						No spaces found
-					</DropdownMenuItem>
-				)}
-				<DropdownMenuItem
-					className="w-full mt-2 border border-dashed border-sidebar-border bg-sidebar text-muted-foreground transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
-					onClick={onCreateSpace}
-				>
-					<LayersPlus className="size-4" />
-					<span className="group-data-[collapsible=icon]:hidden">
-						New space
-					</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
+		changed = true;
+		return nextFile;
+	});
+
+	return changed ? files : currentFiles;
 }
 
-// ── File tree (categories → files) ───────────────────────────────────────────
-
-function CategoryItem({
-	category,
-	hasNewCategory,
-	hasNewFiles,
-	newFileIds,
-	onClearCategory,
-	onClearNewFile,
-}: {
-	category: Category;
-	hasNewCategory: boolean;
-	hasNewFiles: boolean;
-	newFileIds: Set<number>;
-	onClearCategory: (category: Category) => void;
-	onClearNewFile: (categoryId: number, fileId: number) => void;
-}) {
-	const [open, setOpen] = React.useState(category.files.length > 0);
-	const [allowCategoryWrap, setAllowCategoryWrap] = React.useState(false);
-	const { state, setOpen: setSidebarOpen } = useSidebar();
-
-	React.useEffect(() => {
-		if (state !== "expanded") {
-			const timeout = window.setTimeout(() => {
-				setAllowCategoryWrap(false);
-			}, 0);
-			return () => window.clearTimeout(timeout);
-		}
-
-		const timeout = window.setTimeout(() => {
-			setAllowCategoryWrap(true);
-		}, 220);
-
-		return () => window.clearTimeout(timeout);
-	}, [state]);
-
-	function handleOpenChange(nextOpen: boolean) {
-		setOpen(nextOpen);
-		setSidebarOpen(true);
-	}
-
-	const FolderIcon = open ? FolderOpen : FolderClosed;
-	const showCategoryPip = hasNewCategory || hasNewFiles;
-
-	return (
-		<Collapsible
-			open={open}
-			onOpenChange={handleOpenChange}
-			className="group/collapsible"
-		>
-			<SidebarMenuItem>
-				<CollapsibleTrigger asChild>
-					<SidebarMenuButton
-						tooltip={category.name}
-						className={cn(
-							"hover:bg-muted",
-							allowCategoryWrap
-								? "h-auto min-h-8 items-start"
-								: undefined,
-						)}
-						style={{ transition: "none" }}
-						onClick={() => onClearCategory(category)}
-					>
-						<span
-							className={
-								allowCategoryWrap
-									? "relative mt-0.5 flex shrink-0"
-									: "relative flex shrink-0"
-							}
-						>
-							<FolderIcon className="shrink-0" />
-							{showCategoryPip && (
-								<span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-rose-400" />
-							)}
-						</span>
-						<span
-							className={
-								allowCategoryWrap
-									? "min-w-0 whitespace-normal break-words leading-tight group-data-[collapsible=icon]:hidden"
-									: "min-w-0 overflow-hidden whitespace-nowrap group-data-[collapsible=icon]:hidden"
-							}
-						>
-							{category.name}
-						</span>
-						<ChevronRight
-							className={
-								allowCategoryWrap
-									? "mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
-									: "ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
-							}
-						/>
-					</SidebarMenuButton>
-				</CollapsibleTrigger>
-
-				<CollapsibleContent>
-					<SidebarMenuSub>
-						{category.files.length > 0 ? (
-							category.files.map((file) => (
-								<SidebarMenuSubItem key={file.id}>
-									<SidebarMenuSubButton
-										asChild
-										className="hover:bg-muted"
-									>
-										<Link
-											to={`/file/${file.id}`}
-											className="flex items-center gap-2 text-muted-foreground"
-											onClick={() =>
-												onClearNewFile(
-													category.id,
-													file.id,
-												)
-											}
-										>
-											<span className="relative mt-0.5 flex shrink-0">
-												{React.createElement(
-													fileIconFor(file),
-													{
-														className:
-															"size-3.5 shrink-0 text-muted-foreground/80",
-													},
-												)}
-												{newFileIds.has(file.id) && (
-													<span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-rose-400" />
-												)}
-											</span>
-											<span className="min-w-0 overflow-hidden whitespace-nowrap">
-												{file.name}
-											</span>
-										</Link>
-									</SidebarMenuSubButton>
-								</SidebarMenuSubItem>
-							))
-						) : (
-							<SidebarMenuSubItem>
-								<span className="block truncate px-2 py-1 text-xs text-muted-foreground">
-									No files
-								</span>
-							</SidebarMenuSubItem>
-						)}
-					</SidebarMenuSub>
-				</CollapsibleContent>
-			</SidebarMenuItem>
-		</Collapsible>
+function reconcileCategories(
+	currentCategories: Category[],
+	nextCategories: Category[],
+) {
+	const currentById = new Map(
+		currentCategories.map((category) => [category.id, category]),
 	);
-}
+	let changed = currentCategories.length !== nextCategories.length;
 
-function FileTree({
-	categories,
-	isLoading,
-	error,
-	newCategoryIds,
-	newFileCategoryIds,
-	newFileIds,
-	onClearCategory,
-	onClearNewFile,
-}: {
-	categories: Category[];
-	isLoading: boolean;
-	error: string | null;
-	newCategoryIds: Set<number>;
-	newFileCategoryIds: Set<number>;
-	newFileIds: Set<number>;
-	onClearCategory: (category: Category) => void;
-	onClearNewFile: (categoryId: number, fileId: number) => void;
-}) {
-	return (
-		<SidebarGroup>
-			<SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-				Categories
-			</SidebarGroupLabel>
-			<SidebarMenu>
-				{isLoading && (
-					<SidebarMenuItem>
-						<span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-							Loading files...
-						</span>
-					</SidebarMenuItem>
-				)}
-				{!isLoading && error && (
-					<SidebarMenuItem>
-						<span className="block px-2 py-1 text-sm text-destructive group-data-[collapsible=icon]:hidden">
-							{error}
-						</span>
-					</SidebarMenuItem>
-				)}
-				{!isLoading && !error && categories.length === 0 && (
-					<SidebarMenuItem>
-						<span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-							No categories yet
-						</span>
-					</SidebarMenuItem>
-				)}
-				{!isLoading &&
-					!error &&
-					categories.map((category) => (
-						<CategoryItem
-							key={category.id}
-							category={category}
-							hasNewCategory={newCategoryIds.has(category.id)}
-							hasNewFiles={newFileCategoryIds.has(category.id)}
-							newFileIds={newFileIds}
-							onClearCategory={onClearCategory}
-							onClearNewFile={onClearNewFile}
-						/>
-					))}
-			</SidebarMenu>
-		</SidebarGroup>
-	);
-}
-
-function UploadModal({
-	open,
-	onOpenChange,
-	spaceId,
-}: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	spaceId?: number | null;
-}) {
-	const [isUploadLocked, setIsUploadLocked] = React.useState(false);
-	const [hasAnalysisStarted, setHasAnalysisStarted] = React.useState(false);
-
-	const handleBusyChange = React.useCallback((isBusy: boolean) => {
-		setIsUploadLocked(isBusy);
-		if (isBusy) {
-			setHasAnalysisStarted(true);
-		}
-	}, []);
-
-	const requestClose = React.useCallback(() => {
-		if (isUploadLocked) {
-			return;
+	const categories = nextCategories.map((nextCategory) => {
+		const currentCategory = currentById.get(nextCategory.id);
+		if (!currentCategory) {
+			changed = true;
+			return nextCategory;
 		}
 
-		onOpenChange(false);
-	}, [isUploadLocked, onOpenChange]);
-
-	React.useEffect(() => {
-		if (!open) {
-			setIsUploadLocked(false);
-			setHasAnalysisStarted(false);
-		}
-	}, [open]);
-
-	React.useEffect(() => {
-		if (!open) {
-			return;
+		const files = reconcileFiles(currentCategory.files, nextCategory.files);
+		if (
+			currentCategory.name === nextCategory.name &&
+			files === currentCategory.files
+		) {
+			return currentCategory;
 		}
 
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape" && !isUploadLocked) {
-				onOpenChange(false);
-			}
+		changed = true;
+		return {
+			...currentCategory,
+			name: nextCategory.name,
+			files,
 		};
+	});
 
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [isUploadLocked, onOpenChange, open]);
-
-	if (!open) {
-		return null;
-	}
-
-	return createPortal(
-		<div
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="upload-files-title"
-			className="fixed inset-0 z-[200] flex items-center justify-center bg-foreground/20 p-4 supports-backdrop-filter:backdrop-blur-sm"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget && !isUploadLocked) {
-					onOpenChange(false);
-				}
-			}}
-		>
-			<Card className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card !py-0">
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-sm"
-					className="absolute top-4 right-4 z-10 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-					onClick={requestClose}
-					disabled={isUploadLocked}
-				>
-					<X className="size-4" />
-					<span className="sr-only">Close upload modal</span>
-				</Button>
-				<CardHeader className="border-b border-border px-6 py-5 pr-14">
-					<CardTitle
-						id="upload-files-title"
-						className="text-lg font-semibold text-foreground"
-					>
-						Upload files
-					</CardTitle>
-					<CardDescription className="max-w-xl">
-						Add PDFs or images to analyse and organize them into
-						categories.
-					</CardDescription>
-				</CardHeader>
-				<CardContent
-					className={cn(
-						"max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 pt-6",
-						hasAnalysisStarted ? "pb-0" : "pb-6",
-					)}
-				>
-					<UploadWorkspace
-						detailMode="compact"
-						showHeading={false}
-						onBusyChange={handleBusyChange}
-						spaceId={spaceId}
-					/>
-				</CardContent>
-				{hasAnalysisStarted ? (
-					<div className="flex items-center justify-between gap-4 border-t border-border bg-muted/50 px-6 py-4 text-muted-foreground">
-						<span className="min-w-0 text-sm leading-relaxed">
-							{isUploadLocked
-								? "Analysis is running. Keep this window open until it finishes."
-								: "Analysis complete. New files are ready in the sidebar."}
-						</span>
-						<Button
-							type="button"
-							variant="accent"
-							className="shrink-0"
-							size="default"
-							onClick={requestClose}
-							disabled={isUploadLocked}
-						>
-							Done
-						</Button>
-					</div>
-				) : null}
-			</Card>
-		</div>,
-		document.body,
-	);
+	return changed ? categories : currentCategories;
 }
 
 // ── AppSidebar ────────────────────────────────────────────────────────────────
-
-type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
-	activeSpaceId?: number | null;
-	onSpaceChange?: React.Dispatch<React.SetStateAction<number | null>>;
-	onSpacesLoaded?: React.Dispatch<React.SetStateAction<Space[]>>;
-};
 
 export function AppSidebar({
 	activeSpaceId: controlledActiveSpaceId,
@@ -558,6 +138,10 @@ export function AppSidebar({
 	>(null);
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 	const [searchQuery, setSearchQuery] = React.useState("");
+	const [contentSearchResults, setContentSearchResults] = React.useState<
+		ApiDocumentSearchResult[]
+	>([]);
+	const [isContentSearching, setIsContentSearching] = React.useState(false);
 	const searchInputRef = React.useRef<HTMLInputElement | null>(null);
 	const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
 		() => new Set(),
@@ -572,6 +156,7 @@ export function AppSidebar({
 		new Map(),
 	);
 	const fileTreeLoadedRef = React.useRef(false);
+	const pendingSpaceToastIdRef = React.useRef<number | null>(null);
 
 	const activeSpaceId =
 		controlledActiveSpaceId !== undefined
@@ -593,26 +178,53 @@ export function AppSidebar({
 		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
 	const { setOpen: setSidebarOpen } = useSidebar();
 	const trimmedSearchQuery = searchQuery.trim().toLowerCase();
-	const visibleCategories = React.useMemo(() => {
+	const contentSearchFileIds = React.useMemo(
+		() => new Set(contentSearchResults.map((result) => result.id)),
+		[contentSearchResults],
+	);
+	const contentSearchResultsById = React.useMemo(
+		() =>
+			new Map(contentSearchResults.map((result) => [result.id, result])),
+		[contentSearchResults],
+	);
+	const visibleCategories = React.useMemo<Category[]>(() => {
 		if (!trimmedSearchQuery) {
 			return categories;
 		}
 
 		return categories
-			.map((category) => {
+			.map((category): Category | null => {
 				const categoryMatches = category.name
 					.toLowerCase()
 					.includes(trimmedSearchQuery);
-				const matchingFiles = category.files.filter(
-					(file) =>
-						file.name.toLowerCase().includes(trimmedSearchQuery) ||
-						file.filename
-							.toLowerCase()
-							.includes(trimmedSearchQuery),
-				);
+				const matchingFiles = category.files
+					.filter(
+						(file) =>
+							file.name
+								.toLowerCase()
+								.includes(trimmedSearchQuery) ||
+							file.filename
+								.toLowerCase()
+								.includes(trimmedSearchQuery) ||
+							contentSearchFileIds.has(file.id),
+					)
+					.map((file) => ({
+						...file,
+						searchSnippet:
+							contentSearchResultsById.get(file.id)?.snippet ??
+							undefined,
+					}));
 
 				if (categoryMatches) {
-					return category;
+					return {
+						...category,
+						files: category.files.map((file) => ({
+							...file,
+							searchSnippet:
+								contentSearchResultsById.get(file.id)
+									?.snippet ?? undefined,
+						})),
+					};
 				}
 
 				if (matchingFiles.length > 0) {
@@ -625,7 +237,12 @@ export function AppSidebar({
 				return null;
 			})
 			.filter((category): category is Category => category !== null);
-	}, [categories, trimmedSearchQuery]);
+	}, [
+		categories,
+		contentSearchFileIds,
+		contentSearchResultsById,
+		trimmedSearchQuery,
+	]);
 	const validateCategoryName = React.useCallback(
 		(value: string) => {
 			const trimmed = value.trim();
@@ -678,6 +295,16 @@ export function AppSidebar({
 		setCreateCategoryError(null);
 		setIsCreateCategoryOpen(true);
 	}, []);
+
+	const handleSelectSpace = React.useCallback(
+		(space: Space) => {
+			if (space.id === activeSpaceId) return;
+
+			pendingSpaceToastIdRef.current = space.id;
+			setActiveSpaceId(space.id);
+		},
+		[activeSpaceId, setActiveSpaceId],
+	);
 
 	const closeCreateCategoryModal = React.useCallback(() => {
 		if (isCreatingCategory) return;
@@ -749,8 +376,11 @@ export function AppSidebar({
 		async (detectNewFiles = false, changedDocumentIds: number[] = []) => {
 			if (!spacesLoaded) return;
 
-			setIsLoading(true);
-			setError(null);
+			const shouldBlockTree = !fileTreeLoadedRef.current;
+			if (shouldBlockTree) {
+				setIsLoading(true);
+				setError(null);
+			}
 
 			const query = activeSpaceId ? `?spaceId=${activeSpaceId}` : "";
 
@@ -881,12 +511,18 @@ export function AppSidebar({
 
 				categoryFileIdsRef.current = nextCategoryFileIds;
 				fileTreeLoadedRef.current = true;
-				setCategories(nextCategories);
+				setCategories((currentCategories) =>
+					reconcileCategories(currentCategories, nextCategories),
+				);
 			} catch {
-				setCategories([]);
-				setError("Unable to load files");
+				if (shouldBlockTree) {
+					setCategories([]);
+					setError("Unable to load files");
+				}
 			} finally {
-				setIsLoading(false);
+				if (shouldBlockTree) {
+					setIsLoading(false);
+				}
 			}
 		},
 		[activeSpaceId, spacesLoaded],
@@ -949,6 +585,11 @@ export function AppSidebar({
 		if (!spacesLoaded) return;
 
 		async function run() {
+			fileTreeLoadedRef.current = false;
+			categoryFileIdsRef.current = new Map();
+			setCategories([]);
+			setContentSearchResults([]);
+			setIsLoading(true);
 			await loadFileTree();
 		}
 
@@ -956,6 +597,19 @@ export function AppSidebar({
 
 		return () => {};
 	}, [spacesLoaded, activeSpaceId, loadFileTree]);
+
+	React.useEffect(() => {
+		const pendingSpaceId = pendingSpaceToastIdRef.current;
+		if (pendingSpaceId === null || pendingSpaceId !== activeSpaceId) return;
+
+		const selectedSpace = spaces.find(
+			(space) => space.id === pendingSpaceId,
+		);
+		if (!selectedSpace) return;
+
+		pendingSpaceToastIdRef.current = null;
+		toast.success(`Switched to '${selectedSpace.name}'`);
+	}, [activeSpaceId, spaces]);
 
 	React.useEffect(() => {
 		const handleFileTreeUpdated = (event: Event) => {
@@ -973,6 +627,62 @@ export function AppSidebar({
 			);
 		};
 	}, [loadFileTree]);
+
+	React.useEffect(() => {
+		const query = searchQuery.trim();
+		if (query.length < 2) {
+			setContentSearchResults([]);
+			setIsContentSearching(false);
+			return;
+		}
+
+		const abortController = new AbortController();
+		const timeout = window.setTimeout(async () => {
+			setIsContentSearching(true);
+
+			try {
+				const params = new URLSearchParams({
+					q: query,
+					limit: "20",
+				});
+				if (typeof activeSpaceId === "number") {
+					params.set("spaceId", String(activeSpaceId));
+				}
+
+				const response = await fetch(
+					`${apiBaseUrl}/documents/search?${params.toString()}`,
+					{
+						headers: authHeaders(),
+						signal: abortController.signal,
+					},
+				);
+				const payload = (await response.json().catch(() => null)) as {
+					documents?: ApiDocumentSearchResult[];
+				} | null;
+
+				if (!response.ok) {
+					throw new Error("Search failed");
+				}
+
+				setContentSearchResults(payload?.documents ?? []);
+			} catch (err) {
+				if (err instanceof DOMException && err.name === "AbortError") {
+					return;
+				}
+
+				setContentSearchResults([]);
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsContentSearching(false);
+				}
+			}
+		}, 180);
+
+		return () => {
+			window.clearTimeout(timeout);
+			abortController.abort();
+		};
+	}, [activeSpaceId, searchQuery]);
 
 	React.useEffect(() => {
 		const handleOpenUploadModal = () => {
@@ -1153,7 +863,7 @@ export function AppSidebar({
 							<SpaceSwitcher
 								spaces={spaces}
 								activeSpace={activeSpace}
-								onSelect={(space) => setActiveSpaceId(space.id)}
+								onSelect={handleSelectSpace}
 								onCreateSpace={() => setIsCreateSpaceOpen(true)}
 							/>
 						</SidebarMenuItem>
@@ -1197,6 +907,9 @@ export function AppSidebar({
 						categories={visibleCategories}
 						isLoading={isLoading}
 						error={error}
+						isSearching={isContentSearching}
+						hasSearchQuery={trimmedSearchQuery.length > 0}
+						searchQuery={searchQuery}
 						newCategoryIds={newCategoryIds}
 						newFileCategoryIds={newFileCategoryIds}
 						newFileIds={newFileIds}
@@ -1245,130 +958,40 @@ export function AppSidebar({
 			/>
 
 			{isCreateCategoryOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<h2 className="text-lg font-semibold text-foreground">
-							Create New Category
-						</h2>
-						<p className="mt-1 text-sm text-muted-foreground">
-							Add a name for the new category.
-						</p>
-						<p className="mt-2 text-xs text-muted-foreground">
-							Creating category in:{" "}
-							<strong>
-								{activeSpace?.name ?? "Default Space"}
-							</strong>
-						</p>
-
-						<form className="mt-5" onSubmit={handleCreateCategory}>
-							<Label htmlFor="new-category-name">
-								Category name
-							</Label>
-							<Input
-								id="new-category-name"
-								type="text"
-								value={newCategoryName}
-								onChange={(event) => {
-									setNewCategoryName(event.target.value);
-									if (createCategoryError) {
-										setCreateCategoryError(null);
-									}
-								}}
-								placeholder="e.g. Contracts"
-								maxLength={80}
-								autoFocus
-								className="mt-2"
-							/>
-
-							{createCategoryError && (
-								<p className="mt-2 text-sm text-destructive">
-									{createCategoryError}
-								</p>
-							)}
-
-							<div className="mt-5 flex justify-end gap-3">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={closeCreateCategoryModal}
-									disabled={isCreatingCategory}
-								>
-									Cancel
-								</Button>
-								<Button
-									type="submit"
-									variant="accent"
-									disabled={isCreatingCategory}
-								>
-									{isCreatingCategory
-										? "Creating..."
-										: "Create new category"}
-								</Button>
-							</div>
-						</form>
-					</div>
-				</div>
+				<CreateCategoryModal
+					activeSpaceName={activeSpace?.name ?? "Default Space"}
+					newCategoryName={newCategoryName}
+					createCategoryError={createCategoryError}
+					isCreatingCategory={isCreatingCategory}
+					onNameChange={(value) => {
+						setNewCategoryName(value);
+						if (createCategoryError) {
+							setCreateCategoryError(null);
+						}
+					}}
+					onSubmit={handleCreateCategory}
+					onClose={closeCreateCategoryModal}
+				/>
 			)}
 			{isCreateSpaceOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<h2 className="text-lg font-semibold text-foreground">
-							Create New Space
-						</h2>
-						<p className="mt-1 text-sm text-muted-foreground">
-							Add a name for the new space.
-						</p>
-
-						<form className="mt-5" onSubmit={handleCreateSpace}>
-							<Label htmlFor="new-space-name">Space name</Label>
-							<Input
-								id="new-space-name"
-								type="text"
-								value={newSpaceName}
-								onChange={(event) => {
-									setNewSpaceName(event.target.value);
-									if (createSpaceError)
-										setCreateSpaceError(null);
-								}}
-								placeholder="e.g. Acme Corp"
-								maxLength={80}
-								autoFocus
-								className="mt-2"
-							/>
-
-							{createSpaceError && (
-								<p className="mt-2 text-sm text-destructive">
-									{createSpaceError}
-								</p>
-							)}
-
-							<div className="mt-5 flex justify-end gap-3">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => {
-										if (isCreatingSpace) return;
-										setIsCreateSpaceOpen(false);
-										setNewSpaceName("");
-										setCreateSpaceError(null);
-									}}
-									disabled={isCreatingSpace}
-								>
-									Cancel
-								</Button>
-								<Button
-									type="submit"
-									variant="accent"
-									disabled={isCreatingSpace}
-								>
-									{isCreatingSpace
-										? "Creating..."
-										: "Create new space"}
-								</Button>
-							</div>
-						</form>
-					</div>
-				</div>
+				<CreateSpaceModal
+					newSpaceName={newSpaceName}
+					createSpaceError={createSpaceError}
+					isCreatingSpace={isCreatingSpace}
+					onNameChange={(value) => {
+						setNewSpaceName(value);
+						if (createSpaceError) {
+							setCreateSpaceError(null);
+						}
+					}}
+					onSubmit={handleCreateSpace}
+					onClose={() => {
+						if (isCreatingSpace) return;
+						setIsCreateSpaceOpen(false);
+						setNewSpaceName("");
+						setCreateSpaceError(null);
+					}}
+				/>
 			)}
 		</>
 	);

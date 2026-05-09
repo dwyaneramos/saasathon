@@ -166,19 +166,19 @@ export default function FileView() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
+	const [isFileLoading, setIsFileLoading] = useState(false);
 
 	const fileUrl = useMemo(() => {
 		return documentId ? `${apiBaseUrl}/documents/${documentId}/file` : "";
 	}, [documentId]);
-	const downloadUrl = `${fileUrl}?download=1`;
 
 	useEffect(() => {
 		let ignore = false;
 
 		async function loadDocument() {
 			if (!documentId) {
-				setError("Missing file id.");
-				setIsLoading(false);
+				navigate("/", { replace: true });
 				return;
 			}
 
@@ -188,9 +188,15 @@ export default function FileView() {
 			try {
 				const response = await fetch(
 					`${apiBaseUrl}/documents/${documentId}`,
+					{ headers: authHeaders() },
 				);
 
 				if (!response.ok) {
+					if ([401, 403, 404].includes(response.status)) {
+						navigate("/", { replace: true });
+						return;
+					}
+
 					throw new Error(
 						toFriendlyDocumentError(
 							"load",
@@ -235,7 +241,67 @@ export default function FileView() {
 		return () => {
 			ignore = true;
 		};
-	}, [documentId]);
+	}, [documentId, navigate]);
+
+	useEffect(() => {
+		if (!document || !fileUrl) {
+			setFileObjectUrl(null);
+			return;
+		}
+
+		const abortController = new AbortController();
+		let objectUrl: string | null = null;
+		setIsFileLoading(true);
+		setFileObjectUrl(null);
+
+		async function loadFileBlob() {
+			try {
+				const response = await fetch(fileUrl, {
+					headers: authHeaders(),
+					signal: abortController.signal,
+				});
+
+				if (!response.ok) {
+					if ([401, 403, 404].includes(response.status)) {
+						navigate("/", { replace: true });
+						return;
+					}
+
+					throw new Error("Could not load file preview.");
+				}
+
+				const blob = await response.blob();
+				objectUrl = URL.createObjectURL(blob);
+				setFileObjectUrl(objectUrl);
+			} catch (err) {
+				if (
+					err instanceof DOMException &&
+					err.name === "AbortError"
+				) {
+					return;
+				}
+
+				setActionError(
+					err instanceof Error
+						? err.message
+						: "Could not load file preview.",
+				);
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsFileLoading(false);
+				}
+			}
+		}
+
+		void loadFileBlob();
+
+		return () => {
+			abortController.abort();
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [document, fileUrl, navigate]);
 
 	if (isLoading) {
 		return (
@@ -471,17 +537,20 @@ export default function FileView() {
 							{isDeleting ? "Deleting..." : "Delete"}
 						</button>
 						<a
-							href={fileUrl}
+							href={fileObjectUrl ?? undefined}
 							target="_blank"
 							rel="noreferrer"
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
+							aria-disabled={!fileObjectUrl}
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-60"
 						>
 							<ExternalLink className="size-4" />
 							Open
 						</a>
 						<a
-							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover)"
+							href={fileObjectUrl ?? undefined}
+							download={displayName}
+							aria-disabled={!fileObjectUrl}
+							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover) aria-disabled:pointer-events-none aria-disabled:opacity-60"
 						>
 							<Download className="size-4" />
 							Download
@@ -502,11 +571,17 @@ export default function FileView() {
 
 			<section className="min-h-[480px] flex-1 p-4 md:p-6">
 				{canPreview ? (
-					<FilePreview
-						document={document}
-						fileUrl={fileUrl}
-						displayName={displayName}
-					/>
+					isFileLoading || !fileObjectUrl ? (
+						<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
+							Loading preview...
+						</div>
+					) : (
+						<FilePreview
+							document={document}
+							fileUrl={fileObjectUrl}
+							displayName={displayName}
+						/>
+					)
 				) : (
 					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
 						<FileText className="size-12 text-muted-foreground" />

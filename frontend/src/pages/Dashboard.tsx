@@ -119,12 +119,12 @@ function sortDocumentsByNewest(documents: DocumentSummary[]) {
 
 function TypingIndicator() {
 	return (
-		<div className="mb-6 flex items-end gap-3">
-			<div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm">
+		<div className="mb-3 flex items-end gap-2">
+			<div className="flex size-7 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
 				<Bot size={13} strokeWidth={1.5} className="text-zinc-400" />
 			</div>
-			<div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-				<div className="flex h-5 items-center gap-1.5">
+			<div className="rounded-xl rounded-bl-md border border-zinc-200 bg-white px-3 py-2">
+				<div className="flex h-4 items-center gap-1.5">
 					<span
 						className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-300"
 						style={{ animationDelay: "0ms" }}
@@ -143,15 +143,65 @@ function TypingIndicator() {
 	);
 }
 
+function InlineMarkdown({ text }: { text: string }) {
+	const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
+
+	return (
+		<>
+			{parts.map((part, index) => {
+				if (part.startsWith("**") && part.endsWith("**")) {
+					return (
+						<strong key={index} className="font-semibold">
+							{part.slice(2, -2)}
+						</strong>
+					);
+				}
+
+				if (part.startsWith("`") && part.endsWith("`")) {
+					return (
+						<code
+							key={index}
+							className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.85em] text-zinc-800"
+						>
+							{part.slice(1, -1)}
+						</code>
+					);
+				}
+
+				if (part.startsWith("*") && part.endsWith("*")) {
+					return <em key={index}>{part.slice(1, -1)}</em>;
+				}
+
+				return <span key={index}>{part}</span>;
+			})}
+		</>
+	);
+}
+
+function ChatContent({ content }: { content: string }) {
+	const lines = content.split("\n");
+
+	return (
+		<p className="whitespace-pre-wrap">
+			{lines.map((line, index) => (
+				<span key={index}>
+					{index > 0 ? "\n" : null}
+					<InlineMarkdown text={line} />
+				</span>
+			))}
+		</p>
+	);
+}
+
 function ChatMessage({ message }: { message: Message }) {
 	const isUser = message.role === "user";
 
 	return (
 		<div
-			className={`mb-5 flex items-end gap-3 ${isUser ? "flex-row-reverse" : ""}`}
+			className={`mb-3 flex items-end gap-2 ${isUser ? "flex-row-reverse" : ""}`}
 		>
 			{!isUser && (
-				<div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm">
+				<div className="flex size-7 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
 					<Bot
 						size={13}
 						strokeWidth={1.5}
@@ -160,15 +210,15 @@ function ChatMessage({ message }: { message: Message }) {
 				</div>
 			)}
 			<div
-				className={`max-w-[75%] px-4 py-3 text-sm leading-relaxed ${
+				className={`max-w-[78%] px-3 py-2 text-sm leading-relaxed ${
 					isUser
-						? "rounded-2xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
-						: "rounded-2xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
+						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
+						: "rounded-xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
 				}`}
 			>
-				<p className="whitespace-pre-wrap">{message.content}</p>
+				<ChatContent content={message.content} />
 				<p
-					className={`mt-1.5 text-[10px] ${isUser ? "text-right text-black/55" : "text-zinc-400"}`}
+					className={`mt-1 text-[10px] leading-none ${isUser ? "text-right text-black/55" : "text-zinc-400"}`}
 				>
 					{message.timestamp.toLocaleTimeString([], {
 						hour: "2-digit",
@@ -201,17 +251,17 @@ function QuickActions({
 
 	if (compact) {
 		return (
-			<div className="grid gap-2 sm:grid-cols-3">
+			<div className="grid grid-cols-3 gap-1.5 sm:gap-2">
 				{isLoading
 					? Array.from({ length: 3 }).map((_, index) => (
 							<div
 								key={index}
-								className="flex min-h-16 w-full flex-col justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm"
+								className="flex min-h-12 w-full flex-col justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left sm:min-h-16 sm:rounded-2xl sm:px-4 sm:py-3"
 							>
-								<div className="h-4 w-28 animate-pulse rounded bg-zinc-100" />
-								<div className="mt-2 h-3 w-full animate-pulse rounded bg-zinc-100" />
-								<div className="mt-1 h-3 w-4/5 animate-pulse rounded bg-zinc-100" />
-								<p className="mt-2 text-[11px] text-zinc-400">
+								<div className="h-3 w-16 animate-pulse rounded bg-zinc-100 sm:h-4 sm:w-28" />
+								<div className="mt-1.5 hidden h-3 w-full animate-pulse rounded bg-zinc-100 sm:block" />
+								<div className="mt-1 hidden h-3 w-4/5 animate-pulse rounded bg-zinc-100 sm:block" />
+								<p className="mt-1 hidden text-[11px] text-zinc-400 sm:block">
 									Generating actions for {spaceLabel}...
 								</p>
 							</div>
@@ -220,7 +270,7 @@ function QuickActions({
 							<button
 								key={suggestion.prompt}
 								onClick={() => onSelect(suggestion.prompt)}
-								className="inline-flex min-h-20 w-full min-w-0 flex-col items-start justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+								className="inline-flex min-h-12 w-full min-w-0 flex-col items-start justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 sm:min-h-20 sm:rounded-2xl sm:px-4 sm:py-3"
 								title={suggestion.sub}
 							>
 								<span className="flex items-start gap-2">
@@ -230,14 +280,14 @@ function QuickActions({
 												suggestion,
 											);
 										return (
-											<Icon className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+											<Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500 sm:size-4" />
 										);
 									})()}
-									<span className="text-sm font-medium leading-snug text-zinc-800">
+									<span className="line-clamp-2 text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
 										{suggestion.label}
 									</span>
 								</span>
-								<span className="mt-1 line-clamp-2 text-xs leading-snug text-zinc-500">
+								<span className="mt-1 hidden line-clamp-2 text-xs leading-snug text-zinc-500 sm:block">
 									{suggestion.sub}
 								</span>
 							</button>
@@ -247,7 +297,7 @@ function QuickActions({
 	}
 
 	return (
-		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm sm:grid-cols-3">
+		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
 			{isLoading
 				? Array.from({ length: 3 }).map((_, index) => (
 						<div key={index} className="bg-white p-3">
@@ -569,26 +619,26 @@ export default function Dashboard() {
 	};
 
 	return (
-		<div className="relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+		<div className="relative flex h-[calc(100svh-var(--header-height)-1rem)] max-h-[calc(100svh-var(--header-height)-1rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
 			<div
 				ref={scrollContainerRef}
-				className="flex-1 overflow-y-auto px-6 pb-64 pt-8"
+				className="min-h-0 flex-1 overflow-y-auto px-4 pb-52 pt-6 sm:px-6 sm:pb-64 sm:pt-8"
 			>
 				<div className="mx-auto max-w-3xl">
 					{isEmpty ? (
-						<div className="pointer-events-none flex min-h-[50vh] flex-col items-center justify-start gap-6 pt-10 text-center">
+						<div className="pointer-events-none flex min-h-[44svh] flex-col items-center justify-start gap-4 pt-6 text-center sm:min-h-[50vh] sm:gap-6 sm:pt-10">
 							<div>
-								<h1 className="bg-gradient-to-b from-zinc-900 to-zinc-400 bg-clip-text pb-3 text-5xl font-bold leading-[0.9] tracking-tighter text-transparent md:text-7xl">
+								<h1 className="bg-gradient-to-b from-zinc-900 to-zinc-400 bg-clip-text pb-3 text-4xl font-bold leading-[0.9] tracking-tighter text-transparent sm:text-5xl md:text-7xl">
 									Hi
 									{userFirstName
 										? ` ${userFirstName}`
 										: " there"}
 									,
 								</h1>
-								<p className="text-lg text-zinc-500">
+								<p className="text-base text-zinc-500 sm:text-lg">
 									How can I help inside {spaceLabel}?
 								</p>
-								<p className="mx-auto mt-3 max-w-xl text-sm text-zinc-400">
+								<p className="mx-auto mt-2 max-w-xl text-xs text-zinc-400 sm:mt-3 sm:text-sm">
 									{contextSummary}
 								</p>
 							</div>
@@ -624,7 +674,7 @@ export default function Dashboard() {
 			<div
 				className={`pointer-events-none absolute inset-x-4 z-10 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
 					hasStartedConversation
-						? "bottom-5"
+						? "bottom-3 sm:bottom-5"
 						: "top-1/2 -translate-y-1/2"
 				}`}
 			>
@@ -639,8 +689,8 @@ export default function Dashboard() {
 						<div
 							className={`flex items-end gap-3 transition-all duration-700 ${
 								hasStartedConversation
-									? "px-5 pb-4 pt-4"
-									: "px-6 pb-5 pt-5 md:px-7 md:pb-6 md:pt-6"
+									? "px-4 pb-3 pt-3 sm:px-5 sm:pb-4 sm:pt-4"
+									: "px-4 pb-4 pt-4 sm:px-6 sm:pb-5 sm:pt-5 md:px-7 md:pb-6 md:pt-6"
 							}`}
 						>
 							<textarea
@@ -678,8 +728,8 @@ export default function Dashboard() {
 								</button>
 							</div>
 						</div>
-						<div className="mx-5 h-px bg-zinc-100" />
-						<div className="px-5 py-3">
+						<div className="mx-4 h-px bg-zinc-100 sm:mx-5" />
+						<div className="px-3 py-2 sm:px-5 sm:py-3">
 							<QuickActions
 								suggestions={suggestions}
 								isLoading={isSuggestionsLoading}
