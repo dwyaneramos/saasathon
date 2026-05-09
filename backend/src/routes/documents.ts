@@ -298,8 +298,8 @@ router.post("/categories", validate(createCategorySchema), async (req, res) => {
 			return;
 		}
 
-		responseCategory = (await getCategory(category.id)) ?? category;
-	}
+			responseCategory = (await getCategory(category.id)) ?? category;
+		}
 
 	res.status(201).json({ category: toPublicCategory(responseCategory) });
 });
