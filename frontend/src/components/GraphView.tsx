@@ -353,7 +353,7 @@ const GraphView: React.FC<GraphViewProps> = ({
   const nodeSizeScale = useMemo(() => {
     const isDocumentGraph = graphNodes.some((node) => node.documentId != null);
     const transformValue = (node: GraphNode) => {
-      if (!isDocumentGraph) return node.fileCount ?? 0;
+      if (!isDocumentGraph) return Math.pow(node.fileCount ?? 0, 1.2);
 
       const fileSize = Math.max(node.fileSize ?? 0, 0);
       return Math.pow(fileSize, 0.65);
@@ -362,7 +362,7 @@ const GraphView: React.FC<GraphViewProps> = ({
     const max = Math.max(...values, 1);
     const min = Math.min(...values, 0);
     const BASE = 0.085;
-    const MAX_CATEGORY_R = 0.205;
+    const MAX_CATEGORY_R = 0.245;
     const MAX_DOCUMENT_R = 0.34;
     const maxRadius = isDocumentGraph ? MAX_DOCUMENT_R : MAX_CATEGORY_R;
 
