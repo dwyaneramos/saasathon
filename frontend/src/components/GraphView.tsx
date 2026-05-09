@@ -3,30 +3,30 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 
-const NODE_COUNT = 25;
+const NODE_COUNT = 10;
 const NETWORK_SIZE = 2.8;
 
 const LABELS = [
-  "tax.pdf",
-  "audit.pdf",
-  "wire.pdf",
-  "cash.pdf",
-  "fund.pdf",
-  "risk.pdf",
-  "bank.pdf",
-  "pay.pdf",
-  "loan.pdf",
-  "trade.pdf",
-  "asset.pdf",
-  "rev.pdf",
-  "fin.pdf",
-  "cap.pdf",
-  "docs.pdf",
-  "fy25.pdf",
-  "q1.pdf",
-  "inv.pdf",
-  "ops.pdf",
-  "sec.pdf",
+  "Tax Forms",
+  "Audit Reports",
+  "Wire Transfers",
+  "Cash Flow",
+  "Funding",
+  "Risk Management",
+  "Banking",
+  "Payroll",
+  "Loans",
+  "Trade Finance",
+  "Assets",
+  "Revenue",
+  "Financial Statements",
+  "Capital",
+  "Documents",
+  "FY25 Reports",
+  "Q1 Reports",
+  "Invoices",
+  "Operations",
+  "Security",
 ];
 
 interface Edge {
@@ -119,7 +119,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     if (prevIs2DRef.current && !is2D) {
       // Transitioning from 2D to 3D - add vertical velocity
       nodesRef.current.forEach((node) => {
-        node.velocity.y = (Math.random() - 0.5) * 0.05;
+        node.velocity.y = (Math.random() - 0.5) * 0.15;
       });
     }
     prevIs2DRef.current = is2D;
@@ -213,7 +213,12 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       }
     });
 
-    // Force re-render to update lines
+    const totalVelocity = currentNodes.reduce(
+      (sum, node) => sum + node.velocity.length(),
+      0
+    );
+
+    if (totalVelocity < 0.001) return;
     forceUpdate({});
   });
 
@@ -223,9 +228,8 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         const start = nodesRef.current[edge.source].position;
         const end = nodesRef.current[edge.target].position;
         
-        // Visual properties based on weight (reduced thickness)
-        const opacity = 0.15 + edge.weight * 0.35; // Higher weight = more opaque
-        const lineWidth = 0.3 + edge.weight * 0.7; // Much thinner lines
+        const opacity = 0.15 + edge.weight * 0.35; 
+        const lineWidth = 0.3 + edge.weight * 0.7; 
 
         return (
           <Line
@@ -248,7 +252,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
           <group key={index} position={node.position.clone()}>
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
               <mesh onClick={() => onNodeClick(index)} cursor="pointer">
-                <sphereGeometry args={[0.035, 16, 16]} />
+                <sphereGeometry args={[0.07, 16, 16]} />
                 <meshStandardMaterial
                   color={isSelected ? "blue" : "#000000"}
                   emissive={isSelected ? "blue" : "#000000"}
@@ -259,8 +263,8 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
             <Billboard>
               <Text
-                position={[0, 0.1, 0]}
-                fontSize={0.06}
+                position={[0, 0.15, 0]}
+                fontSize={0.09}
                 color="#000000"
                 anchorX="center"
                 anchorY="middle"
