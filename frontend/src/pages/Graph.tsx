@@ -1,4 +1,17 @@
 import {
+  useNavigate,
+  useOutletContext,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,7 +20,6 @@ import {
   useState,
 } from "react";
 import { ArrowLeft, Box, SquareStack } from "lucide-react";
-import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import { Button } from "@/components/ui/button";
 import { fileIconFor } from "@/lib/file-icons";
@@ -31,11 +43,14 @@ const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
   activeSpaceId: number | null;
+  activeSpaceName: string | null;
 };
 
 export default function Graph() {
   const navigate = useNavigate();
-  const { activeSpaceId } = useOutletContext<AppLayoutContext>();
+  const [searchParams] = useSearchParams();
+  const { activeSpaceId, activeSpaceName } =
+    useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
   const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -62,6 +77,15 @@ export default function Graph() {
     width: 0,
     height: 0,
   });
+  const requestedCategoryId = useMemo(() => {
+    const rawValue = searchParams.get("categoryId");
+    if (!rawValue) return null;
+
+    const parsedValue = Number(rawValue);
+    return Number.isInteger(parsedValue) && parsedValue > 0
+      ? parsedValue
+      : null;
+  }, [searchParams]);
 
   const hideTooltip = useCallback(() => {
     setTooltipVisible(false);
@@ -127,6 +151,31 @@ export default function Graph() {
       ignore = true;
     };
   }, [activeSpaceId, graphRefreshKey]);
+
+  useEffect(() => {
+    if (requestedCategoryId == null) {
+      setActiveCategoryId(null);
+      setMode("categories");
+      return;
+    }
+
+    if (categories.length === 0) {
+      return;
+    }
+
+    const matchingCategory = categories.find(
+      (category) => category.id === requestedCategoryId,
+    );
+
+    if (matchingCategory) {
+      setActiveCategoryId(matchingCategory.id);
+      setMode("files");
+      return;
+    }
+
+    setActiveCategoryId(null);
+    setMode("categories");
+  }, [categories, requestedCategoryId]);
 
   // Track viewport mouse position without re-rendering.
   useEffect(() => {
@@ -250,8 +299,7 @@ export default function Graph() {
   const handleNodeClick = (node: GraphNode) => {
     if (mode === "categories" && node.categoryId) {
       hideTooltip();
-      setActiveCategoryId(node.categoryId);
-      setMode("files");
+      navigate(`/graph?categoryId=${node.categoryId}`);
       return;
     }
 
@@ -408,6 +456,39 @@ export default function Graph() {
       ref={containerRef}
       className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
     >
+      <div className="absolute top-5 left-5 z-20">
+        <Breadcrumb>
+          <BreadcrumbList className="rounded-lg border border-zinc-200/80 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+            <BreadcrumbItem>
+              {activeCategory ? (
+                <BreadcrumbLink asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hideTooltip();
+                      navigate("/graph");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    {activeSpaceName ?? "Space"}
+                  </button>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{activeSpaceName ?? "Space"}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+            {activeCategory ? (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{activeCategory.name}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            ) : null}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
       <div className="absolute right-5 bottom-5 z-20 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white/90 p-1.5 shadow-sm backdrop-blur-md">
         {mode === "files" ? (
           <Button
@@ -416,8 +497,7 @@ export default function Graph() {
             size="sm"
             onClick={() => {
               hideTooltip();
-              setMode("categories");
-              setActiveCategoryId(null);
+              navigate("/graph");
             }}
             className="border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
           >

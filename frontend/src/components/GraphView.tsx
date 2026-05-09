@@ -329,7 +329,9 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 							(edgeWeightRange.max - edgeWeightRange.min)
 						: edge.weight;
 				const opacity = 0.24 + visualWeight * 0.58;
-				const lineWidth = 0.7 + visualWeight * 5.6;
+				const lineWidth = 1.2 + visualWeight * 2.6;
+				const dashSize = 0.05 + visualWeight * 0.012;
+				const gapSize = 0.34 - visualWeight * 0.29;
 
 				return (
 					<Line
@@ -342,6 +344,9 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 						transparent
 						opacity={opacity}
 						lineWidth={lineWidth}
+						dashed
+						dashSize={dashSize}
+						gapSize={Math.max(0.045, gapSize)}
 					/>
 				);
 			})}

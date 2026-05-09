@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+	Link,
+	useNavigate,
+	useOutletContext,
+	useParams,
+} from "react-router-dom";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import {
 	Download,
 	Edit3,
@@ -16,19 +29,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { KibiFile } from "@/components/app-sidebar";
+import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import React from "react";
 
-const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type PublicDocument = {
 	id: number;
+	spaceId: number | null;
 	filename: string;
 	fileName: string;
 	originalFileName: string | null;
 	mimeType: string;
 	fileSize: number;
+	categoryId: number | null;
 	summary: string;
 	createdAt: string;
 };
@@ -40,6 +55,20 @@ type DocumentResponse = {
 
 type ApiErrorPayload = {
 	error?: string;
+};
+
+type CategorySummary = {
+	id: number;
+	name: string;
+};
+
+type CategoriesResponse = {
+	categories?: CategorySummary[];
+};
+
+type AppLayoutContext = {
+	activeSpaceId: number | null;
+	activeSpaceName: string | null;
 };
 
 function authHeaders() {
@@ -157,7 +186,10 @@ function toFriendlyDocumentError(
 export default function FileView() {
 	const { documentId } = useParams();
 	const navigate = useNavigate();
+	const { activeSpaceId, activeSpaceName } =
+		useOutletContext<AppLayoutContext>();
 	const [document, setDocument] = useState<PublicDocument | null>(null);
+	const [categoryName, setCategoryName] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [editableName, setEditableName] = useState("");
@@ -166,19 +198,19 @@ export default function FileView() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
+	const [isFileLoading, setIsFileLoading] = useState(false);
 
 	const fileUrl = useMemo(() => {
 		return documentId ? `${apiBaseUrl}/documents/${documentId}/file` : "";
 	}, [documentId]);
-	const downloadUrl = `${fileUrl}?download=1`;
 
 	useEffect(() => {
 		let ignore = false;
 
 		async function loadDocument() {
 			if (!documentId) {
-				setError("Missing file id.");
-				setIsLoading(false);
+				navigate("/", { replace: true });
 				return;
 			}
 
@@ -188,9 +220,15 @@ export default function FileView() {
 			try {
 				const response = await fetch(
 					`${apiBaseUrl}/documents/${documentId}`,
+					{ headers: authHeaders() },
 				);
 
 				if (!response.ok) {
+					if ([401, 403, 404].includes(response.status)) {
+						navigate("/", { replace: true });
+						return;
+					}
+
 					throw new Error(
 						toFriendlyDocumentError(
 							"load",
@@ -235,7 +273,111 @@ export default function FileView() {
 		return () => {
 			ignore = true;
 		};
-	}, [documentId]);
+	}, [documentId, navigate]);
+
+	useEffect(() => {
+		if (!document || !fileUrl) {
+			setFileObjectUrl(null);
+			return;
+		}
+
+		const abortController = new AbortController();
+		let objectUrl: string | null = null;
+		setIsFileLoading(true);
+		setFileObjectUrl(null);
+
+		async function loadFileBlob() {
+			try {
+				const response = await fetch(fileUrl, {
+					headers: authHeaders(),
+					signal: abortController.signal,
+				});
+
+				if (!response.ok) {
+					if ([401, 403, 404].includes(response.status)) {
+						navigate("/", { replace: true });
+						return;
+					}
+
+					throw new Error("Could not load file preview.");
+				}
+
+				const blob = await response.blob();
+				objectUrl = URL.createObjectURL(blob);
+				setFileObjectUrl(objectUrl);
+			} catch (err) {
+				if (
+					err instanceof DOMException &&
+					err.name === "AbortError"
+				) {
+					return;
+				}
+
+				setActionError(
+					err instanceof Error
+						? err.message
+						: "Could not load file preview.",
+				);
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsFileLoading(false);
+				}
+			}
+		}
+
+		void loadFileBlob();
+
+		return () => {
+			abortController.abort();
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [document, fileUrl, navigate]);
+
+	useEffect(() => {
+		let ignore = false;
+
+		async function loadCategoryName() {
+			if (!document?.categoryId || !activeSpaceId) {
+				setCategoryName(null);
+				return;
+			}
+
+			try {
+				const response = await fetch(
+					`${apiBaseUrl}/categories?spaceId=${activeSpaceId}`,
+					{ headers: authHeaders() },
+				);
+
+				if (!response.ok) {
+					throw new Error("Unable to load categories");
+				}
+
+				const payload = (await response
+					.json()
+					.catch(() => null)) as CategoriesResponse | null;
+				const matchingCategory =
+					payload?.categories?.find(
+						(category) => category.id === document.categoryId,
+					) ?? null;
+
+				if (!ignore) {
+					setCategoryName(matchingCategory?.name ?? null);
+				}
+			} catch {
+				if (!ignore) {
+					setCategoryName(null);
+				}
+			}
+		}
+
+		void loadCategoryName();
+
+		return () => {
+			ignore = true;
+		};
+	}, [activeSpaceId, document?.categoryId]);
 
 	if (isLoading) {
 		return (
@@ -386,8 +528,42 @@ export default function FileView() {
 	const fileSummary = document.summary?.trim();
 
 	return (
-		<main className="min-h-[calc(100svh-var(--header-height))] bg-muted/40">
-			<header className="border-b border-border bg-background px-6 py-4">
+		<div className="graph-page relative min-h-[calc(100vh-var(--header-height)-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50">
+			<main className="min-h-[calc(100svh-var(--header-height)-1rem)] bg-muted/40">
+				<header className="border-b border-border bg-background px-6 py-4">
+				<Breadcrumb className="mb-4">
+					<BreadcrumbList>
+						<BreadcrumbItem>
+							<BreadcrumbLink asChild>
+								<Link to="/graph">
+									{activeSpaceName ?? "Space"}
+								</Link>
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						{categoryName ? (
+							<>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbLink asChild>
+										<Link
+											to={
+												document.categoryId
+													? `/graph?categoryId=${document.categoryId}`
+													: "/graph"
+											}
+										>
+											{categoryName}
+										</Link>
+									</BreadcrumbLink>
+								</BreadcrumbItem>
+							</>
+						) : null}
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbPage>{displayName}</BreadcrumbPage>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-2">
@@ -458,34 +634,37 @@ export default function FileView() {
 						) : null}
 					</div>
 					<div className="flex shrink-0 gap-2">
-						<Button
+						<button
 							type="button"
-							variant="destructive"
-							size="lg"
 							onClick={() => {
 								setActionError(null);
 								setIsDeleteModalOpen(true);
 							}}
 							disabled={isSavingName || isDeleting}
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							<Trash2 className="size-4" />
 							{isDeleting ? "Deleting..." : "Delete"}
-						</Button>
+						</button>
 						<a
-							href={fileUrl}
+							href={fileObjectUrl ?? undefined}
 							target="_blank"
 							rel="noreferrer"
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
+							aria-disabled={!fileObjectUrl}
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-60"
 						>
 							<ExternalLink className="size-4" />
 							Open
 						</a>
-						<Button asChild variant="accent" size="lg">
-							<a href={downloadUrl}>
-								<Download className="size-4" />
-								Download
-							</a>
-						</Button>
+						<a
+							href={fileObjectUrl ?? undefined}
+							download={displayName}
+							aria-disabled={!fileObjectUrl}
+							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover) aria-disabled:pointer-events-none aria-disabled:opacity-60"
+						>
+							<Download className="size-4" />
+							Download
+						</a>
 					</div>
 				</div>
 				{fileSummary ? (
@@ -498,15 +677,21 @@ export default function FileView() {
 						</p>
 					</div>
 				) : null}
-			</header>
+				</header>
 
 			<section className="min-h-[480px] flex-1 p-4 md:p-6">
 				{canPreview ? (
-					<FilePreview
-						document={document}
-						fileUrl={fileUrl}
-						displayName={displayName}
-					/>
+					isFileLoading || !fileObjectUrl ? (
+						<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
+							Loading preview...
+						</div>
+					) : (
+						<FilePreview
+							document={document}
+							fileUrl={fileObjectUrl}
+							displayName={displayName}
+						/>
+					)
 				) : (
 					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
 						<FileText className="size-12 text-muted-foreground" />
@@ -549,7 +734,7 @@ export default function FileView() {
 									{actionError}
 								</p>
 							) : null}
-							<div className="flex justify-end gap-2 pt-4">
+							<div className="flex justify-end gap-2 border-t border-border pt-4">
 								<Button
 									type="button"
 									variant="outline"
@@ -574,8 +759,9 @@ export default function FileView() {
 						</div>
 					</div>
 				</div>
-			) : null}
-		</main>
+				) : null}
+			</main>
+		</div>
 	);
 }
 
