@@ -15,6 +15,10 @@ import {
 	getOrCreateDefaultSpace,
 	getOrCreateUserSpace,
 } from "../services/spaceService.js";
+import {
+	assignDocumentCategory,
+	getCategory,
+} from "../services/documentAnalyzer.js";
 import { HttpError } from "../utils/httpError.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -216,8 +220,32 @@ async function resolveSpace(req: UploadRequest) {
 	return space;
 }
 
+async function resolveUploadCategoryId(req: UploadRequest, spaceId: number) {
+	const rawCategoryId = req.body?.categoryId ?? req.query?.categoryId;
+	if (!rawCategoryId) {
+		return null;
+	}
+
+	const categoryId = Number(rawCategoryId);
+	if (!Number.isInteger(categoryId) || categoryId < 1) {
+		throw new HttpError(400, "categoryId must be a positive integer");
+	}
+
+	const category = await getCategory(categoryId);
+	if (!category) {
+		throw new HttpError(404, "Category not found");
+	}
+
+	if (category.space_id !== spaceId) {
+		throw new HttpError(400, "Category does not belong to this space");
+	}
+
+	return categoryId;
+}
+
 async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) {
 	const space = await resolveSpace(req);
+	const categoryId = await resolveUploadCategoryId(req, space.id);
 	const filename = safeFilename(file.originalname);
 	const spaceDir = path.join(uploadDir, `space-${space.id}`);
 	const absolutePath = path.join(spaceDir, filename);
@@ -227,6 +255,7 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 		mimeType: file.mimetype,
 		size: file.size,
 		spaceId: space.id,
+		...(categoryId ? { categoryId } : {}),
 	};
 
 	await fs.mkdir(spaceDir, { recursive: true });
@@ -260,10 +289,15 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 		],
 	);
 
+	const documentId = rows[0].id;
+	if (categoryId) {
+		await assignDocumentCategory(documentId, categoryId);
+	}
+
 	return {
-		documentId: rows[0].id,
+		documentId,
 		spaceId: space.id,
-		categoryId: null,
+		categoryId,
 		originalName: file.originalname,
 		filename,
 		mimeType: file.mimetype,

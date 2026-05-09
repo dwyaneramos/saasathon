@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
 	CheckCircle2,
+	ChevronDown,
 	Hourglass,
 	LoaderCircle,
 	UploadCloud,
@@ -86,6 +89,9 @@ type UploadWorkspaceProps = {
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
+const textareaClassName =
+	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";
+
 function formatFileSize(bytes: number) {
 	if (bytes < 1024 * 1024) {
 		return `${(bytes / 1024).toFixed(1)} KB`;
@@ -112,6 +118,10 @@ export function UploadWorkspace({
 	const [knownCategoryOptions, setKnownCategoryOptions] = useState<
 		CreatedCategory[]
 	>([]);
+	const [selectedCategoryId, setSelectedCategoryId] = useState("");
+	const [openCategoryCombobox, setOpenCategoryCombobox] = useState<
+		string | null
+	>(null);
 	const [isAnalyzing, setIsAnalyzing] = useState(false);
 	const [isBusy, setIsBusy] = useState(false);
 	const [pendingCompletion, setPendingCompletion] = useState<{
@@ -175,6 +185,12 @@ export function UploadWorkspace({
 		setFiles((prev) => prev.filter((_, i) => i !== index));
 	};
 
+	const selectedUploadCategory = selectedCategoryId
+		? knownCategoryOptions.find(
+				(category) => String(category.id) === selectedCategoryId,
+			) ?? null
+		: null;
+
 	const upload = async () => {
 		if (files.length === 0) {
 			setStatus("Select at least one file");
@@ -193,6 +209,9 @@ export function UploadWorkspace({
 			files.forEach((file) => body.append("files", file));
 			if (typeof spaceId === "number") {
 				body.append("spaceId", String(spaceId));
+			}
+			if (selectedCategoryId) {
+				body.append("categoryId", selectedCategoryId);
 			}
 			const res = await fetch(`${apiBaseUrl}/upload/multiple`, {
 				method: "POST",
@@ -279,15 +298,19 @@ export function UploadWorkspace({
 
 		if (!endpoint) {
 			return {
+				documentId: uploadedFile?.documentId,
 				fileName: file.name,
-				categoryName: "Not analysed",
+				categoryName: selectedUploadCategory?.name ?? "Not analysed",
 				summary:
 					"Analysis is available for PDFs, JPEGs, PNGs, GIFs, and WebP images.",
 				prompt: null,
 				needsNewCategory: false,
-				categoryInput: "",
-				categoryDescription: "",
+				categoryInput: selectedUploadCategory?.name ?? "",
+				categoryDescription: selectedUploadCategory?.description ?? "",
 				isCreatingCategory: false,
+				categoryStatus: selectedUploadCategory
+					? `Uploaded to ${selectedUploadCategory.name}.`
+					: undefined,
 			};
 		}
 
@@ -296,6 +319,9 @@ export function UploadWorkspace({
 			body.append("file", file);
 			if (uploadedFile?.documentId) {
 				body.append("documentId", String(uploadedFile.documentId));
+			}
+			if (selectedCategoryId) {
+				body.append("categoryId", selectedCategoryId);
 			}
 
 			// The analyze endpoints read spaceId from the query string, so append it if provided
@@ -316,6 +342,23 @@ export function UploadWorkspace({
 
 			if (!res.ok) {
 				throw new Error(`${res.status} ${res.statusText}`);
+			}
+
+			if (selectedUploadCategory) {
+				return {
+					documentId: payload.document?.id ?? uploadedFile?.documentId,
+					fileName: file.name,
+					categoryName: selectedUploadCategory.name,
+					suggestedCategoryName: selectedUploadCategory.name,
+					suggestedCategoryDescription: selectedUploadCategory.description,
+					summary: payload.document?.summary ?? "No summary returned.",
+					prompt: null,
+					needsNewCategory: false,
+					categoryInput: selectedUploadCategory.name,
+					categoryDescription: selectedUploadCategory.description,
+					isCreatingCategory: false,
+					categoryStatus: `Uploaded to ${selectedUploadCategory.name}.`,
+				};
 			}
 
 			const categoryName =
@@ -638,6 +681,38 @@ export function UploadWorkspace({
 		}),
 	}));
 
+	const uploadCategorySelector = (
+		<div className="rounded-lg border border-border bg-background px-3 py-3">
+			<label
+				htmlFor="upload-target-category"
+				className="block text-sm font-medium text-foreground"
+			>
+				Upload to
+			</label>
+			<select
+				id="upload-target-category"
+				value={selectedCategoryId}
+				onChange={(event) => setSelectedCategoryId(event.target.value)}
+				disabled={isBusy || knownCategoryOptions.length === 0}
+				className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+			>
+				<option value="">Auto categorize</option>
+				{knownCategoryOptions.map((category) => (
+					<option key={category.id ?? category.name} value={category.id}>
+						{category.name}
+					</option>
+				))}
+			</select>
+			<p className="mt-2 text-xs text-muted-foreground">
+				{knownCategoryOptions.length === 0
+					? "Create a category first to upload directly into it."
+					: selectedUploadCategory
+						? `Files will be placed in ${selectedUploadCategory.name}.`
+						: "Let Kibi choose the best category during analysis."}
+			</p>
+		</div>
+	);
+
 	const waitForCategoryConfirmation = (fileName: string) =>
 		new Promise<void>((resolve) => {
 			pendingCategoryConfirmationRef.current = { fileName, resolve };
@@ -701,6 +776,23 @@ export function UploadWorkspace({
 			block: "start",
 		});
 	}, [activeCategoryPrompt]);
+
+	useEffect(() => {
+		void loadKnownCategories();
+	}, [spaceId]);
+
+	useEffect(() => {
+		if (!selectedCategoryId) return;
+		if (
+			knownCategoryOptions.some(
+				(category) => String(category.id) === selectedCategoryId,
+			)
+		) {
+			return;
+		}
+
+		setSelectedCategoryId("");
+	}, [knownCategoryOptions, selectedCategoryId]);
 
 	return (
 		<div
@@ -779,6 +871,9 @@ export function UploadWorkspace({
 										Add files
 									</Button>
 								</div>
+								<div className="border-b border-border px-4 py-3">
+									{uploadCategorySelector}
+								</div>
 								<ul className="max-h-48 divide-y divide-border overflow-y-auto">
 									{selectedFiles.map(
 										({ file, Icon }, index) => (
@@ -812,8 +907,9 @@ export function UploadWorkspace({
 								</ul>
 								<div className="flex items-center justify-between gap-4 border-t border-border bg-muted/50 px-4 py-3">
 									<p className="text-sm text-muted-foreground">
-										Files will be analysed and sorted into
-										categories.
+										{selectedUploadCategory
+											? `Uploading directly to ${selectedUploadCategory.name}.`
+											: "Files will be analysed and sorted into categories."}
 									</p>
 									<Button
 										variant="accent"
@@ -935,6 +1031,10 @@ export function UploadWorkspace({
 					</div>
 				)}
 
+				{detailMode !== "compact" && files.length > 0 && (
+					<div className="mt-4">{uploadCategorySelector}</div>
+				)}
+
 				{detailMode !== "compact" && !isAnalyzing && (
 					<div className="mt-6 flex justify-center">
 						<Button
@@ -1048,6 +1148,25 @@ export function UploadWorkspace({
 							{displayedAnalysisResults.map((result, index) => {
 								const isActivePrompt =
 									activeCategoryPrompt === result;
+								const isCategoryComboboxOpen =
+									openCategoryCombobox === result.fileName;
+								const categoryQuery = result.categoryInput
+									.trim()
+									.toLowerCase();
+								const filteredCategoryOptions =
+									categoryQuery.length > 0
+										? knownCategoryOptions.filter((category) =>
+												category.name
+													.toLowerCase()
+													.includes(categoryQuery),
+											)
+										: knownCategoryOptions;
+								const hasExactCategoryMatch =
+									knownCategoryOptions.some(
+										(category) =>
+											categoryKey(category.name) ===
+											categoryKey(result.categoryInput),
+									);
 								return (
 									<article
 										ref={
