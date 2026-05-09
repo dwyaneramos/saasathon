@@ -37,6 +37,10 @@ const generateNodes = () => {
 			(Math.random() - 0.5) * NETWORK_SIZE,
 		),
 		label: LABELS[i % LABELS.length],
+
+		size: THREE.MathUtils.randFloat(0.035, 0.095),
+
+		textSize: THREE.MathUtils.randFloat(0.045, 0.08),
 	}));
 };
 
@@ -47,7 +51,6 @@ export const LandingAnimation = () => {
 
 	const connections: [THREE.Vector3, THREE.Vector3][] = [];
 
-	// Generate connections based on distance
 	for (let i = 0; i < nodes.length; i++) {
 		for (let j = i + 1; j < nodes.length; j++) {
 			const a = nodes[i].position;
@@ -62,7 +65,7 @@ export const LandingAnimation = () => {
 	return (
 		<div className="w-[800px] h-[800px] -mt-24 -mr-48">
 			<Canvas
-				camera={{ position: [0, 0, 6], fov: 42 }}
+				camera={{ position: [0, 0, 7], fov: 42 }}
 				gl={{ antialias: true, alpha: true }}
 			>
 				<ambientLight intensity={1.2} />
@@ -98,7 +101,7 @@ export const LandingAnimation = () => {
 								position={node.position}
 							>
 								<mesh>
-									<sphereGeometry args={[0.035, 16, 16]} />
+									<sphereGeometry args={[node.size, 16, 16]} />
 									<meshStandardMaterial
 										color="#000000"
 										emissive="#000000"
@@ -108,8 +111,8 @@ export const LandingAnimation = () => {
 
 								<Billboard>
 									<Text
-										position={[0, 0.07, 0]}
-										fontSize={0.06}
+										position={[0, node.size + 0.05, 0]}
+										fontSize={node.textSize}
 										color="rgb(0, 0, 0)"
 										anchorX="center"
 										anchorY="middle"
