@@ -7,30 +7,43 @@ import Register from "../pages/Register";
 import GraphPage from "../pages/Graph";
 import Landing from "../pages/Landing";
 import Upload from "@/pages/Upload";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 
 function App() {
-  return (
-    <AuthProvider>
-      <Router>
-        <Navbar />
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/upload" element={<Upload />} />
+	return (
+		<AuthProvider>
+			<SidebarProvider>
+				<Router>
+					<AppSidebar />
+					<SidebarInset>
+						<Routes>
+							<>
+								<Navbar />
+								<Route path="/" element={<Landing />} />
+								<Route path="/login" element={<Login />} />
+								<Route
+									path="/register"
+									element={<Register />}
+								/>
+							</>
 
-          <Route
-            path="/graph"
-            element={
-              <ProtectedRoute>
-                <GraphPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
-    </AuthProvider>
-  );
+							<Route path="/upload" element={<Upload />} />
+
+							<Route
+								path="/graph"
+								element={
+									<ProtectedRoute>
+										<GraphPage />
+									</ProtectedRoute>
+								}
+							/>
+						</Routes>
+					</SidebarInset>
+				</Router>
+			</SidebarProvider>
+		</AuthProvider>
+	);
 }
 
 export default App;

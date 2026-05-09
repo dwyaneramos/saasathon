@@ -7,118 +7,126 @@ const NODE_COUNT = 25;
 const NETWORK_SIZE = 3;
 
 const LABELS = [
-  "tax.pdf",
-  "audit.pdf",
-  "wire.pdf",
-  "cash.pdf",
-  "fund.pdf",
-  "risk.pdf",
-  "bank.pdf",
-  "pay.pdf",
-  "loan.pdf",
-  "trade.pdf",
-  "asset.pdf",
-  "rev.pdf",
-  "fin.pdf",
-  "cap.pdf",
-  "docs.pdf",
-  "fy25.pdf",
-  "q1.pdf",
-  "inv.pdf",
-  "ops.pdf",
-  "sec.pdf",
+	"tax.pdf",
+	"audit.pdf",
+	"wire.pdf",
+	"cash.pdf",
+	"fund.pdf",
+	"risk.pdf",
+	"bank.pdf",
+	"pay.pdf",
+	"loan.pdf",
+	"trade.pdf",
+	"asset.pdf",
+	"rev.pdf",
+	"fin.pdf",
+	"cap.pdf",
+	"docs.pdf",
+	"fy25.pdf",
+	"q1.pdf",
+	"inv.pdf",
+	"ops.pdf",
+	"sec.pdf",
 ];
 
 const generateNodes = () => {
-  return Array.from({ length: NODE_COUNT }, (_, i) => ({
-    position: new THREE.Vector3(
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-    ),
-    label: LABELS[i % LABELS.length],
-  }));
+	return Array.from({ length: NODE_COUNT }, (_, i) => ({
+		position: new THREE.Vector3(
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+		),
+		label: LABELS[i % LABELS.length],
+	}));
 };
 
 export const LandingAnimation = () => {
-  const groupRef = useRef<THREE.Group>(null!);
+	const groupRef = useRef<THREE.Group>(null!);
 
-  const nodes = useMemo(() => generateNodes(), []);
+	const nodes = useMemo(() => generateNodes(), []);
 
-  const connections: [THREE.Vector3, THREE.Vector3][] = [];
+	const connections: [THREE.Vector3, THREE.Vector3][] = [];
 
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i].position;
-      const b = nodes[j].position;
+	for (let i = 0; i < nodes.length; i++) {
+		for (let j = i + 1; j < nodes.length; j++) {
+			const a = nodes[i].position;
+			const b = nodes[j].position;
 
-      if (a.distanceTo(b) < 1.55) {
-        connections.push([a, b]);
-      }
-    }
-  }
+			if (a.distanceTo(b) < 1.55) {
+				connections.push([a, b]);
+			}
+		}
+	}
 
-  return (
-    <div className="w-full h-[900px]">
-      <Canvas
-        camera={{ position: [0, 0, 6.5], fov: 42 }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <ambientLight intensity={1.5} />
+	return (
+		<div className="w-full h-[900px]">
+			<Canvas
+				camera={{ position: [0, 0, 6.5], fov: 42 }}
+				gl={{ antialias: true, alpha: true }}
+			>
+				<ambientLight intensity={1.5} />
 
-        <pointLight position={[0, 0, 5]} intensity={12} color="#242f40" />
+				<pointLight
+					position={[0, 0, 5]}
+					intensity={12}
+					color="#242f40"
+				/>
 
-        <pointLight position={[-2, -2, -2]} intensity={6} color="#242f40" />
+				<pointLight
+					position={[-2, -2, -2]}
+					intensity={6}
+					color="#242f40"
+				/>
 
-        <Suspense fallback={null}>
-          <group ref={groupRef} scale={1.0} rotation={[0.1, 0, 0]}>
-            {connections.map(([start, end], index) => (
-              <Line
-                key={index}
-                points={[start, end]}
-                color="#1d202e"
-                transparent
-                opacity={0.35}
-                lineWidth={1}
-              />
-            ))}
+				<Suspense fallback={null}>
+					<group ref={groupRef} scale={1.0} rotation={[0.1, 0, 0]}>
+						{connections.map(([start, end], index) => (
+							<Line
+								key={index}
+								points={[start, end]}
+								color="#1d202e"
+								transparent
+								opacity={0.35}
+								lineWidth={1}
+							/>
+						))}
 
-            {nodes.map((node, index) => (
-              <group position={node.position}>
-                <mesh>
-                  <sphereGeometry args={[0.035, 16, 16]} />
-                  <meshStandardMaterial
-                    color="#242f40"
-                    emissive="#242f40"
-                    emissiveIntensity={2}
-                  />
-                </mesh>
+						{nodes.map((node, index) => (
+							<group position={node.position}>
+								<mesh>
+									<sphereGeometry args={[0.035, 16, 16]} />
+									<meshStandardMaterial
+										color="#242f40"
+										emissive="#242f40"
+										emissiveIntensity={2}
+									/>
+								</mesh>
 
-                <Billboard>
-                  <Text
-                    position={[0, 0.07, 0]}
-                    fontSize={0.034}
-                    color="#242f40"
-                    anchorX="center"
-                    anchorY="middle"
-                  >
-                    {node.label}
-                  </Text>
-                </Billboard>
-              </group>
-            ))}
-          </group>
-        </Suspense>
+								<Billboard>
+									<Text
+										position={[0, 0.07, 0]}
+										fontSize={0.034}
+										color="#242f40"
+										anchorX="center"
+										anchorY="middle"
+									>
+										{node.label}
+									</Text>
+								</Billboard>
+							</group>
+						))}
+					</group>
+				</Suspense>
 
-        <OrbitControls
-          enableZoom={false}
-          enablePan={false}
-          autoRotate
-          autoRotateSpeed={0.2}
-        />
-      </Canvas>
-    </div>
-  );
+				<OrbitControls
+					enableZoom={false}
+					enablePan={false}
+					autoRotate
+					autoRotateSpeed={0.2}
+				/>
+			</Canvas>
+		</div>
+	);
 };
 
 export default LandingAnimation;
