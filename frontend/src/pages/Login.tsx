@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
 	Card,
 	CardContent,
@@ -52,6 +53,9 @@ export default function Login() {
 
 			if (response.ok) {
 				login(data.user, data.token);
+				toast.success("Login successful!", {
+					position: "bottom-center",
+				});
 				navigate("/");
 			} else {
 				setError(data.error || data.message || "Invalid credentials");
@@ -68,7 +72,9 @@ export default function Login() {
 			<main className="flex-1 flex items-center justify-center p-4">
 				<Card className="w-full max-w-md">
 					<CardHeader>
-						<CardTitle>Login to Kibi</CardTitle>
+						<CardTitle className="text-3xl">
+							Login to Kibi
+						</CardTitle>
 						<CardDescription>
 							Sign in to your account
 						</CardDescription>
@@ -118,7 +124,7 @@ export default function Login() {
 								<Button
 									type="submit"
 									disabled={isLoading}
-									className="flex-1 !bg-bg-accent text-white"
+									className="flex-1 items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-zinc-800 transition-all transform active:scale-95 shadow-lg shadow-zinc-200"
 								>
 									{isLoading ? "Loading..." : "Login"}
 								</Button>

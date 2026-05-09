@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,9 @@ export default function Register() {
 
 			if (response.ok) {
 				navigate("/login");
+				toast.success("Registration successful!", {
+					position: "bottom-center",
+				});
 			} else {
 				setError(data.error || data.message || "Registration failed");
 			}
@@ -169,7 +173,7 @@ export default function Register() {
 								<Button
 									type="submit"
 									disabled={isLoading}
-									className="flex-1 !bg-bg-accent text-white"
+									className="flex-1 items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-zinc-800 transition-all transform active:scale-95 shadow-lg shadow-zinc-200"
 								>
 									{isLoading ? "Loading..." : "Register"}
 								</Button>

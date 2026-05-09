@@ -1,25 +1,98 @@
 import LandingAnimation from "@/components/LandingAnimation";
+import { CloudSync, Database, Zap } from "lucide-react";
 
 export const Landing = () => {
-  return (
-    <div className="relative text-primary h-screen bg-bg flex flex-col justify-center overflow-hidden">
-      <div className="absolute inset-0 left-32 z-0 pointer-events-none">
-        <LandingAnimation />
-      </div>
+	return (
+		<>
+			<main className="relative min-h-screen flex items-start px-6 pt-12 pb-24 overflow-hidden">
+				<div className="max-w-[1600px] mx-auto w-full grid lg:grid-cols-[1.1fr_1.6fr] gap-24 items-center">
+					<div className="text-center lg:text-left flex flex-col items-center lg:items-start">
+						<h1 className="max-w-4xl text-6xl md:text-8xl font-bold tracking-tighter bg-gradient-to-b from-zinc-900 to-zinc-500 bg-clip-text text-transparent leading-[0.9] pb-8">
+							Document digitisation <br /> for the next generation.
+						</h1>
 
-      <div className="relative z-10 pl-20">
-        <h1 className="text-9xl">Kibi</h1>
+						<p className="max-w-xl text-lg md:text-xl text-zinc-500 leading-relaxed mb-10">
+							Store, query, and sync data in real time. Simple
+							interface, powered by purpose-built AI.
+						</p>
 
-        <h2 className="text-6xl">
-          What your life <span className="italic">'kibi'</span>
-        </h2>
+						<div className="flex flex-col sm:flex-row gap-4 items-center">
+							<button className="bg-zinc-900 text-white px-8 py-4 rounded-lg font-semibold hover:bg-zinc-800 transition-all transform active:scale-95 shadow-xl shadow-zinc-200">
+								Get Started for Free
+							</button>
 
-        <button className="bg-primary w-64 rounded-full my-3 text-bg text-3xl px-6 py-3">
-          Get started
-        </button>
-      </div>
-    </div>
-  );
+							<button className="text-zinc-600 border border-zinc-200 bg-white px-8 py-4 rounded-lg font-medium hover:bg-zinc-50 transition-all">
+								Read Documentation →
+							</button>
+						</div>
+					</div>
+
+					<div className="relative flex items-center justify-end -mr-32 min-h-[100px]">
+						<LandingAnimation></LandingAnimation>
+					</div>
+				</div>
+			</main>
+
+			{/* FEATURES */}
+			<section className="max-w-7xl mx-auto px-6 pb-32">
+				<div className="grid md:grid-cols-3 gap-px bg-zinc-200 border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+					
+					<div className="p-10 bg-white group hover:bg-zinc-50 transition-colors text-zinc-500">
+						<div className="w-10 h-10 mb-6 rounded-lg bg-white border border-zinc-200 flex items-center justify-center group-hover:shadow-sm transition-all">
+							<Zap strokeWidth={1.5} />
+						</div>
+
+						<h3 className="text-lg font-semibold mb-3 text-zinc-900">
+							Simple by Design
+						</h3>
+
+						<p className="text-sm text-zinc-500 leading-relaxed">
+							Intuitive interface that gets out of your way. Built
+							for speed and focus.
+						</p>
+					</div>
+
+					<div className="p-10 bg-white group hover:bg-zinc-50 transition-colors text-zinc-500">
+						<div className="w-10 h-10 mb-6 rounded-lg bg-white border border-zinc-200 flex items-center justify-center group-hover:shadow-sm transition-all">
+							<CloudSync strokeWidth={1.5} />
+						</div>
+
+						<h3 className="text-lg font-semibold mb-3 text-zinc-900">
+							Instant Sync
+						</h3>
+
+						<p className="text-sm text-zinc-500 leading-relaxed">
+							Data accessible across all clients, instantly. Never
+							worry about versioning.
+						</p>
+					</div>
+
+					<div className="p-10 bg-white group hover:bg-zinc-50 transition-colors text-zinc-500">
+						<div className="w-10 h-10 mb-6 rounded-lg bg-white border border-zinc-200 flex items-center justify-center group-hover:shadow-sm transition-all">
+							<Database strokeWidth={1.5} />
+						</div>
+
+						<h3 className="text-lg font-semibold mb-3 text-zinc-900">
+							Enterprise Scale
+						</h3>
+
+						<p className="text-sm text-zinc-500 leading-relaxed">
+							From side projects to production workloads.
+							Scalability comes standard.
+						</p>
+					</div>
+				</div>
+			</section>
+
+			<footer className="border-t border-zinc-100 py-12 px-6 bg-white">
+				<div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+					<p className="text-xs text-zinc-400">
+						© {new Date().getFullYear()} Kibi.
+					</p>
+				</div>
+			</footer>
+		</>
+	);
 };
 
 export default Landing;

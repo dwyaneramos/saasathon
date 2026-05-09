@@ -1,15 +1,22 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+
+@import "tailwindcss";
+
+:root {
+	font-family: "Inter", sans-serif;
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-	--color-primary: #242f40;
-	--color-bg: #fff;
+	--color-primary: #fff;
+	--color-bg: #242f40;
 	--color-bg-secondary: #1d202e;
-	--color-bg-accent: #21a270;
 
 	--color-background: oklch(1 0 0);
 	--color-foreground: oklch(0.145 0 0);
@@ -23,12 +30,6 @@
 	--color-input: oklch(0.922 0 0);
 	--color-ring: oklch(0.708 0 0);
 	--radius: 0.625rem;
-}
-
-html,
-body {
-	font-family: "Inter", Arial, Helvetica, sans-serif;
-	font-size: 14px;
 }
 
 button {

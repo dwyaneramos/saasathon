@@ -6,6 +6,7 @@ import express, {
 	type Response,
 	type NextFunction,
 } from "express";
+
 import apiRoutes from "./routes/index.js";
 import cors from "cors";
 
@@ -26,6 +27,7 @@ app.use(
 );
 
 app.use(express.json());
+app.use(cors());
 
 app.use("/api/v1", apiRoutes);
 
