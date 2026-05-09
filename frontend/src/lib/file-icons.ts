@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 type FileIconInput = {
+	id?: number;
 	name: string;
 	filename: string;
 	mimeType: string;
