@@ -13,8 +13,10 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import { fileIconFor, type KibiFile } from "@/components/app-sidebar";
+import type { KibiFile } from "@/components/app-sidebar";
+import { fileIconFor } from "@/lib/file-icons";
 import React from "react";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -254,7 +256,7 @@ export default function FileView() {
 					</p>
 				</div>
 				<Link
-					className="text-sm font-medium text-zinc-900 hover:underline"
+					className="text-sm font-medium text-foreground hover:underline"
 					to="/upload"
 				>
 					Back to uploads
@@ -376,8 +378,8 @@ export default function FileView() {
 	}
 
 	return (
-		<main className="min-h-[calc(100svh-var(--header-height))] bg-zinc-50/60">
-			<header className="border-b border-zinc-100 bg-white px-6 py-4">
+		<main className="min-h-[calc(100svh-var(--header-height))] bg-muted/40">
+			<header className="border-b border-border bg-background px-6 py-4">
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-2">
@@ -388,7 +390,7 @@ export default function FileView() {
 										onChange={(event) =>
 											setEditableName(event.target.value)
 										}
-										className="h-9 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-lg font-semibold text-zinc-950 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400"
+										className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-lg font-semibold text-foreground outline-none ring-0 placeholder:text-muted-foreground focus:border-ring"
 										maxLength={180}
 										disabled={isSavingName || isDeleting}
 										aria-label="File name"
@@ -397,7 +399,7 @@ export default function FileView() {
 										type="button"
 										onClick={handleSaveName}
 										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
 										aria-label="Save file name"
 									>
 										<Save className="size-4" />
@@ -410,7 +412,7 @@ export default function FileView() {
 											setActionError(null);
 										}}
 										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
 										aria-label="Cancel file name edit"
 									>
 										<X className="size-4" />
@@ -418,7 +420,7 @@ export default function FileView() {
 								</>
 							) : (
 								<>
-									<h1 className="truncate text-lg font-semibold text-zinc-950">
+									<h1 className="truncate text-lg font-semibold text-foreground">
 										{displayName}
 									</h1>
 									<button
@@ -429,7 +431,7 @@ export default function FileView() {
 											setActionError(null);
 										}}
 										disabled={isDeleting}
-										className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+										className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
 										aria-label="Edit file name"
 									>
 										<Edit3 className="size-4" />
@@ -442,7 +444,7 @@ export default function FileView() {
 							{formatFileSize(document.fileSize)}
 						</p>
 						{actionError ? (
-							<p className="mt-2 text-xs text-red-600">
+							<p className="mt-2 text-xs text-destructive">
 								{actionError}
 							</p>
 						) : null}
@@ -455,7 +457,7 @@ export default function FileView() {
 								setIsDeleteModalOpen(true);
 							}}
 							disabled={isSavingName || isDeleting}
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							<Trash2 className="size-4" />
 							{isDeleting ? "Deleting..." : "Delete"}
@@ -464,14 +466,14 @@ export default function FileView() {
 							href={fileUrl}
 							target="_blank"
 							rel="noreferrer"
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
 						>
 							<ExternalLink className="size-4" />
 							Open
 						</a>
 						<a
 							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover)"
+							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover)"
 						>
 							<Download className="size-4" />
 							Download
@@ -488,7 +490,7 @@ export default function FileView() {
 						displayName={displayName}
 					/>
 				) : (
-					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-zinc-200 bg-white p-8 text-center">
+					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
 						<FileText className="size-12 text-muted-foreground" />
 						<h2 className="mt-4 text-base font-semibold">
 							Preview unavailable
@@ -502,16 +504,16 @@ export default function FileView() {
 			</section>
 
 			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 px-4">
-					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-xs">
+					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
 						<div className="flex items-start justify-between gap-4">
 							<div>
-								<h2 className="text-base font-semibold text-zinc-950">
+								<h2 className="text-base font-semibold text-foreground">
 									Delete file?
 								</h2>
-								<p className="mt-2 text-sm text-zinc-600">
+								<p className="mt-2 text-sm text-muted-foreground">
 									Are you sure you want to delete{" "}
-									<span className="font-medium text-zinc-900">
+									<span className="font-medium text-foreground">
 										{displayName}
 									</span>
 									? This action cannot be undone.
@@ -523,34 +525,34 @@ export default function FileView() {
 									if (isDeleting) return;
 									setIsDeleteModalOpen(false);
 								}}
-								className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+								className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 								aria-label="Close delete modal"
 							>
 								<X className="size-4" />
 							</button>
 						</div>
 						{actionError ? (
-							<p className="mt-4 text-sm text-red-600">
+							<p className="mt-4 text-sm text-destructive">
 								{actionError}
 							</p>
 						) : null}
 						<div className="mt-6 flex justify-end gap-2">
-							<button
+							<Button
 								type="button"
+								variant="outline"
 								onClick={() => setIsDeleteModalOpen(false)}
 								disabled={isDeleting}
-								className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								Cancel
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
+								variant="destructive"
 								onClick={handleDelete}
 								disabled={isDeleting}
-								className="inline-flex h-10 items-center rounded-md bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								{isDeleting ? "Deleting..." : "Delete item"}
-							</button>
+							</Button>
 						</div>
 					</div>
 				</div>
@@ -582,7 +584,7 @@ function FilePreview({
 	}
 
 	return (
-		<div className="h-full overflow-hidden rounded-lg border border-zinc-200 bg-white">
+		<div className="h-full overflow-hidden rounded-lg border border-border bg-background">
 			<iframe
 				src={fileUrl}
 				title={displayName}
@@ -637,26 +639,26 @@ function ZoomableFileViewer({
 		<div
 			className={
 				isExpanded
-					? "flex h-[90svh] w-[90vw] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 shadow-2xl"
-					: "flex h-full flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 shadow-sm"
+					? "flex h-[90svh] w-[90vw] flex-col overflow-hidden rounded-lg border border-border bg-muted shadow-2xl"
+					: "flex h-full flex-col overflow-hidden rounded-lg border border-border bg-muted shadow-sm"
 			}
 		>
-			<div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-3">
+			<div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-3">
 				<div className="flex min-w-0 items-center gap-2">
-					<div className="flex size-7 items-center justify-center rounded-md bg-zinc-100 text-zinc-600">
+					<div className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
 						{React.createElement(fileIconFor(file), {
 							className:
 								"size-3.5 shrink-0 text-muted-foreground/80",
 						})}
 					</div>
-					<span className="truncate text-sm font-medium text-zinc-800">
+					<span className="truncate text-sm font-medium text-foreground">
 						{displayName}
 					</span>
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
 					<button
 						type="button"
-						className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 						onClick={() =>
 							setZoom((value) => Math.max(50, value - 10))
 						}
@@ -666,7 +668,7 @@ function ZoomableFileViewer({
 					</button>
 					<button
 						type="button"
-						className="h-8 w-12 rounded-md text-center text-xs tabular-nums text-muted-foreground hover:bg-zinc-100 hover:text-zinc-900"
+						className="h-8 w-12 rounded-md text-center text-xs tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
 						onClick={() => setZoom(100)}
 						aria-label="Reset zoom"
 					>
@@ -674,7 +676,7 @@ function ZoomableFileViewer({
 					</button>
 					<button
 						type="button"
-						className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 						onClick={() =>
 							setZoom((value) => Math.min(250, value + 10))
 						}
@@ -684,7 +686,7 @@ function ZoomableFileViewer({
 					</button>
 					<button
 						type="button"
-						className="ml-1 inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+						className="ml-1 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 						onClick={toggleExpanded}
 						aria-label={
 							isExpanded ? "Shrink viewer" : "Expand viewer"
@@ -698,7 +700,7 @@ function ZoomableFileViewer({
 					</button>
 				</div>
 			</div>
-			<div className="flex-1 overflow-auto bg-zinc-100">
+			<div className="flex-1 overflow-auto bg-muted">
 				<div
 					style={{
 						display: "flex",
@@ -709,7 +711,7 @@ function ZoomableFileViewer({
 					}}
 				>
 					{isImage ? (
-						<div className="rounded-md border border-zinc-200 bg-white shadow-sm">
+						<div className="rounded-md border border-border bg-background shadow-sm">
 							<img
 								src={fileUrl}
 								alt={displayName}
@@ -727,7 +729,7 @@ function ZoomableFileViewer({
 						<iframe
 							src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
 							title={displayName}
-							className="block rounded-md border border-zinc-200 bg-white shadow-sm"
+							className="block rounded-md border border-border bg-background shadow-sm"
 							style={{
 								width: `${pdfWidth}px`,
 								height: `${pdfHeight}px`,
@@ -744,7 +746,7 @@ function ZoomableFileViewer({
 
 	if (isExpanded) {
 		return (
-			<div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/30 p-6 backdrop-blur-sm">
+			<div className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/20 p-6 backdrop-blur-sm">
 				{viewer}
 			</div>
 		);

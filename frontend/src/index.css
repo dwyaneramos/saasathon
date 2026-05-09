@@ -23,17 +23,17 @@
 
 	--color-accent-hover: #0fbd62;
 
-	--color-background: oklch(1 0 0);
-	--color-foreground: oklch(0.145 0 0);
-	--color-card: oklch(1 0 0);
-	--color-card-foreground: oklch(0.145 0 0);
-	--color-popover: oklch(1 0 0);
-	--color-popover-foreground: oklch(0.145 0 0);
-	--color-muted: oklch(0.97 0 0);
-	--color-muted-foreground: oklch(0.556 0 0);
-	--color-border: oklch(0.922 0 0);
-	--color-input: oklch(0.922 0 0);
-	--color-ring: oklch(0.708 0 0);
+	--color-background: #ffffff;
+	--color-foreground: #18181b;
+	--color-card: #ffffff;
+	--color-card-foreground: #18181b;
+	--color-popover: #ffffff;
+	--color-popover-foreground: #18181b;
+	--color-muted: #f4f4f5;
+	--color-muted-foreground: #71717a;
+	--color-border: #e4e4e7;
+	--color-input: #e4e4e7;
+	--color-ring: #a1a1aa;
 	--radius: 0.625rem;
 }
 

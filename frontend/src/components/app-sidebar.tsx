@@ -5,20 +5,14 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
 	ChevronRight,
-	FileArchive,
-	FileAudio,
-	FileCode,
-	FileImage,
-	FileSpreadsheet,
 	FolderOpen,
-	FileVideo,
-	FileText,
 	Layers,
 	FolderClosed,
 	Search,
 	X,
 	FolderPlus,
 	LayersPlus,
+	UploadCloud,
 } from "lucide-react";
 import {
 	Collapsible,
@@ -57,7 +51,10 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { UploadWorkspace } from "@/components/upload-workspace";
+import { fileIconFor } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -105,47 +102,6 @@ function fileDisplayName(file: ApiDocument) {
 	return file.originalFileName || file.fileName || file.filename;
 }
 
-function fileExtension(file: KibiFile) {
-	const name = file.filename || file.name;
-	const extension = name.split(".").pop();
-	return extension && extension !== name ? extension.toLowerCase() : "";
-}
-
-export function fileIconFor(file: KibiFile) {
-	const mimeType = file.mimeType.toLowerCase();
-	const extension = fileExtension(file);
-
-	if (mimeType === "application/pdf" || extension === "pdf") return FileText;
-	if (mimeType.startsWith("image/")) return FileImage;
-	if (mimeType.startsWith("audio/")) return FileAudio;
-	if (mimeType.startsWith("video/")) return FileVideo;
-	if (
-		mimeType.includes("spreadsheet") ||
-		mimeType.includes("excel") ||
-		["csv", "tsv", "xls", "xlsx"].includes(extension)
-	) {
-		return FileSpreadsheet;
-	}
-	if (
-		mimeType.includes("zip") ||
-		mimeType.includes("compressed") ||
-		["zip", "rar", "7z", "tar", "gz"].includes(extension)
-	) {
-		return FileArchive;
-	}
-	if (
-		mimeType.includes("json") ||
-		mimeType.includes("xml") ||
-		["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(
-			extension,
-		)
-	) {
-		return FileCode;
-	}
-
-	return FileText;
-}
-
 // ── Space switcher (header) ───────────────────────────────────────────────────
 
 function SpaceSwitcher({
@@ -167,7 +123,7 @@ function SpaceSwitcher({
 			<DropdownMenuTrigger asChild>
 				<SidebarMenuButton
 					tooltip={activeSpaceName}
-					className="hover:bg-zinc-200 py-6"
+					className="hover:bg-muted py-6"
 					style={{ transition: "none" }}
 				>
 					<div className="flex items-center gap-2 w-full">
@@ -283,7 +239,7 @@ function CategoryItem({
 					<SidebarMenuButton
 						tooltip={category.name}
 						className={cn(
-							"hover:bg-zinc-200",
+							"hover:bg-muted",
 							allowCategoryWrap
 								? "h-auto min-h-8 items-start"
 								: undefined,
@@ -329,7 +285,7 @@ function CategoryItem({
 								<SidebarMenuSubItem key={file.id}>
 									<SidebarMenuSubButton
 										asChild
-										className="hover:bg-zinc-200"
+										className="hover:bg-muted"
 									>
 										<Link
 											to={`/file/${file.id}`}
@@ -493,33 +449,41 @@ function UploadModal({
 
 	return createPortal(
 		<div
-			className="fixed inset-0 z-[200] flex items-center justify-center bg-black/20 p-4 supports-backdrop-filter:backdrop-blur-xs"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="upload-files-title"
+			className="fixed inset-0 z-[200] flex items-center justify-center bg-foreground/20 p-4 supports-backdrop-filter:backdrop-blur-sm"
 			onMouseDown={(event) => {
 				if (event.target === event.currentTarget && !isUploadLocked) {
 					onOpenChange(false);
 				}
 			}}
 		>
-			<Card className="relative z-[201] max-h-[85vh] w-full max-w-4xl overflow-hidden py-0 shadow-2xl">
+			<Card className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card py-0">
 				<Button
 					type="button"
 					variant="ghost"
 					size="icon-sm"
-					className="absolute top-4 right-4 z-10 disabled:cursor-not-allowed disabled:opacity-40"
+					className="absolute top-4 right-4 z-10 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
 					onClick={requestClose}
 					disabled={isUploadLocked}
 				>
 					<X className="size-4" />
 					<span className="sr-only">Close upload modal</span>
 				</Button>
-				<CardHeader className="border-b pr-12">
-					<CardTitle>Upload files</CardTitle>
-					<CardDescription>
-						Drop PDFs or images here, then track each file while
-						analysis runs.
+				<CardHeader className="border-b border-border px-6 py-5 pr-14">
+					<CardTitle
+						id="upload-files-title"
+						className="text-lg font-semibold text-foreground"
+					>
+						Upload files
+					</CardTitle>
+					<CardDescription className="max-w-xl">
+						Add PDFs or images to analyse and organize them into
+						categories.
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="overflow-y-auto py-4">
+				<CardContent className="max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 py-6">
 					<UploadWorkspace
 						detailMode="compact"
 						showHeading={false}
@@ -527,27 +491,25 @@ function UploadModal({
 						spaceId={spaceId}
 					/>
 				</CardContent>
-				<div className="grid min-h-18 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t bg-muted/40 px-6 py-3 text-muted-foreground">
-					<span className="flex min-h-full items-center text-sm leading-relaxed md:text-[15px]">
-						{isUploadLocked
-							? "You can't leave while files are uploading or analyzing, or the batch may be interrupted."
-							: hasAnalysisStarted
-								? "Finished here? Press Esc, click outside, or use Done to close."
-								: "Press Esc, click outside, or use the close button to leave."}
-					</span>
-					{hasAnalysisStarted ? (
+				{hasAnalysisStarted ? (
+					<div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-border bg-muted/50 px-6 py-3 text-muted-foreground">
+						<span className="flex min-h-full items-center text-sm leading-relaxed">
+							{isUploadLocked
+								? "Analysis is running. Keep this window open until it finishes."
+								: "Analysis complete. New files are ready in the sidebar."}
+						</span>
 						<Button
 							type="button"
-							variant="ghost"
-							className="shrink-0 self-end !bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover) disabled:!bg-zinc-400 disabled:!text-zinc-100"
+							variant="accent"
+							className="shrink-0 self-end"
 							size="default"
 							onClick={requestClose}
 							disabled={isUploadLocked}
 						>
 							Done
 						</Button>
-					) : null}
-				</div>
+					</div>
+				) : null}
 			</Card>
 		</div>,
 		document.body,
@@ -1158,7 +1120,7 @@ export function AppSidebar({
 			<Sidebar
 				overlay
 				collapsible="icon"
-				className="top-[var(--header-height)] h-[calc(100svh-var(--header-height))] border-r border-r-zinc-100"
+				className="top-[var(--header-height)] h-[calc(100svh-var(--header-height))] border-r border-r-border"
 				{...props}
 			>
 				{/* Header: space switcher */}
@@ -1178,7 +1140,7 @@ export function AppSidebar({
 							<SidebarMenuItem>
 								<SidebarMenuButton
 									tooltip="Search"
-									className="justify-center hover:bg-zinc-200"
+									className="justify-center hover:bg-muted"
 									style={{ transition: "none" }}
 									onClick={openSearch}
 								>
@@ -1225,25 +1187,25 @@ export function AppSidebar({
 					<SidebarMenu>
 						<SidebarMenuItem>
 							<SidebarMenuButton
-								tooltip="New category"
+								tooltip="New file"
 								className="w-full border border-dashed border-sidebar-border bg-sidebar text-muted-foreground transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
-								onClick={openCreateCategoryModal}
+								onClick={() => setIsUploadModalOpen(true)}
 							>
-								<FolderPlus className="shrink-0" />
+								<UploadCloud className="size-4" />
 								<span className="group-data-[collapsible=icon]:hidden">
-									New category
+									New file
 								</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 						<SidebarMenuItem>
 							<SidebarMenuButton
-								tooltip="New file"
+								tooltip="New category"
 								className="w-full mt-2 border border-dashed border-sidebar-border bg-sidebar text-muted-foreground transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
-								onClick={() => setIsUploadModalOpen(true)}
+								onClick={openCreateCategoryModal}
 							>
-								<FileText className="size-4" />
+								<FolderPlus className="shrink-0" />
 								<span className="group-data-[collapsible=icon]:hidden">
-									New file
+									New category
 								</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
@@ -1260,15 +1222,15 @@ export function AppSidebar({
 			/>
 
 			{isCreateCategoryOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
-						<h2 className="text-lg font-semibold text-zinc-950">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
+						<h2 className="text-lg font-semibold text-foreground">
 							Create New Category
 						</h2>
-						<p className="mt-1 text-sm text-zinc-500">
+						<p className="mt-1 text-sm text-muted-foreground">
 							Add a name for the new category.
 						</p>
-						<p className="mt-2 text-xs text-zinc-500">
+						<p className="mt-2 text-xs text-muted-foreground">
 							Creating category in:{" "}
 							<strong>
 								{activeSpace?.name ?? "Default Space"}
@@ -1276,13 +1238,10 @@ export function AppSidebar({
 						</p>
 
 						<form className="mt-5" onSubmit={handleCreateCategory}>
-							<label
-								htmlFor="new-category-name"
-								className="block text-sm font-medium text-zinc-800"
-							>
+							<Label htmlFor="new-category-name">
 								Category name
-							</label>
-							<input
+							</Label>
+							<Input
 								id="new-category-name"
 								type="text"
 								value={newCategoryName}
@@ -1295,56 +1254,51 @@ export function AppSidebar({
 								placeholder="e.g. Contracts"
 								maxLength={80}
 								autoFocus
-								className="mt-2 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-950 outline-none focus:border-zinc-500"
+								className="mt-2"
 							/>
 
 							{createCategoryError && (
-								<p className="mt-2 text-sm text-red-600">
+								<p className="mt-2 text-sm text-destructive">
 									{createCategoryError}
 								</p>
 							)}
 
 							<div className="mt-5 flex justify-end gap-3">
-								<button
+								<Button
 									type="button"
+									variant="outline"
 									onClick={closeCreateCategoryModal}
 									disabled={isCreatingCategory}
-									className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									Cancel
-								</button>
-								<button
+								</Button>
+								<Button
 									type="submit"
+									variant="accent"
 									disabled={isCreatingCategory}
-									className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									{isCreatingCategory
 										? "Creating..."
 										: "Create new category"}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</div>
 				</div>
 			)}
 			{isCreateSpaceOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
-						<h2 className="text-lg font-semibold text-zinc-950">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
+						<h2 className="text-lg font-semibold text-foreground">
 							Create New Space
 						</h2>
-						<p className="mt-1 text-sm text-zinc-500">
+						<p className="mt-1 text-sm text-muted-foreground">
 							Add a name for the new space.
 						</p>
 
 						<form className="mt-5" onSubmit={handleCreateSpace}>
-							<label
-								htmlFor="new-space-name"
-								className="block text-sm font-medium text-zinc-800"
-							>
-								Space name
-							</label>
-							<input
+							<Label htmlFor="new-space-name">Space name</Label>
+							<Input
 								id="new-space-name"
 								type="text"
 								value={newSpaceName}
@@ -1356,18 +1310,19 @@ export function AppSidebar({
 								placeholder="e.g. Acme Corp"
 								maxLength={80}
 								autoFocus
-								className="mt-2 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-950 outline-none focus:border-zinc-500"
+								className="mt-2"
 							/>
 
 							{createSpaceError && (
-								<p className="mt-2 text-sm text-red-600">
+								<p className="mt-2 text-sm text-destructive">
 									{createSpaceError}
 								</p>
 							)}
 
 							<div className="mt-5 flex justify-end gap-3">
-								<button
+								<Button
 									type="button"
+									variant="outline"
 									onClick={() => {
 										if (isCreatingSpace) return;
 										setIsCreateSpaceOpen(false);
@@ -1375,19 +1330,18 @@ export function AppSidebar({
 										setCreateSpaceError(null);
 									}}
 									disabled={isCreatingSpace}
-									className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									Cancel
-								</button>
-								<button
+								</Button>
+								<Button
 									type="submit"
+									variant="accent"
 									disabled={isCreatingSpace}
-									className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									{isCreatingSpace
 										? "Creating..."
 										: "Create new space"}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</div>
