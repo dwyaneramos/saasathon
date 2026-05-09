@@ -29,15 +29,6 @@ export default function Graph() {
     let ignore = false;
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-	return (
-		<div className="graph-page p-4 relative w-full overflow-hidden flex-1">
-			<button
-				onClick={() => setIs2D(!is2D)}
-				className="absolute top-5 left-10 z-10 px-4 py-2 bg-gray-900 text-white rounded hover:bg-gray-700 transition"
-			>
-				{is2D ? "Switch to 3D" : "Switch to 2D"}
-			</button>
     async function loadGraphData() {
       const [categoriesResponse, documentsResponse] = await Promise.all([
         fetch(`${apiBaseUrl}/categories`, { headers }),

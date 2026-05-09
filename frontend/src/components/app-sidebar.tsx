@@ -15,6 +15,7 @@ import {
   FileVideo,
   FileText,
   Plus,
+  Layers,
   FolderClosed,
   X,
 } from "lucide-react";
@@ -54,6 +55,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UploadWorkspace } from "@/components/upload-workspace";
+import { cn } from "@/lib/utils";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -422,7 +424,11 @@ function FileTree({
 
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
-function AddButton() {
+function AddButton({
+  onNewCollection,
+}: {
+  onNewCollection: () => void;
+}) {
   const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 
   return (
@@ -446,8 +452,8 @@ function AddButton() {
           >
             <FileText className="size-4" /> New file
           </DropdownMenuItem>
-          <DropdownMenuItem className="gap-2">
-            <FolderOpen className="size-4" /> New collection
+          <DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
+            <FolderOpen className="size-4" /> New category
           </DropdownMenuItem>
           <DropdownMenuItem className="gap-2">
             <Layers className="size-4" /> New space
@@ -553,38 +559,6 @@ function UploadModal({
     </div>,
     document.body,
   );
-type AddButtonProps = {
-	onNewCollection: () => void;
-};
-
-function AddButton({ onNewCollection }: AddButtonProps) {
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton
-					tooltip="Add new"
-					className="w-full border border-dashed border-sidebar-border border-zinc-400 text-muted-foreground hover:text-foreground hover:bg-zinc-200"
-					style={{ transition: "none" }}
-				>
-					<Plus className="shrink-0" />
-					<span className="group-data-[collapsible=icon]:hidden">
-						Add new
-					</span>
-				</SidebarMenuButton>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent side="top" align="start" className="min-w-44">
-				<DropdownMenuItem className="gap-2">
-					<FileText className="size-4" /> New file
-				</DropdownMenuItem>
-				<DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
-					<FolderOpen className="size-4" /> New category
-				</DropdownMenuItem>
-				<DropdownMenuItem className="gap-2">
-					<Orbit className="size-4" /> New space
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
 }
 
 // ── AppSidebar ────────────────────────────────────────────────────────────────
@@ -607,11 +581,10 @@ export function AppSidebar({
   const [isLoading, setIsLoading] = React.useState(true);
   const [spacesLoaded, setSpacesLoaded] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<ApiSearchResult[]>([]);
-  const [isSearching, setIsSearching] = React.useState(false);
-  const [searchError, setSearchError] = React.useState<string | null>(null);
-  const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
+  const [newCategoryName, setNewCategoryName] = React.useState("");
+  const [createCategoryError, setCreateCategoryError] = React.useState<string | null>(null);
+  const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
   const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
     () => new Set(),
   );
@@ -642,46 +615,7 @@ export function AppSidebar({
 
   const activeSpace =
     spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
-  const hasActiveSearch = searchQuery.trim().length > 0;
-export function AppSidebar({
-	activeSpaceId,
-	onSpaceChange,
-	onSpacesLoaded,
-	...props
-}: React.ComponentProps<typeof Sidebar> & {
-	activeSpaceId: number | null;
-	onSpaceChange: (id: number | null) => void;
-	onSpacesLoaded: (spaces: Space[]) => void;
-}) {
-	const [spaces, setSpaces] = React.useState<Space[]>([]);
-	const [categories, setCategories] = React.useState<Category[]>([]);
-	const [isLoading, setIsLoading] = React.useState(true);
-	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
-	const [error, setError] = React.useState<string | null>(null);
-	const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
-	const [newCategoryName, setNewCategoryName] = React.useState("");
-	const [createCategoryError, setCreateCategoryError] = React.useState<string | null>(
-		null,
-	);
-	const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
-	const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
-		() => new Set(),
-	);
-	const [newFileCategoryIds, setNewFileCategoryIds] = React.useState<
-		Set<number>
-	>(() => new Set());
-	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
-		() => new Set(),
-	);
-	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(
-		new Map(),
-	);
-	const fileTreeLoadedRef = React.useRef(false);
-
-	const activeSpace =
-		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
-
-	const validateCategoryName = React.useCallback(
+  const validateCategoryName = React.useCallback(
 		(value: string) => {
 			const trimmed = value.trim();
 
@@ -905,76 +839,73 @@ export function AppSidebar({
 
 						return nextIds;
 					});
-				}
+					}
 
-        setSpaces(nextSpaces);
-        onSpacesLoaded?.(nextSpaces);
-        setActiveSpaceId((currentSpaceId) => {
-          if (
-            currentSpaceId &&
-            nextSpaces.some((space) => space.id === currentSpaceId)
-          ) {
-            return currentSpaceId;
-          }
-				categoryFileIdsRef.current = nextCategoryFileIds;
-				fileTreeLoadedRef.current = true;
-				setCategories(nextCategories);
-			} catch {
-				setCategories([]);
-				setError("Unable to load files");
-			} finally {
-				setIsLoading(false);
-			}
-		},
-		[activeSpaceId, spacesLoaded],
-	);
-
-	React.useEffect(() => {
-		let ignore = false;
-
-		async function loadSpaces() {
-			try {
-				const response = await fetch(`${apiBaseUrl}/spaces`, {
-					headers: authHeaders(),
-				});
-
-    return () => {
-      ignore = true;
-    };
-  }, [onSpacesLoaded, setActiveSpaceId]);
-				if (!response.ok) {
-					throw new Error("Unable to load spaces");
-				}
-
-				const payload = (await response.json()) as {
-					spaces?: ApiSpace[];
-				};
-				const nextSpaces = payload.spaces ?? [];
-				if (ignore) return;
-
-				setSpaces(nextSpaces);
-				onSpacesLoaded(nextSpaces);
-				onSpaceChange(
-					nextSpaces.some((s) => s.id === activeSpaceId)
-						? activeSpaceId
-						: (nextSpaces[0]?.id ?? null),
-				);
-				setSpacesLoaded(true);
-			} catch {
-				if (!ignore) {
-					setError("Unable to load spaces");
+					categoryFileIdsRef.current = nextCategoryFileIds;
+					fileTreeLoadedRef.current = true;
+					setCategories(nextCategories);
+				} catch {
+					setCategories([]);
+					setError("Unable to load files");
+				} finally {
 					setIsLoading(false);
+				}
+			},
+			[activeSpaceId, spacesLoaded],
+		);
+
+		React.useEffect(() => {
+			let ignore = false;
+
+			async function loadSpaces() {
+				try {
+					const response = await fetch(`${apiBaseUrl}/spaces`, {
+						headers: authHeaders(),
+					});
+
+					if (!response.ok) {
+						throw new Error("Unable to load spaces");
+					}
+
+					const payload = (await response.json()) as {
+						spaces?: ApiSpace[];
+					};
+					const nextSpaces = payload.spaces ?? [];
+
+					if (ignore) return;
+
+					setSpaces(nextSpaces);
+					onSpacesLoaded?.(nextSpaces);
+					setActiveSpaceId((currentSpaceId) => {
+						if (
+							currentSpaceId &&
+							nextSpaces.some((space) => space.id === currentSpaceId)
+						) {
+							return currentSpaceId;
+						}
+
+						return nextSpaces[0]?.id ?? null;
+					});
 					setSpacesLoaded(true);
+				} catch {
+					if (!ignore) {
+						setError("Unable to load spaces");
+						setSpacesLoaded(true);
+					}
+				} finally {
+					if (!ignore) {
+						fileTreeLoadedRef.current = false;
+					}
+					setIsLoading(false);
 				}
 			}
-		}
 
-		loadSpaces();
+			loadSpaces();
 
-		return () => {
-			ignore = true;
-		};
-	}, []);
+			return () => {
+				ignore = true;
+			};
+		}, [onSpacesLoaded, setActiveSpaceId]);
 
 	React.useEffect(() => {
 		if (!spacesLoaded) return;
@@ -1073,11 +1004,11 @@ export function AppSidebar({
 				<SidebarHeader>
 					<SidebarMenu>
 						<SidebarMenuItem>
-							<SpaceSwitcher
-								spaces={spaces}
-								activeSpace={activeSpace}
-								onSelect={(space) => onSpaceChange(space.id)}
-							/>
+								<SpaceSwitcher
+									spaces={spaces}
+									activeSpace={activeSpace}
+									onSelect={(space) => setActiveSpaceId(space.id)}
+								/>
 						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>
