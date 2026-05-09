@@ -81,6 +81,7 @@ interface ForceSimulationProps {
   is2D: boolean;
   selectedNodeIndex: number | null;
   onNodeClick?: (index: number) => void;
+  onNodeHover?: (index: number | null) => void;
 }
 
 const ForceSimulation: React.FC<ForceSimulationProps> = ({
@@ -89,6 +90,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   is2D,
   selectedNodeIndex,
   onNodeClick,
+  onNodeHover,
 }) => {
   const nodesRef = useRef(nodes);
   const prevIs2DRef = useRef(is2D);
@@ -190,8 +192,12 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   return (
     <group scale={1} rotation={[0.1, 0, 0]}>
       {edges.map((edge, index) => {
-        const start = nodesRef.current[edge.source].position;
-        const end = nodesRef.current[edge.target].position;
+        const start = nodesRef.current[edge.source]?.position;
+        const end = nodesRef.current[edge.target]?.position;
+        if (!start || !end) {
+          return null;
+        }
+
         const opacity = 0.2 + edge.weight * 0.35;
         const lineWidth = 0.35 + edge.weight * 0.65;
 
@@ -216,7 +222,11 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         return (
           <group key={node.id} position={node.position.clone()}>
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
-              <mesh onClick={() => onNodeClick?.(index)}>
+              <mesh
+                onClick={() => onNodeClick?.(index)}
+                onPointerOver={() => onNodeHover?.(index)}
+                onPointerOut={() => onNodeHover?.(null)}
+              >
                 <sphereGeometry args={[isSelected ? 0.09 : 0.07, 16, 16]} />
                 <meshStandardMaterial
                   color={isSelected ? "#2563eb" : "#111111"}
@@ -251,6 +261,7 @@ interface GraphViewProps {
   weightMatrix?: number[][];
   threshold?: number;
   onNodeClick?: (node: GraphNode, index: number) => void;
+  onNodeHover?: (node: GraphNode | null) => void;
 }
 
 const GraphView: React.FC<GraphViewProps> = ({
@@ -259,15 +270,18 @@ const GraphView: React.FC<GraphViewProps> = ({
   weightMatrix = [],
   threshold = 0.16,
   onNodeClick,
+  onNodeHover,
 }) => {
   const nodes = useMemo(() => generateNodes(graphNodes), [graphNodes]);
   const edges = useMemo(() => matrixToEdges(weightMatrix, threshold), [weightMatrix, threshold]);
   const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(null);
   const controlsRef = useRef<any>(null);
+  const canvasKey = useMemo(() => graphNodes.map((node) => node.id).join("|"), [graphNodes]);
 
   useEffect(() => {
     setSelectedNodeIndex(null);
-  }, [graphNodes]);
+    onNodeHover?.(null);
+  }, [graphNodes, onNodeHover]);
 
   const handleNodeClick = (index: number) => {
     setSelectedNodeIndex(index);
@@ -278,7 +292,7 @@ const GraphView: React.FC<GraphViewProps> = ({
   };
 
   return (
-    <Canvas camera={{ position: [0, 0, 6.5], fov: 42 }} gl={{ antialias: true, alpha: true }}>
+    <Canvas key={canvasKey} camera={{ position: [0, 0, 6.5], fov: 42 }} gl={{ antialias: true, alpha: true }}>
       <CameraController is2D={is2D} controlsRef={controlsRef} />
       <ambientLight intensity={1.2} />
       <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
@@ -291,6 +305,9 @@ const GraphView: React.FC<GraphViewProps> = ({
           is2D={is2D}
           selectedNodeIndex={selectedNodeIndex}
           onNodeClick={handleNodeClick}
+          onNodeHover={(index) => {
+            onNodeHover?.(index === null ? null : graphNodes[index] ?? null);
+          }}
         />
       </Suspense>
 

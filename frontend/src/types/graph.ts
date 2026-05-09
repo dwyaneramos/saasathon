@@ -27,4 +27,5 @@ export interface GraphNode {
   label: string;
   categoryId?: number;
   documentId?: number;
+  fileCount?: number;
 }
