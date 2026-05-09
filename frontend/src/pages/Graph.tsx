@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
@@ -32,11 +32,16 @@ export default function Graph() {
   });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipFrameRef = useRef<HTMLDivElement>(null);
   const cursorPosRef = useRef({ x: 0, y: 0 });
   const hoveredNodeIdRef = useRef<string | null>(null);
   const tooltipHoveredRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipFrameSize, setTooltipFrameSize] = useState({
+    width: 0,
+    height: 0,
+  });
 
   useEffect(() => {
     let ignore = false;
@@ -118,6 +123,7 @@ export default function Graph() {
       if (!tooltipHoveredRef.current) {
         setTooltipVisible(false);
         setHoveredNode(null);
+        setTooltipFrameSize({ width: 0, height: 0 });
         hoveredNodeIdRef.current = null;
       }
     }, 200);
@@ -130,13 +136,17 @@ export default function Graph() {
     }
   };
 
-  const handleNodeHover = (node: GraphNode | null) => {
+  const handleNodeHover = (
+    node: GraphNode | null,
+    anchor?: { x: number; y: number },
+  ) => {
     if (node) {
       cancelHide();
 
       if (hoveredNodeIdRef.current !== node.id) {
         hoveredNodeIdRef.current = node.id;
-        setTooltipAnchor(cursorPosRef.current);
+        setTooltipFrameSize({ width: 0, height: 0 });
+        setTooltipAnchor(anchor ?? cursorPosRef.current);
       }
 
       setHoveredNode(node);
@@ -187,6 +197,7 @@ export default function Graph() {
     if (mode === "categories" && node.categoryId) {
       setTooltipVisible(false);
       setHoveredNode(null);
+      setTooltipFrameSize({ width: 0, height: 0 });
       hoveredNodeIdRef.current = null;
       setActiveCategoryId(node.categoryId);
       setMode("files");
@@ -232,8 +243,23 @@ export default function Graph() {
     const maxCardHeight = viewportSize.height
       ? Math.max(0, viewportSize.height - TOOLTIP_EDGE_GAP * 2 - TOOLTIP_BRIDGE * 2)
       : undefined;
-    const frameWidth = width + TOOLTIP_BRIDGE * 2;
-    const frameHeight = (maxCardHeight ?? 420) + TOOLTIP_BRIDGE * 2;
+    const summaryLength = hoveredNode?.summary?.length ?? 0;
+    const estimatedSummaryLines = Math.max(1, Math.ceil(summaryLength / 52));
+    const estimatedCategoryHeight = Math.min(
+      120 + estimatedSummaryLines * 20 + hoveredCategoryFiles.length * 36,
+      520,
+    );
+    const estimatedCardHeight = Math.min(
+      isDocumentTooltip ? 420 : estimatedCategoryHeight,
+      maxCardHeight ?? Number.POSITIVE_INFINITY,
+    );
+    const measuredFrameWidth = tooltipFrameSize.width || 0;
+    const measuredFrameHeight = tooltipFrameSize.height || 0;
+    const frameWidth = measuredFrameWidth || width + TOOLTIP_BRIDGE * 2;
+    const frameHeight = measuredFrameHeight || estimatedCardHeight + TOOLTIP_BRIDGE * 2;
+    const cardHeight = measuredFrameHeight
+      ? Math.max(0, measuredFrameHeight - TOOLTIP_BRIDGE * 2)
+      : estimatedCardHeight;
 
     let cardX = tooltipAnchor.x + TOOLTIP_OFFSET;
     let cardY = tooltipAnchor.y + TOOLTIP_OFFSET;
@@ -247,9 +273,9 @@ export default function Graph() {
 
     if (
       viewportSize.height &&
-      cardY + (maxCardHeight ?? 420) + TOOLTIP_BRIDGE > viewportSize.height - TOOLTIP_EDGE_GAP
+      cardY + cardHeight + TOOLTIP_BRIDGE > viewportSize.height - TOOLTIP_EDGE_GAP
     ) {
-      cardY = tooltipAnchor.y - (maxCardHeight ?? 420) - TOOLTIP_OFFSET;
+      cardY = tooltipAnchor.y - cardHeight - TOOLTIP_OFFSET;
     }
 
     const frameX = viewportSize.width
@@ -268,7 +294,42 @@ export default function Graph() {
       : cardY - TOOLTIP_BRIDGE;
 
     return { left: frameX, top: frameY, width, maxHeight: maxCardHeight };
-  }, [tooltipAnchor, viewportSize.height, viewportSize.width]);
+  }, [
+    hoveredCategoryFiles.length,
+    hoveredNode?.summary,
+    isDocumentTooltip,
+    tooltipAnchor,
+    tooltipFrameSize.height,
+    tooltipFrameSize.width,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!showTooltip) return;
+
+    const tooltipFrame = tooltipFrameRef.current;
+    if (!tooltipFrame) return;
+
+    const updateTooltipFrameSize = () => {
+      const rect = tooltipFrame.getBoundingClientRect();
+      setTooltipFrameSize((current) => {
+        const nextWidth = Math.ceil(rect.width);
+        const nextHeight = Math.ceil(rect.height);
+
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current;
+        }
+
+        return { width: nextWidth, height: nextHeight };
+      });
+    };
+    updateTooltipFrameSize();
+
+    const resizeObserver = new ResizeObserver(updateTooltipFrameSize);
+    resizeObserver.observe(tooltipFrame);
+    return () => resizeObserver.disconnect();
+  }, [showTooltip, hoveredNode?.id, tooltipStyle.maxHeight, tooltipStyle.width]);
 
   return (
     <div
@@ -288,6 +349,7 @@ export default function Graph() {
             onClick={() => {
               setTooltipVisible(false);
               setHoveredNode(null);
+              setTooltipFrameSize({ width: 0, height: 0 });
               hoveredNodeIdRef.current = null;
               setMode("categories");
               setActiveCategoryId(null);
@@ -302,6 +364,7 @@ export default function Graph() {
       {/* Anchored tooltip with a hover bridge so the card can be entered. */}
       {showTooltip && (
         <div
+          ref={tooltipFrameRef}
           className="fixed z-50 p-[18px]"
           style={{
             left: tooltipStyle.left,

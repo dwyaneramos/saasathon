@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Billboard, Float, Line, OrbitControls, Text } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { GraphNode } from "@/types/graph";
 
@@ -82,7 +82,7 @@ interface ForceSimulationProps {
   selectedNodeIndex: number | null;
   nodeSizeScale: (node: GraphNode) => number;
   onNodeClick?: (index: number) => void;
-  onNodeHover?: (index: number | null) => void;
+  onNodeHover?: (index: number | null, anchor?: { x: number; y: number }) => void;
 }
 
 const ForceSimulation: React.FC<ForceSimulationProps> = ({
@@ -100,9 +100,9 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, forceUpdate] = useState({});
 
-  const handlePointerOver = (index: number) => {
+  const handlePointerOver = (index: number, event: ThreeEvent<PointerEvent>) => {
     if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
-    onNodeHover?.(index);
+    onNodeHover?.(index, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY });
   };
 
   const handlePointerOut = () => {
@@ -285,7 +285,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
               <mesh
                 onClick={() => onNodeClick?.(index)}
-                onPointerOver={() => handlePointerOver(index)}
+                onPointerOver={(event) => handlePointerOver(index, event)}
                 onPointerOut={() => handlePointerOut()}
               >
                 <sphereGeometry
@@ -324,7 +324,7 @@ interface GraphViewProps {
   weightMatrix?: number[][];
   threshold?: number;
   onNodeClick?: (node: GraphNode, index: number) => void;
-  onNodeHover?: (node: GraphNode | null) => void;
+  onNodeHover?: (node: GraphNode | null, anchor?: { x: number; y: number }) => void;
 }
 
 const GraphView: React.FC<GraphViewProps> = ({
@@ -407,8 +407,8 @@ const GraphView: React.FC<GraphViewProps> = ({
           selectedNodeIndex={selectedNodeIndex}
           nodeSizeScale={nodeSizeScale}
           onNodeClick={handleNodeClick}
-          onNodeHover={(index) => {
-            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null));
+          onNodeHover={(index, anchor) => {
+            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null), anchor);
           }}
         />
       </Suspense>
