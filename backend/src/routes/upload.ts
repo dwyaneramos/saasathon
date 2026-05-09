@@ -84,6 +84,16 @@ function uploadedFileResponse(file: StoredUpload) {
 	};
 }
 
+function resolveUploadPath(filename: string) {
+	const normalizedFilename = path.basename(filename);
+
+	if (normalizedFilename !== filename || !normalizedFilename) {
+		return null;
+	}
+
+	return path.join(uploadDir, normalizedFilename);
+}
+
 router.post("/", (req: Request, res: Response, next: NextFunction) => {
 	upload.single("file")(req, res, async (err) => {
 		if (err) {
@@ -213,6 +223,42 @@ async function storeUploadedFile(req: Request, file: Express.Multer.File) {
 		path: storagePath,
 	};
 }
+router.delete("/:filename", async (req: Request, res: Response, next: NextFunction) => {
+	const filename =
+		typeof req.params.filename === "string" ? req.params.filename : null;
+
+	if (!filename) {
+		res.status(400).json({ error: "Invalid filename." });
+		return;
+	}
+
+	const filePath = resolveUploadPath(filename);
+
+	if (!filePath) {
+		res.status(400).json({ error: "Invalid filename." });
+		return;
+	}
+
+	try {
+		await fs.unlink(filePath);
+		res.json({
+			message: "File deleted successfully.",
+			filename,
+		});
+	} catch (err) {
+		if (
+			err &&
+			typeof err === "object" &&
+			"code" in err &&
+			err.code === "ENOENT"
+		) {
+			res.status(404).json({ error: "File not found." });
+			return;
+		}
+
+		next(err);
+	}
+});
 
 router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
 	if (err instanceof multer.MulterError) {
