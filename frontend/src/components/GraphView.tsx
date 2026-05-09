@@ -102,17 +102,29 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   const [, forceUpdate] = useState({});
 
   const handlePointerOver = (index: number, event: ThreeEvent<PointerEvent>) => {
-    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+    if (hoverOutTimer.current) {
+      clearTimeout(hoverOutTimer.current);
+      hoverOutTimer.current = null;
+    }
     onNodeHover?.(index, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY });
   };
 
   const handlePointerOut = () => {
-    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 50);
+    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 180);
   };
 
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverOutTimer.current) {
+        clearTimeout(hoverOutTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (prevIs2DRef.current && !is2D) {
@@ -167,12 +179,11 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         );
 
         const nodeRadiusPx = Math.max(18, radius * 220);
-        isNearCursor =
-          Math.hypot(
-            cursorRef.current.x - nodeScreenPosition.x,
-            cursorRef.current.y - nodeScreenPosition.y,
-          ) <=
-          nodeRadiusPx + FREEZE_PADDING_PX;
+        const distanceToCursor = Math.hypot(
+          cursorRef.current.x - nodeScreenPosition.x,
+          cursorRef.current.y - nodeScreenPosition.y,
+        );
+        isNearCursor = distanceToCursor <= nodeRadiusPx + FREEZE_PADDING_PX;
       }
 
       if (isNearCursor) {
