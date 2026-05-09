@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Router, type NextFunction, type Request, type Response } from "express";
+import { Router, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -47,6 +48,8 @@ const archiveDownloadRateLimit = createPerUserRateLimiter({
 	maxRequests: 30,
 	windowMs: 60_000,
 });
+const MIN_ARCHIVE_NAME_TOKEN_LENGTH = 2;
+const MAX_ARCHIVE_NAME_LENGTH = 72;
 const ARCHIVE_NAME_STOPWORDS = new Set([
 	"a",
 	"all",
@@ -79,11 +82,6 @@ const ARCHIVE_NAME_STOPWORDS = new Set([
 	"with",
 	"zip",
 ]);
-type RateLimitEntry = {
-	count: number;
-	startedAt: number;
-};
-
 function createPerUserRateLimiter({
 	windowMs,
 	maxRequests,
@@ -91,29 +89,17 @@ function createPerUserRateLimiter({
 	windowMs: number;
 	maxRequests: number;
 }) {
-	const buckets = new Map<string, RateLimitEntry>();
-
-	return (req: AuthRequest, res: Response, next: NextFunction) => {
-		const key = `${req.userId ?? "anonymous"}:${req.ip}:${req.path}`;
-		const now = Date.now();
-		const existingBucket = buckets.get(key);
-
-		if (!existingBucket || now - existingBucket.startedAt >= windowMs) {
-			buckets.set(key, { count: 1, startedAt: now });
-			next();
-			return;
-		}
-
-		if (existingBucket.count >= maxRequests) {
-			res.status(429).json({
-				error: "Too many requests. Please try again in a minute.",
-			});
-			return;
-		}
-
-		existingBucket.count += 1;
-		next();
-	};
+	return rateLimit({
+		windowMs,
+		limit: maxRequests,
+		standardHeaders: true,
+		legacyHeaders: false,
+		message: { error: "Too many requests. Please try again in a minute." },
+		keyGenerator: (req) => {
+			const authReq = req as AuthRequest;
+			return `${authReq.userId ?? "anonymous"}:${req.ip}:${req.path}`;
+		},
+	});
 }
 
 export const uploadPdfMiddleware = multer({
@@ -860,7 +846,7 @@ function archiveNameTokens(value: string) {
 		.replace(/[^a-z0-9\s-]/g, " ")
 		.split(/[\s-]+/)
 		.map((token) => token.trim())
-		.filter((token) => token.length >= 2)
+		.filter((token) => token.length >= MIN_ARCHIVE_NAME_TOKEN_LENGTH)
 		.filter((token) => !ARCHIVE_NAME_STOPWORDS.has(token))
 		.slice(0, 6);
 }
@@ -871,7 +857,7 @@ function archiveNameSlug(parts: string[]) {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
-		.slice(0, 72)
+		.slice(0, MAX_ARCHIVE_NAME_LENGTH)
 		.replace(/-+$/g, "");
 
 	return slug || "files";
