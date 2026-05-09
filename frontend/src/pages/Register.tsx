@@ -117,11 +117,13 @@ export default function Register() {
 	};
 
 	return (
-		<div className="register-page min-h-screen flex flex-col">
-			<main className="flex-1 flex items-center justify-center p-4">
+		<div className="register-page">
+			<main className="flex min-h-[calc(100svh-var(--header-height))] items-start justify-center px-4 pb-16 pt-12 md:pt-16">
 				<Card className="w-full max-w-md">
-					<CardHeader>
-						<CardTitle>Register to Kibi</CardTitle>
+					<CardHeader className="space-y-1">
+						<CardTitle className="text-2xl">
+							Register to Kibi
+						</CardTitle>
 						<CardDescription>
 							Create your account to get started
 						</CardDescription>

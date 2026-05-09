@@ -92,11 +92,11 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page min-h-screen flex flex-col">
-      <main className="flex-1 flex items-center justify-center p-4">
+    <div className="login-page">
+      <main className="flex min-h-[calc(100svh-var(--header-height))] items-start justify-center px-4 pb-16 pt-12 md:pt-16">
         <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-3xl">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl">
               Login to Kibi
             </CardTitle>
             <CardDescription>

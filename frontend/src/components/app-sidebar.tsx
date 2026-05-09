@@ -37,6 +37,7 @@ import {
 	type AppSidebarProps,
 	type Category,
 	type FileTreeUpdatedEvent,
+	type OpenUploadModalEvent,
 	type Space,
 } from "./app-sidebar/types";
 
@@ -171,6 +172,11 @@ export function AppSidebar({
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 	const [downloadingCategoryId, setDownloadingCategoryId] =
 		React.useState<number | null>(null);
+	const [pendingUploadFiles, setPendingUploadFiles] = React.useState<File[]>(
+		[],
+	);
+	const [pendingUploadFilesToken, setPendingUploadFilesToken] =
+		React.useState(0);
 	const [searchQuery, setSearchQuery] = React.useState("");
 	const [contentSearchResults, setContentSearchResults] = React.useState<
 		ApiDocumentSearchResult[]
@@ -862,7 +868,13 @@ export function AppSidebar({
 	}, [activeSpaceId, searchQuery]);
 
 	React.useEffect(() => {
-		const handleOpenUploadModal = () => {
+		const handleOpenUploadModal = (event: Event) => {
+			const files =
+				(event as OpenUploadModalEvent).detail?.files ?? [];
+			if (files.length > 0) {
+				setPendingUploadFiles(files);
+				setPendingUploadFilesToken((currentValue) => currentValue + 1);
+			}
 			setIsUploadModalOpen(true);
 		};
 
@@ -1074,13 +1086,14 @@ export function AppSidebar({
 					.sort((a, b) => a.name.localeCompare(b.name)),
 			);
 			setEditingCategoryId(null);
-			setEditingCategoryName("");
-			toast.success(
-				`Category renamed to '${payload?.category?.name ?? trimmedName}'`,
-			);
-		} catch (err) {
-			setCategoryActionError(
-				err instanceof Error
+				setEditingCategoryName("");
+				toast.success(
+					`Category renamed to '${payload?.category?.name ?? trimmedName}'`,
+				);
+				window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+			} catch (err) {
+				setCategoryActionError(
+					err instanceof Error
 					? err.message
 					: "Could not rename category.",
 			);
@@ -1120,16 +1133,17 @@ export function AppSidebar({
 					(currentCategory) => currentCategory.id !== category.id,
 				),
 			);
-			setExpandedCategoryIds((currentIds) => {
-				const nextIds = new Set(currentIds);
-				nextIds.delete(category.id);
-				return nextIds;
-			});
-			setConfirmDeleteCategoryId(null);
-			toast.success(`Category '${category.name}' deleted`);
-		} catch (err) {
-			setCategoryActionError(
-				err instanceof Error
+				setExpandedCategoryIds((currentIds) => {
+					const nextIds = new Set(currentIds);
+					nextIds.delete(category.id);
+					return nextIds;
+				});
+				setConfirmDeleteCategoryId(null);
+				toast.success(`Category '${category.name}' deleted`);
+				window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+			} catch (err) {
+				setCategoryActionError(
+					err instanceof Error
 					? err.message
 					: "Could not delete category.",
 			);
@@ -1351,6 +1365,8 @@ export function AppSidebar({
 				open={isUploadModalOpen}
 				onOpenChange={setIsUploadModalOpen}
 				spaceId={activeSpaceId}
+				incomingFiles={pendingUploadFiles}
+				incomingFilesToken={pendingUploadFilesToken}
 			/>
 
 			{isManageCategoriesOpen && (

@@ -15,10 +15,14 @@ export function UploadModal({
 	open,
 	onOpenChange,
 	spaceId,
+	incomingFiles,
+	incomingFilesToken,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	spaceId?: number | null;
+	incomingFiles?: File[];
+	incomingFilesToken?: number;
 }) {
 	const [isUploadLocked, setIsUploadLocked] = React.useState(false);
 	const [hasAnalysisStarted, setHasAnalysisStarted] = React.useState(false);
@@ -116,6 +120,8 @@ export function UploadModal({
 						showHeading={false}
 						onBusyChange={handleBusyChange}
 						spaceId={spaceId}
+						incomingFiles={incomingFiles}
+						incomingFilesToken={incomingFilesToken}
 					/>
 				</CardContent>
 				{hasAnalysisStarted ? (

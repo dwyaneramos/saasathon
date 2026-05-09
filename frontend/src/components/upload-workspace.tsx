@@ -78,6 +78,8 @@ type UploadWorkspaceProps = {
 	showHeading?: boolean;
 	onBusyChange?: (isBusy: boolean) => void;
 	spaceId?: number | null;
+	incomingFiles?: File[];
+	incomingFilesToken?: number;
 };
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -98,6 +100,8 @@ export function UploadWorkspace({
 	showHeading = true,
 	onBusyChange,
 	spaceId,
+	incomingFiles = [],
+	incomingFilesToken = 0,
 }: UploadWorkspaceProps) {
 	const [files, setFiles] = useState<File[]>([]);
 	const [status, setStatus] = useState<string | null>(null);
@@ -125,6 +129,7 @@ export function UploadWorkspace({
 	} | null>(null);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const activePromptRef = useRef<HTMLElement | null>(null);
+	const processedIncomingFilesTokenRef = useRef(0);
 	const pendingCategoryConfirmationRef = useRef<{
 		fileName: string;
 		resolve: () => void;
@@ -158,6 +163,19 @@ export function UploadWorkspace({
 		setAnalysisResults([]);
 		setPendingCompletion(null);
 	};
+
+	useEffect(() => {
+		if (
+			incomingFilesToken === 0 ||
+			incomingFiles.length === 0 ||
+			processedIncomingFilesTokenRef.current === incomingFilesToken
+		) {
+			return;
+		}
+
+		processedIncomingFilesTokenRef.current = incomingFilesToken;
+		addFiles(incomingFiles);
+	}, [incomingFiles, incomingFilesToken]);
 
 	const notifyFileTreeUpdated = (
 		documentIds: Array<number | undefined> = [],
@@ -1095,12 +1113,14 @@ export function UploadWorkspace({
 										{file.name} (
 										{(file.size / 1024).toFixed(2)} KB)
 									</span>
-									<button
-										onClick={() => removeFile(index)}
-										className="text-destructive hover:text-destructive"
-									>
-										Remove
-									</button>
+										<Button
+											type="button"
+											variant="destructive"
+											size="xs"
+											onClick={() => removeFile(index)}
+										>
+											Remove
+										</Button>
 								</li>
 							))}
 						</ul>
