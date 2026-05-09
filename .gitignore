@@ -1,2 +1,15 @@
 node_modules
 .env
+dist
+build
+coverage
+*.log
+*.env
+*.local
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+*.swp
+*.swo
