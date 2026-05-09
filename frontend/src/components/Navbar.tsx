@@ -4,12 +4,6 @@ import {
 	LogIn,
 	UserPlus,
 	LogOut,
-	Gauge,
-	MessageCircle,
-	MessageSquareMore,
-	Bot,
-	MessageSquareQuote,
-	CircuitBoard,
 	Sparkles,
 } from "lucide-react";
 import kibiLogo from "../assets/kibi.svg";
