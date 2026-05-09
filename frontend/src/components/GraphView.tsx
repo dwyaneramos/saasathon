@@ -1,455 +1,508 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Billboard, Float, Line, OrbitControls, Text } from "@react-three/drei";
-import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
+import {
+	Canvas,
+	type ThreeEvent,
+	useFrame,
+	useThree,
+} from "@react-three/fiber";
 import * as THREE from "three";
 import type { GraphNode } from "@/types/graph";
 
 const NETWORK_SIZE = 2.8;
 
 interface GraphNodeState extends GraphNode {
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
+	position: THREE.Vector3;
+	velocity: THREE.Vector3;
 }
 
 interface Edge {
-  source: number;
-  target: number;
-  weight: number;
+	source: number;
+	target: number;
+	weight: number;
 }
 
 const generateNodes = (nodeData: GraphNode[]) => {
-  return nodeData.map((node) => ({
-    ...node,
-    position: new THREE.Vector3(
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-    ),
-    velocity: new THREE.Vector3(0, 0, 0),
-  }));
+	return nodeData.map((node) => ({
+		...node,
+		position: new THREE.Vector3(
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+		),
+		velocity: new THREE.Vector3(0, 0, 0),
+	}));
 };
 
 const matrixToEdges = (matrix: number[][], threshold: number): Edge[] => {
-  const edges: Edge[] = [];
+	const edges: Edge[] = [];
 
-  for (let i = 0; i < matrix.length; i++) {
-    for (let j = i + 1; j < matrix.length; j++) {
-      const weight = matrix[i][j];
-      if (weight >= threshold) {
-        edges.push({ source: i, target: j, weight });
-      }
-    }
-  }
+	for (let i = 0; i < matrix.length; i++) {
+		for (let j = i + 1; j < matrix.length; j++) {
+			const weight = matrix[i][j];
+			if (weight >= threshold) {
+				edges.push({ source: i, target: j, weight });
+			}
+		}
+	}
 
-  return edges;
+	return edges;
 };
 
 function CameraController({
-  is2D,
-  controlsRef,
+	is2D,
+	controlsRef,
 }: {
-  is2D: boolean;
-  controlsRef: React.RefObject<any>;
+	is2D: boolean;
+	controlsRef: React.RefObject<any>;
 }) {
-  const { camera } = useThree();
+	const { camera } = useThree();
 
-  const recenter = () => {
-    if (is2D) {
-      camera.position.set(0, 16.5, 0.01);
-    } else {
-      camera.position.set(0, 0, 16.5);
-    }
+	const recenter = () => {
+		if (is2D) {
+			camera.position.set(0, 16.5, 0.01);
+		} else {
+			camera.position.set(0, 0, 16.5);
+		}
 
-    camera.lookAt(0, 0, 0);
+		camera.lookAt(0, 0, 0);
 
-    if (controlsRef.current) {
-      controlsRef.current.target.set(0, 0, 0);
-      controlsRef.current.update();
-    }
-  };
+		if (controlsRef.current) {
+			controlsRef.current.target.set(0, 0, 0);
+			controlsRef.current.update();
+		}
+	};
 
-  useEffect(() => {
-    recenter();
-  }, [is2D]);
+	useEffect(() => {
+		recenter();
+	}, [is2D]);
 
-  return null;
+	return null;
 }
 
 interface ForceSimulationProps {
-  nodes: GraphNodeState[];
-  edges: Edge[];
-  is2D: boolean;
-  selectedNodeIndex: number | null;
-  nodeSizeScale: (node: GraphNode) => number;
-  onNodeClick?: (index: number) => void;
-  onNodeHover?: (index: number | null, anchor?: { x: number; y: number }) => void;
+	nodes: GraphNodeState[];
+	edges: Edge[];
+	is2D: boolean;
+	selectedNodeIndex: number | null;
+	nodeSizeScale: (node: GraphNode) => number;
+	onNodeClick?: (index: number) => void;
+	onNodeHover?: (
+		index: number | null,
+		anchor?: { x: number; y: number },
+	) => void;
 }
 
 const ForceSimulation: React.FC<ForceSimulationProps> = ({
-  nodes,
-  edges,
-  is2D,
-  selectedNodeIndex,
-  nodeSizeScale,
-  onNodeClick,
-  onNodeHover,
+	nodes,
+	edges,
+	is2D,
+	selectedNodeIndex,
+	nodeSizeScale,
+	onNodeClick,
+	onNodeHover,
 }) => {
-  const nodesRef = useRef(nodes);
-  const prevIs2DRef = useRef(is2D);
-  const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
-  const graphRotationRef = useRef(new THREE.Euler(0.1, 0, 0));
-  const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [, forceUpdate] = useState({});
+	const nodesRef = useRef(nodes);
+	const prevIs2DRef = useRef(is2D);
+	const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
+	const graphRotationRef = useRef(new THREE.Euler(0.1, 0, 0));
+	const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const [, forceUpdate] = useState({});
 
-  const handlePointerOver = (index: number, event: ThreeEvent<PointerEvent>) => {
-    if (hoverOutTimer.current) {
-      clearTimeout(hoverOutTimer.current);
-      hoverOutTimer.current = null;
-    }
-    onNodeHover?.(index, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY });
-  };
+	const handlePointerOver = (
+		index: number,
+		event: ThreeEvent<PointerEvent>,
+	) => {
+		if (hoverOutTimer.current) {
+			clearTimeout(hoverOutTimer.current);
+			hoverOutTimer.current = null;
+		}
+		onNodeHover?.(index, {
+			x: event.nativeEvent.clientX,
+			y: event.nativeEvent.clientY,
+		});
+	};
 
-  const handlePointerOut = () => {
-    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
-    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 90);
-  };
+	const handlePointerOut = () => {
+		if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+		hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 90);
+	};
 
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+	useEffect(() => {
+		nodesRef.current = nodes;
+	}, [nodes]);
 
-  useEffect(() => {
-    return () => {
-      if (hoverOutTimer.current) {
-        clearTimeout(hoverOutTimer.current);
-      }
-    };
-  }, []);
+	useEffect(() => {
+		return () => {
+			if (hoverOutTimer.current) {
+				clearTimeout(hoverOutTimer.current);
+			}
+		};
+	}, []);
 
-  useEffect(() => {
-    if (prevIs2DRef.current && !is2D) {
-      nodesRef.current.forEach((node) => {
-        node.velocity.y = (Math.random() - 0.5) * 0.15;
-      });
-    }
-    prevIs2DRef.current = is2D;
-  }, [is2D]);
+	useEffect(() => {
+		if (prevIs2DRef.current && !is2D) {
+			nodesRef.current.forEach((node) => {
+				node.velocity.y = (Math.random() - 0.5) * 0.15;
+			});
+		}
+		prevIs2DRef.current = is2D;
+	}, [is2D]);
 
-  // Track cursor position in canvas pixels so hover-freeze matches the visible graph.
-  const { camera, gl, size } = useThree();
-  useEffect(() => {
-    const canvas = gl.domElement;
-    const onMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      cursorRef.current.set(e.clientX - rect.left, e.clientY - rect.top);
-    };
-    const onLeave = () => cursorRef.current.set(9999, 9999);
-    canvas.addEventListener("mousemove", onMove);
-    canvas.addEventListener("mouseleave", onLeave);
-    return () => {
-      canvas.removeEventListener("mousemove", onMove);
-      canvas.removeEventListener("mouseleave", onLeave);
-    };
-  }, [gl]);
+	// Track cursor position in canvas pixels so hover-freeze matches the visible graph.
+	const { camera, gl, size } = useThree();
+	useEffect(() => {
+		const canvas = gl.domElement;
+		const onMove = (e: MouseEvent) => {
+			const rect = canvas.getBoundingClientRect();
+			cursorRef.current.set(e.clientX - rect.left, e.clientY - rect.top);
+		};
+		const onLeave = () => cursorRef.current.set(9999, 9999);
+		canvas.addEventListener("mousemove", onMove);
+		canvas.addEventListener("mouseleave", onLeave);
+		return () => {
+			canvas.removeEventListener("mousemove", onMove);
+			canvas.removeEventListener("mouseleave", onLeave);
+		};
+	}, [gl]);
 
-  useFrame(({ clock }) => {
-    const alpha = 0.05;
-    const repulsionStrength = 0.06;
-    const attractionStrength = 0.012;
-    const centeringStrength = 0.0008;
-    const driftAmplitude = 0.0003;
-    const t = clock.getElapsedTime();
-    const currentNodes = nodesRef.current;
+	useFrame(({ clock }) => {
+		const alpha = 0.05;
+		const repulsionStrength = 0.06;
+		const attractionStrength = 0.012;
+		const centeringStrength = 0.0008;
+		const driftAmplitude = 0.0003;
+		const t = clock.getElapsedTime();
+		const currentNodes = nodesRef.current;
 
-    const graphRotation = graphRotationRef.current;
-    const nodeScreenPosition = new THREE.Vector3();
-    const FREEZE_PADDING_PX = 34;
-    const isCursorOnCanvas = cursorRef.current.x !== 9999;
+		const graphRotation = graphRotationRef.current;
+		const nodeScreenPosition = new THREE.Vector3();
+		const FREEZE_PADDING_PX = 34;
+		const isCursorOnCanvas = cursorRef.current.x !== 9999;
 
-    currentNodes.forEach((node, i) => {
-      const radius = nodeSizeScale(node);
-      let isNearCursor = false;
+		currentNodes.forEach((node, i) => {
+			const radius = nodeSizeScale(node);
+			let isNearCursor = false;
 
-      if (isCursorOnCanvas) {
-        nodeScreenPosition.copy(node.position).applyEuler(graphRotation).project(camera);
-        nodeScreenPosition.set(
-          ((nodeScreenPosition.x + 1) / 2) * size.width,
-          ((-nodeScreenPosition.y + 1) / 2) * size.height,
-          nodeScreenPosition.z,
-        );
+			if (isCursorOnCanvas) {
+				nodeScreenPosition
+					.copy(node.position)
+					.applyEuler(graphRotation)
+					.project(camera);
+				nodeScreenPosition.set(
+					((nodeScreenPosition.x + 1) / 2) * size.width,
+					((-nodeScreenPosition.y + 1) / 2) * size.height,
+					nodeScreenPosition.z,
+				);
 
-        const nodeRadiusPx = Math.max(18, radius * 220);
-        const distanceToCursor = Math.hypot(
-          cursorRef.current.x - nodeScreenPosition.x,
-          cursorRef.current.y - nodeScreenPosition.y,
-        );
-        isNearCursor = distanceToCursor <= nodeRadiusPx + FREEZE_PADDING_PX;
-      }
+				const nodeRadiusPx = Math.max(18, radius * 220);
+				const distanceToCursor = Math.hypot(
+					cursorRef.current.x - nodeScreenPosition.x,
+					cursorRef.current.y - nodeScreenPosition.y,
+				);
+				isNearCursor =
+					distanceToCursor <= nodeRadiusPx + FREEZE_PADDING_PX;
+			}
 
-      if (isNearCursor) {
-        node.velocity.set(0, 0, 0);
-        return;
-      }
+			if (isNearCursor) {
+				node.velocity.set(0, 0, 0);
+				return;
+			}
 
-      node.velocity.multiplyScalar(0.92);
+			node.velocity.multiplyScalar(0.92);
 
-      // Perpetual drift: unique phase per node so they don't all move in sync
-      const phase = i * 2.399; // golden-angle offset
-      node.velocity.x += Math.sin(t * 0.4 + phase) * driftAmplitude;
-      node.velocity.z += Math.cos(t * 0.31 + phase) * driftAmplitude;
-      if (!is2D) {
-        node.velocity.y += Math.sin(t * 0.27 + phase + 1) * driftAmplitude;
-      }
-    });
+			// Perpetual drift: unique phase per node so they don't all move in sync
+			const phase = i * 2.399; // golden-angle offset
+			node.velocity.x += Math.sin(t * 0.4 + phase) * driftAmplitude;
+			node.velocity.z += Math.cos(t * 0.31 + phase) * driftAmplitude;
+			if (!is2D) {
+				node.velocity.y +=
+					Math.sin(t * 0.27 + phase + 1) * driftAmplitude;
+			}
+		});
 
-    for (let i = 0; i < currentNodes.length; i++) {
-      for (let j = i + 1; j < currentNodes.length; j++) {
-        const nodeA = currentNodes[i];
-        const nodeB = currentNodes[j];
-        const delta = new THREE.Vector3().subVectors(
-          nodeA.position,
-          nodeB.position,
-        );
-        const distance = delta.length();
+		for (let i = 0; i < currentNodes.length; i++) {
+			for (let j = i + 1; j < currentNodes.length; j++) {
+				const nodeA = currentNodes[i];
+				const nodeB = currentNodes[j];
+				const delta = new THREE.Vector3().subVectors(
+					nodeA.position,
+					nodeB.position,
+				);
+				const distance = delta.length();
 
-        if (distance > 0 && distance < 3) {
-          const force = (repulsionStrength / (distance * distance)) * alpha;
-          delta.normalize().multiplyScalar(force);
-          nodeA.velocity.add(delta);
-          nodeB.velocity.sub(delta);
-        }
-      }
-    }
+				if (distance > 0 && distance < 3) {
+					const force =
+						(repulsionStrength / (distance * distance)) * alpha;
+					delta.normalize().multiplyScalar(force);
+					nodeA.velocity.add(delta);
+					nodeB.velocity.sub(delta);
+				}
+			}
+		}
 
-    edges.forEach((edge) => {
-      const nodeA = currentNodes[edge.source];
-      const nodeB = currentNodes[edge.target];
-      const delta = new THREE.Vector3().subVectors(
-        nodeB.position,
-        nodeA.position,
-      );
-      const distance = delta.length();
-      const desiredDistance = 0.3 + (1.0 - edge.weight) * 0.5;
+		edges.forEach((edge) => {
+			const nodeA = currentNodes[edge.source];
+			const nodeB = currentNodes[edge.target];
+			const delta = new THREE.Vector3().subVectors(
+				nodeB.position,
+				nodeA.position,
+			);
+			const distance = delta.length();
+			const desiredDistance = 0.3 + (1.0 - edge.weight) * 0.5;
 
-      if (distance > 0) {
-        const displacement = distance - desiredDistance;
-        const force = displacement * attractionStrength * edge.weight * alpha;
-        delta.normalize().multiplyScalar(force);
-        nodeA.velocity.add(delta);
-        nodeB.velocity.sub(delta);
-      }
-    });
+			if (distance > 0) {
+				const displacement = distance - desiredDistance;
+				const force =
+					displacement * attractionStrength * edge.weight * alpha;
+				delta.normalize().multiplyScalar(force);
+				nodeA.velocity.add(delta);
+				nodeB.velocity.sub(delta);
+			}
+		});
 
-    const center = new THREE.Vector3(0, 0, 0);
-    currentNodes.forEach((node) => {
-      const delta = new THREE.Vector3().subVectors(center, node.position);
-      node.velocity.add(delta.multiplyScalar(centeringStrength * alpha));
-    });
+		const center = new THREE.Vector3(0, 0, 0);
+		currentNodes.forEach((node) => {
+			const delta = new THREE.Vector3().subVectors(center, node.position);
+			node.velocity.add(delta.multiplyScalar(centeringStrength * alpha));
+		});
 
-    const maxVelocity = 0.02;
-    currentNodes.forEach((node) => {
-      const speed = node.velocity.length();
-      if (speed > maxVelocity) {
-        node.velocity.normalize().multiplyScalar(maxVelocity);
-      }
-    });
+		const maxVelocity = 0.02;
+		currentNodes.forEach((node) => {
+			const speed = node.velocity.length();
+			if (speed > maxVelocity) {
+				node.velocity.normalize().multiplyScalar(maxVelocity);
+			}
+		});
 
-    const bounds = 3;
-    currentNodes.forEach((node) => {
-      node.position.add(node.velocity);
-      node.position.x = THREE.MathUtils.clamp(node.position.x, -bounds, bounds);
-      node.position.y = THREE.MathUtils.clamp(node.position.y, -bounds, bounds);
-      node.position.z = THREE.MathUtils.clamp(node.position.z, -bounds, bounds);
+		const bounds = 3;
+		currentNodes.forEach((node) => {
+			node.position.add(node.velocity);
+			node.position.x = THREE.MathUtils.clamp(
+				node.position.x,
+				-bounds,
+				bounds,
+			);
+			node.position.y = THREE.MathUtils.clamp(
+				node.position.y,
+				-bounds,
+				bounds,
+			);
+			node.position.z = THREE.MathUtils.clamp(
+				node.position.z,
+				-bounds,
+				bounds,
+			);
 
-      if (is2D) {
-        node.position.y = 0;
-        node.velocity.y = 0;
-      }
-    });
+			if (is2D) {
+				node.position.y = 0;
+				node.velocity.y = 0;
+			}
+		});
 
-    // Always re-render — drift keeps the graph moving perpetually
-    forceUpdate({});
-  });
+		// Always re-render — drift keeps the graph moving perpetually
+		forceUpdate({});
+	});
 
-  return (
-    <group scale={1} rotation={graphRotationRef.current}>
-      {edges.map((edge, index) => {
-        const start = nodesRef.current[edge.source]?.position;
-        const end = nodesRef.current[edge.target]?.position;
-        if (!start || !end) {
-          return null;
-        }
+	return (
+		<group scale={1} rotation={graphRotationRef.current}>
+			{edges.map((edge, index) => {
+				const start = nodesRef.current[edge.source]?.position;
+				const end = nodesRef.current[edge.target]?.position;
+				if (!start || !end) {
+					return null;
+				}
 
-        const opacity = 0.2 + edge.weight * 0.35;
-        const lineWidth = 0.35 + edge.weight * 0.65;
+				const opacity = 0.2 + edge.weight * 0.35;
+				const lineWidth = 0.35 + edge.weight * 0.65;
 
-        return (
-          <Line
-            key={index}
-            points={[
-              new THREE.Vector3(start.x, start.y, start.z),
-              new THREE.Vector3(end.x, end.y, end.z),
-            ]}
-            color="#111111"
-            transparent
-            opacity={opacity}
-            lineWidth={lineWidth}
-          />
-        );
-      })}
+				return (
+					<Line
+						key={index}
+						points={[
+							new THREE.Vector3(start.x, start.y, start.z),
+							new THREE.Vector3(end.x, end.y, end.z),
+						]}
+						color="#111111"
+						transparent
+						opacity={opacity}
+						lineWidth={lineWidth}
+					/>
+				);
+			})}
 
-      {nodesRef.current.map((node, index) => {
-        const isSelected = selectedNodeIndex === index;
-        const radius = nodeSizeScale(node);
+			{nodesRef.current.map((node, index) => {
+				const isSelected = selectedNodeIndex === index;
+				const radius = nodeSizeScale(node);
 
-        return (
-          <group key={node.id} position={node.position.clone()}>
-            <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
-              <mesh
-                onClick={() => onNodeClick?.(index)}
-                onPointerOver={(event) => handlePointerOver(index, event)}
-                onPointerOut={() => handlePointerOut()}
-              >
-                <sphereGeometry
-                  args={[isSelected ? radius * 1.25 : radius, 16, 16]}
-                />
-                <meshStandardMaterial
-                  color={isSelected ? "#2563eb" : "#111111"}
-                  emissive={isSelected ? "#2563eb" : "#111111"}
-                  emissiveIntensity={isSelected ? 2.2 : 1.4}
-                />
-              </mesh>
-            </Float>
+				return (
+					<group key={node.id} position={node.position.clone()}>
+						<Float
+							speed={1.2}
+							rotationIntensity={0.1}
+							floatIntensity={0.3}
+						>
+							<mesh
+								onClick={() => onNodeClick?.(index)}
+								onPointerOver={(event) =>
+									handlePointerOver(index, event)
+								}
+								onPointerOut={() => handlePointerOut()}
+							>
+								<sphereGeometry
+									args={[
+										isSelected ? radius * 1.25 : radius,
+										16,
+										16,
+									]}
+								/>
+								<meshStandardMaterial
+									color={isSelected ? "#2563eb" : "#111111"}
+									emissive={
+										isSelected ? "#2563eb" : "#111111"
+									}
+									emissiveIntensity={isSelected ? 2.2 : 1.4}
+								/>
+							</mesh>
+						</Float>
 
-            <Billboard>
-              <Text
-                position={[0, radius + 0.1, 0]}
-                fontSize={0.09}
-                color="#111111"
-                anchorX="center"
-                anchorY="middle"
-                maxWidth={1.5}
-              >
-                {node.label}
-              </Text>
-            </Billboard>
-          </group>
-        );
-      })}
-    </group>
-  );
+						<Billboard>
+							<Text
+								position={[0, radius + 0.1, 0]}
+								fontSize={0.09}
+								color="#111111"
+								anchorX="center"
+								anchorY="middle"
+								maxWidth={1.5}
+							>
+								{node.label}
+							</Text>
+						</Billboard>
+					</group>
+				);
+			})}
+		</group>
+	);
 };
 
 interface GraphViewProps {
-  is2D: boolean;
-  nodes?: GraphNode[];
-  weightMatrix?: number[][];
-  threshold?: number;
-  onNodeClick?: (node: GraphNode, index: number) => void;
-  onNodeHover?: (node: GraphNode | null, anchor?: { x: number; y: number }) => void;
+	is2D: boolean;
+	nodes?: GraphNode[];
+	weightMatrix?: number[][];
+	threshold?: number;
+	onNodeClick?: (node: GraphNode, index: number) => void;
+	onNodeHover?: (
+		node: GraphNode | null,
+		anchor?: { x: number; y: number },
+	) => void;
 }
 
 const GraphView: React.FC<GraphViewProps> = ({
-  is2D,
-  nodes: graphNodes = [],
-  weightMatrix = [],
-  threshold = 0.16,
-  onNodeClick,
-  onNodeHover,
+	is2D,
+	nodes: graphNodes = [],
+	weightMatrix = [],
+	threshold = 0.16,
+	onNodeClick,
+	onNodeHover,
 }) => {
-  const nodes = useMemo(() => generateNodes(graphNodes), [graphNodes]);
-  const edges = useMemo(
-    () => matrixToEdges(weightMatrix, threshold),
-    [weightMatrix, threshold],
-  );
-  const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(
-    null,
-  );
-  const controlsRef = useRef<any>(null);
-  const canvasKey = useMemo(
-    () => graphNodes.map((node) => node.id).join("|"),
-    [graphNodes],
-  );
+	const nodes = useMemo(() => generateNodes(graphNodes), [graphNodes]);
+	const edges = useMemo(
+		() => matrixToEdges(weightMatrix, threshold),
+		[weightMatrix, threshold],
+	);
+	const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(
+		null,
+	);
+	const controlsRef = useRef<any>(null);
+	const canvasKey = useMemo(
+		() => graphNodes.map((node) => node.id).join("|"),
+		[graphNodes],
+	);
 
-  // Build a size scale from category file counts or document file sizes.
-  const nodeSizeScale = useMemo(() => {
-    const isDocumentGraph = graphNodes.some((node) => node.documentId != null);
-    const transformValue = (node: GraphNode) => {
-      if (!isDocumentGraph) return Math.pow(node.fileCount ?? 0, 1.2);
+	// Build a size scale from category file counts or document file sizes.
+	const nodeSizeScale = useMemo(() => {
+		const isDocumentGraph = graphNodes.some(
+			(node) => node.documentId != null,
+		);
+		const transformValue = (node: GraphNode) => {
+			if (!isDocumentGraph) return Math.pow(node.fileCount ?? 0, 1.2);
 
-      const fileSize = Math.max(node.fileSize ?? 0, 0);
-      return Math.pow(fileSize, 0.65);
-    };
-    const values = graphNodes.map(transformValue);
-    const max = Math.max(...values, 1);
-    const min = Math.min(...values, 0);
-    const BASE = 0.085;
-    const MAX_CATEGORY_R = 0.245;
-    const MAX_DOCUMENT_R = 0.34;
-    const maxRadius = isDocumentGraph ? MAX_DOCUMENT_R : MAX_CATEGORY_R;
+			const fileSize = Math.max(node.fileSize ?? 0, 0);
+			return Math.pow(fileSize, 0.65);
+		};
+		const values = graphNodes.map(transformValue);
+		const max = Math.max(...values, 1);
+		const min = Math.min(...values, 0);
+		const BASE = 0.085;
+		const MAX_CATEGORY_R = 0.245;
+		const MAX_DOCUMENT_R = 0.34;
+		const maxRadius = isDocumentGraph ? MAX_DOCUMENT_R : MAX_CATEGORY_R;
 
-    return (node: GraphNode) => {
-      const value = transformValue(node);
+		return (node: GraphNode) => {
+			const value = transformValue(node);
 
-      if (max === min) return BASE + (maxRadius - BASE) * 0.5;
-      const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
-      return BASE + (maxRadius - BASE) * t;
-    };
-  }, [graphNodes]);
+			if (max === min) return BASE + (maxRadius - BASE) * 0.5;
+			const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+			return BASE + (maxRadius - BASE) * t;
+		};
+	}, [graphNodes]);
 
-  useEffect(() => {
-    setSelectedNodeIndex(null);
-    onNodeHover?.(null);
-  }, [graphNodes, onNodeHover]);
+	useEffect(() => {
+		setSelectedNodeIndex(null);
+		onNodeHover?.(null);
+	}, [graphNodes, onNodeHover]);
 
-  const handleNodeClick = (index: number) => {
-    setSelectedNodeIndex(index);
-    const node = graphNodes[index];
-    if (node) {
-      onNodeClick?.(node, index);
-    }
-  };
+	const handleNodeClick = (index: number) => {
+		setSelectedNodeIndex(index);
+		const node = graphNodes[index];
+		if (node) {
+			onNodeClick?.(node, index);
+		}
+	};
 
-  return (
-    <Canvas
-      key={canvasKey}
-      camera={{ position: [0, 0, 6.5], fov: 42 }}
-      gl={{ antialias: true, alpha: true }}
-    >
-      <CameraController is2D={is2D} controlsRef={controlsRef} />
-      <ambientLight intensity={1.2} />
-      <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
-      <pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
+	return (
+		<Canvas
+			key={canvasKey}
+			camera={{ position: [0, 0, 6.5], fov: 42 }}
+			gl={{ antialias: true, alpha: true }}
+		>
+			<CameraController is2D={is2D} controlsRef={controlsRef} />
+			<ambientLight intensity={1.2} />
+			<pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
+			<pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
 
-      <Suspense fallback={null}>
-        <ForceSimulation
-          nodes={nodes}
-          edges={edges}
-          is2D={is2D}
-          selectedNodeIndex={selectedNodeIndex}
-          nodeSizeScale={nodeSizeScale}
-          onNodeClick={handleNodeClick}
-          onNodeHover={(index, anchor) => {
-            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null), anchor);
-          }}
-        />
-      </Suspense>
+			<Suspense fallback={null}>
+				<ForceSimulation
+					nodes={nodes}
+					edges={edges}
+					is2D={is2D}
+					selectedNodeIndex={selectedNodeIndex}
+					nodeSizeScale={nodeSizeScale}
+					onNodeClick={handleNodeClick}
+					onNodeHover={(index, anchor) => {
+						onNodeHover?.(
+							index === null ? null : (graphNodes[index] ?? null),
+							anchor,
+						);
+					}}
+				/>
+			</Suspense>
 
-      <OrbitControls
-        ref={controlsRef}
-        enableZoom
-        enablePan
-        autoRotate={!is2D}
-        autoRotateSpeed={0.2}
-        maxPolarAngle={is2D ? 0 : Math.PI}
-        minPolarAngle={is2D ? 0 : 0}
-        minDistance={3}
-        maxDistance={10}
-        enableDamping
-        dampingFactor={0.08}
-      />
-    </Canvas>
-  );
+			<OrbitControls
+				ref={controlsRef}
+				enableZoom
+				enablePan
+				autoRotate={!is2D}
+				autoRotateSpeed={0.2}
+				maxPolarAngle={is2D ? 0 : Math.PI}
+				minPolarAngle={is2D ? 0 : 0}
+				minDistance={3}
+				maxDistance={10}
+				enableDamping
+				dampingFactor={0.08}
+			/>
+		</Canvas>
+	);
 };
 
 export default GraphView;

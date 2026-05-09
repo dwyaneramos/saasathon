@@ -666,6 +666,19 @@ export function UploadWorkspace({
 			]
 		: [...analysisResults].reverse();
 	const hasCompactSelection = detailMode === "compact" && files.length > 0;
+	const hasCompactActivity =
+		detailMode === "compact" &&
+		(Boolean(status) ||
+			Boolean(compactAnalysisStatus) ||
+			analysisResults.length > 0);
+	const shouldCollapseCompactSelection =
+		hasCompactSelection && (isBusy || Boolean(compactAnalysisStatus));
+	const shouldShowCompactDropzone =
+		detailMode === "compact" &&
+		!hasCompactSelection &&
+		!hasCompactActivity;
+	const shouldShowAnalysisPlaceholder =
+		detailMode === "compact" && isBusy && analysisResults.length === 0;
 	const compactProgressText = compactAnalysisStatus
 		? compactAnalysisStatus.remainingCount > 0
 			? isWaitingForCategoryInput
@@ -685,7 +698,7 @@ export function UploadWorkspace({
 	}));
 
 	const uploadCategorySelector = (
-		<div className="rounded-lg border border-border bg-background px-3 py-3">
+		<div className="rounded-lg bg-zinc-50 px-3 py-3">
 			<label
 				htmlFor="upload-target-category"
 				className="block text-sm font-medium text-foreground"
@@ -823,7 +836,7 @@ export function UploadWorkspace({
 							accept=".pdf,image/*"
 							disabled={isBusy}
 						/>
-						{!hasCompactSelection ? (
+						{shouldShowCompactDropzone ? (
 							<div
 								onDrop={onDrop}
 								onDragOver={onDragOver}
@@ -849,95 +862,130 @@ export function UploadWorkspace({
 									Choose files
 								</Button>
 							</div>
-						) : (
-							<section className="rounded-xl border border-border bg-background overflow-hidden">
-								<div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
+						) : hasCompactSelection ? (
+							<section className="overflow-hidden rounded-xl bg-background ring-1 ring-border/80">
+								<div className="flex items-center justify-between gap-4 px-4 py-4">
 									<div>
 										<p className="text-sm font-medium text-foreground">
-											Selected files
+											{shouldCollapseCompactSelection
+												? "Queued files"
+												: "Selected files"}
 										</p>
 										<p className="mt-1 text-sm text-muted-foreground">
 											{files.length} file
 											{files.length === 1 ? "" : "s"}{" "}
-											ready for analysis
+											{shouldCollapseCompactSelection
+												? "being processed"
+												: "ready for analysis"}
 										</p>
 									</div>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={() =>
-											inputRef.current?.click()
-										}
-										disabled={isBusy}
-									>
-										Add files
-									</Button>
-								</div>
-								<div className="border-b border-border px-4 py-3">
-									{uploadCategorySelector}
-								</div>
-								<ul className="max-h-48 divide-y divide-border overflow-y-auto">
-									{selectedFiles.map(
-										({ file, Icon }, index) => (
-											<li
-												key={`${file.name}-${index}`}
-												className="flex items-center gap-3 px-4 py-3 text-sm"
-											>
-												<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground ring-1 ring-border">
-													<Icon className="size-4" />
-												</span>
-												<span className="min-w-0 flex-1 truncate text-foreground">
-													{file.name}
-												</span>
-												<span className="shrink-0 text-xs text-muted-foreground">
-													{formatFileSize(file.size)}
-												</span>
-												<button
-													type="button"
-													onClick={() =>
-														removeFile(index)
-													}
-													disabled={isBusy}
-													className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-													aria-label={`Remove ${file.name}`}
-												>
-													<X className="size-4" />
-												</button>
-											</li>
-										),
+									{shouldCollapseCompactSelection ? (
+										<span className="rounded-md bg-zinc-50 px-2 py-1 text-xs font-medium text-muted-foreground">
+											Locked
+										</span>
+									) : (
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() =>
+												inputRef.current?.click()
+											}
+											disabled={isBusy}
+										>
+											Add files
+										</Button>
 									)}
-								</ul>
-								<div className="flex items-center justify-between gap-4 border-t border-border bg-muted/50 px-4 py-3">
-									<p className="text-sm text-muted-foreground">
-										{selectedUploadCategory
-											? `Uploading directly to ${selectedUploadCategory.name}.`
-											: "Files will be analysed and sorted into categories."}
-									</p>
-									<Button
-										variant="accent"
-										onClick={upload}
-										disabled={isBusy}
-										className="min-w-32 disabled:bg-muted disabled:text-muted-foreground"
-									>
-										{isWaitingForCategoryInput
-											? "Waiting..."
-											: isBusy
-												? "Analysing..."
-												: `Analyse ${files.length} files`}
-									</Button>
 								</div>
+								{shouldCollapseCompactSelection ? (
+									<div className="px-4 pb-4">
+										<div className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-muted-foreground">
+											<LoaderCircle className="size-4 animate-spin text-(--color-accent)" />
+											<span className="min-w-0 truncate">
+												{compactAnalysisStatus?.currentFileName ??
+													files[0]?.name ??
+													"Preparing files"}
+											</span>
+										</div>
+									</div>
+								) : (
+									<>
+										<div className="px-4 pb-3">
+											{uploadCategorySelector}
+										</div>
+										<ul className="max-h-48 space-y-2 overflow-y-auto px-4 pb-4">
+											{selectedFiles.map(
+												({ file, Icon }, index) => (
+													<li
+														key={`${file.name}-${index}`}
+														className="flex items-center gap-3 rounded-lg bg-zinc-50 px-3 py-2.5 text-sm"
+													>
+														<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border/80">
+															<Icon className="size-4" />
+														</span>
+														<span className="min-w-0 flex-1 truncate text-foreground">
+															{file.name}
+														</span>
+														<span className="shrink-0 text-xs text-muted-foreground">
+															{formatFileSize(
+																file.size,
+															)}
+														</span>
+														<button
+															type="button"
+															onClick={() =>
+																removeFile(
+																	index,
+																)
+															}
+															disabled={isBusy}
+															className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+															aria-label={`Remove ${file.name}`}
+														>
+															<X className="size-4" />
+														</button>
+													</li>
+												),
+											)}
+										</ul>
+										<div className="flex items-center justify-between gap-4 bg-zinc-50 px-4 py-3">
+											<p className="text-sm text-muted-foreground">
+												{selectedUploadCategory
+													? `Uploading directly to ${selectedUploadCategory.name}.`
+													: "Files will be analysed and sorted into categories."}
+											</p>
+											<Button
+												variant="accent"
+												onClick={upload}
+												disabled={isBusy}
+												className="min-w-32 disabled:bg-muted disabled:text-muted-foreground"
+											>
+												{isWaitingForCategoryInput
+													? "Waiting..."
+													: isBusy
+														? "Analysing..."
+														: `Analyse ${files.length} files`}
+											</Button>
+										</div>
+									</>
+								)}
 							</section>
-						)}
+						) : null}
 
-						{(status || compactAnalysisStatus) && (
-							<section className="rounded-xl border border-border bg-muted/50 px-4 py-3">
-								<div className="flex items-start gap-3">
-									<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground ring-1 ring-border">
+							{(status || compactAnalysisStatus) && (
+							<section
+								className={
+									isBusy && !isWaitingForCategoryInput
+										? "upload-processing-gradient relative overflow-hidden rounded-xl border border-transparent px-4 py-3"
+										: "rounded-xl bg-zinc-50 px-4 py-3 ring-1 ring-border/80"
+								}
+							>
+								<div className="relative z-10 flex items-start gap-3">
+									<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground ring-1 ring-border/80">
 										{isWaitingForCategoryInput ? (
 											<Hourglass className="size-4 text-(--color-accent)" />
 										) : isBusy ? (
-											<LoaderCircle className="size-4 animate-spin" />
+											<LoaderCircle className="size-4 animate-spin text-(--color-accent)" />
 										) : (
 											<CheckCircle2 className="size-4 text-(--color-accent)" />
 										)}
@@ -974,6 +1022,40 @@ export function UploadWorkspace({
 												{status}
 											</p>
 										) : null}
+									</div>
+								</div>
+							</section>
+						)}
+
+						{shouldShowAnalysisPlaceholder && (
+							<section className="mt-1">
+								<div className="flex items-center justify-between gap-3">
+									<h2 className="text-sm font-medium text-foreground">
+										Analysis
+									</h2>
+									<span className="text-xs text-muted-foreground">
+										Preparing results
+									</span>
+								</div>
+								<div className="mt-3 rounded-xl bg-background px-4 py-5 ring-1 ring-border/80">
+									<div className="flex items-center gap-3">
+										<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-zinc-50 text-(--color-accent)">
+											<LoaderCircle className="size-4 animate-spin" />
+										</span>
+										<div className="min-w-0 flex-1">
+											<p className="text-sm font-medium text-foreground">
+												Parsing documents
+											</p>
+											<p className="mt-1 truncate text-sm text-muted-foreground">
+												{compactAnalysisStatus?.currentFileName ??
+													"Waiting for the first result"}
+											</p>
+										</div>
+									</div>
+									<div className="mt-4 space-y-2">
+										<div className="h-2 w-2/3 rounded-full bg-zinc-100" />
+										<div className="h-2 w-full rounded-full bg-zinc-100" />
+										<div className="h-2 w-5/6 rounded-full bg-zinc-100" />
 									</div>
 								</div>
 							</section>
@@ -1178,13 +1260,13 @@ export function UploadWorkspace({
 												: null
 										}
 										key={`${result.documentId ?? "pending"}-${result.fileName}-${index}`}
-										className="rounded-xl border border-border bg-muted/50 px-4 py-4"
+										className="rounded-xl bg-background px-4 py-4 ring-1 ring-border/80"
 									>
 										<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 											<h3 className="min-w-0 truncate text-sm font-medium text-foreground">
 												{result.fileName}
 											</h3>
-											<span className="inline-flex w-fit shrink-0 rounded-md bg-background px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border">
+											<span className="inline-flex w-fit shrink-0 rounded-md bg-zinc-50 px-2 py-1 text-xs font-medium text-muted-foreground">
 												{result.categoryName}
 											</span>
 										</div>
@@ -1198,7 +1280,7 @@ export function UploadWorkspace({
 												{result.needsNewCategory &&
 													result.prompt &&
 													isActivePrompt && (
-														<div className="mt-4 border-l-2 border-(--color-accent) pl-4">
+														<div className="mt-4 rounded-lg bg-zinc-50 px-3 py-3">
 															<p className="text-sm font-medium text-foreground">
 																Confirm the
 																suggested
