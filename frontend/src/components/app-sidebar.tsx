@@ -437,7 +437,7 @@ function AddButton({ onNewCollection }: AddButtonProps) {
 					<FileText className="size-4" /> New file
 				</DropdownMenuItem>
 				<DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
-					<FolderOpen className="size-4" /> New collection
+					<FolderOpen className="size-4" /> New category
 				</DropdownMenuItem>
 				<DropdownMenuItem className="gap-2">
 					<Orbit className="size-4" /> New space
