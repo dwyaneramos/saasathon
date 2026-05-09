@@ -154,7 +154,7 @@ export default function FileView() {
 						</a>
 						<a
 							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800"
+							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover)"
 						>
 							<Download className="size-4" />
 							Download

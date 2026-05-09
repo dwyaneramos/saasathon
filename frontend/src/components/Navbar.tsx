@@ -1,6 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import { Share2, LogIn, UserPlus, UploadCloud, LogOut } from "lucide-react";
-import kibiLogo from "../assets/kibi-logo.png";
+import kibiLogo from "../assets/kibi.svg";
 import { useAuth } from "@/context/AuthContext";
 import {
 	Popover,
@@ -66,7 +66,7 @@ export const NavbarContent = () => {
 							</Link>
 							<Link
 								to="/register"
-								className="flex items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-zinc-800 transition-all transform active:scale-95 shadow-lg shadow-zinc-200"
+								className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover) transition-all transform active:scale-95 "
 							>
 								<UserPlus size={16} strokeWidth={2.25} />
 								Sign up
