@@ -17,7 +17,7 @@ export default function Graph() {
         {is2D ? "Switch to 3D" : "Switch to 2D"}
       </button>
 
-      <div className="absolute inset-0 left-32 z-0">
+      <div className="absolute inset-0 z-0">
         <GraphView is2D={is2D} />
       </div>
     </div>

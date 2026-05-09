@@ -47,49 +47,82 @@ const generateNodes = () => {
   }));
 };
 
-// Generate a full weight matrix (every node connected to every other node)
 const generateWeightMatrix = (nodeCount: number): number[][] => {
   const matrix: number[][] = [];
+
   for (let i = 0; i < nodeCount; i++) {
     matrix[i] = [];
+
     for (let j = 0; j < nodeCount; j++) {
       if (i === j) {
-        matrix[i][j] = 0; // No self-connections
+        matrix[i][j] = 0;
       } else {
-        matrix[i][j] = Math.random(); // Random weight 0.00 - 1.00
+        matrix[i][j] = Math.random();
       }
     }
   }
+
   return matrix;
 };
 
-// Convert weight matrix to edge list, filtering by threshold
 const matrixToEdges = (matrix: number[][], threshold: number): Edge[] => {
   const edges: Edge[] = [];
+
   for (let i = 0; i < matrix.length; i++) {
     for (let j = i + 1; j < matrix.length; j++) {
       const weight = matrix[i][j];
+
       if (weight >= threshold) {
         edges.push({ source: i, target: j, weight });
       }
     }
   }
+
   return edges;
 };
 
-// Camera controller to adjust camera for 2D / 3D
-function CameraController({ is2D }: { is2D: boolean }) {
+function CameraController({
+  is2D,
+  controlsRef,
+}: {
+  is2D: boolean;
+  controlsRef: React.RefObject<any>;
+}) {
   const { camera } = useThree();
 
-  useEffect(() => {
+  const recenter = () => {
     if (is2D) {
-      camera.position.set(0, 6.5, 0.01);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 16.5, 0.01);
     } else {
-      camera.position.set(0, 0, 6.5);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 0, 16.5);
     }
-  }, [is2D, camera]);
+
+    camera.lookAt(0, 0, 0);
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(0, 0, 0);
+      controlsRef.current.update();
+    }
+  };
+
+  useEffect(() => {
+    recenter();
+  }, [is2D]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Press R to recenter
+      if (e.key.toLowerCase() === "r") {
+        recenter();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [is2D]);
 
   return null;
 }
@@ -114,33 +147,30 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   const prevIs2DRef = useRef(is2D);
   const [, forceUpdate] = useState({});
 
-  // When switching from 2D to 3D, add some random Y velocity to expand into 3D
   useEffect(() => {
     if (prevIs2DRef.current && !is2D) {
-      // Transitioning from 2D to 3D - add vertical velocity
       nodesRef.current.forEach((node) => {
         node.velocity.y = (Math.random() - 0.5) * 0.15;
       });
     }
+
     prevIs2DRef.current = is2D;
   }, [is2D]);
 
-  // Force-directed layout simulation
   useFrame(() => {
-    const alpha = 0.05; // Reduced simulation strength for less bouncing
+    const alpha = 0.05;
     const repulsionStrength = 0.06;
     const attractionStrength = 0.012;
     const centeringStrength = 0.0008;
-    const damping = 0.92; // Increased damping for more rigidity
+    const damping = 0.92;
 
     const currentNodes = nodesRef.current;
 
-    // Apply damping first
     currentNodes.forEach((node) => {
       node.velocity.multiplyScalar(damping);
     });
 
-    // Repulsion between all nodes
+    // Repulsion
     for (let i = 0; i < currentNodes.length; i++) {
       for (let j = i + 1; j < currentNodes.length; j++) {
         const nodeA = currentNodes[i];
@@ -150,10 +180,13 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
           nodeA.position,
           nodeB.position,
         );
+
         const distance = delta.length();
 
-        if (distance > 0 && distance < 3) { // Only apply repulsion within range
-          const force = (repulsionStrength / (distance * distance)) * alpha;
+        if (distance > 0 && distance < 3) {
+          const force =
+            (repulsionStrength / (distance * distance)) * alpha;
+
           delta.normalize().multiplyScalar(force);
 
           nodeA.velocity.add(delta);
@@ -162,7 +195,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       }
     }
 
-    // Attraction along edges (stronger weight = closer together)
+    // Edge attraction
     edges.forEach((edge) => {
       const nodeA = currentNodes[edge.source];
       const nodeB = currentNodes[edge.target];
@@ -171,14 +204,21 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         nodeB.position,
         nodeA.position,
       );
+
       const distance = delta.length();
 
-      // Higher weight = shorter desired distance
-      const desiredDistance = 0.3 + (1.0 - edge.weight) * 0.5;
+      const desiredDistance =
+        0.3 + (1.0 - edge.weight) * 0.5;
 
       if (distance > 0) {
         const displacement = distance - desiredDistance;
-        const force = displacement * attractionStrength * edge.weight * alpha;
+
+        const force =
+          displacement *
+          attractionStrength *
+          edge.weight *
+          alpha;
+
         delta.normalize().multiplyScalar(force);
 
         nodeA.velocity.add(delta);
@@ -186,27 +226,56 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       }
     });
 
-    // Centering force
+    // Centering
     const center = new THREE.Vector3(0, 0, 0);
+
     currentNodes.forEach((node) => {
-      const delta = new THREE.Vector3().subVectors(center, node.position);
-      node.velocity.add(delta.multiplyScalar(centeringStrength * alpha));
+      const delta = new THREE.Vector3().subVectors(
+        center,
+        node.position,
+      );
+
+      node.velocity.add(
+        delta.multiplyScalar(centeringStrength * alpha),
+      );
     });
 
-    // Cap maximum velocity to prevent excessive movement
+    // Velocity cap
     const maxVelocity = 0.02;
+
     currentNodes.forEach((node) => {
       const speed = node.velocity.length();
+
       if (speed > maxVelocity) {
         node.velocity.normalize().multiplyScalar(maxVelocity);
       }
     });
 
-    // Update positions
+    // Position update + bounds
+    const bounds = 3;
+
     currentNodes.forEach((node) => {
       node.position.add(node.velocity);
 
-      // Only flatten to 2D if in 2D mode
+      // Keep nodes inside bounds
+      node.position.x = THREE.MathUtils.clamp(
+        node.position.x,
+        -bounds,
+        bounds,
+      );
+
+      node.position.y = THREE.MathUtils.clamp(
+        node.position.y,
+        -bounds,
+        bounds,
+      );
+
+      node.position.z = THREE.MathUtils.clamp(
+        node.position.z,
+        -bounds,
+        bounds,
+      );
+
       if (is2D) {
         node.position.y = 0;
         node.velocity.y = 0;
@@ -215,10 +284,11 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
     const totalVelocity = currentNodes.reduce(
       (sum, node) => sum + node.velocity.length(),
-      0
+      0,
     );
 
     if (totalVelocity < 0.001) return;
+
     forceUpdate({});
   });
 
@@ -227,16 +297,16 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       {edges.map((edge, index) => {
         const start = nodesRef.current[edge.source].position;
         const end = nodesRef.current[edge.target].position;
-        
-        const opacity = 0.15 + edge.weight * 0.35; 
-        const lineWidth = 0.3 + edge.weight * 0.7; 
+
+        const opacity = 0.15 + edge.weight * 0.35;
+        const lineWidth = 0.3 + edge.weight * 0.7;
 
         return (
           <Line
             key={index}
             points={[
               new THREE.Vector3(start.x, start.y, start.z),
-              new THREE.Vector3(end.x, end.y, end.z)
+              new THREE.Vector3(end.x, end.y, end.z),
             ]}
             color="#000000"
             transparent
@@ -248,11 +318,20 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
       {nodesRef.current.map((node, index) => {
         const isSelected = selectedNodeIndex === index;
+
         return (
           <group key={index} position={node.position.clone()}>
-            <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
-              <mesh onClick={() => onNodeClick(index)} cursor="pointer">
+            <Float
+              speed={1.2}
+              rotationIntensity={0.1}
+              floatIntensity={0.3}
+            >
+              <mesh
+                onClick={() => onNodeClick(index)}
+                cursor="pointer"
+              >
                 <sphereGeometry args={[0.07, 16, 16]} />
+
                 <meshStandardMaterial
                   color={isSelected ? "blue" : "#000000"}
                   emissive={isSelected ? "blue" : "#000000"}
@@ -281,37 +360,55 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
 interface GraphViewProps {
   is2D: boolean;
-  weightMatrix?: number[][]; // Full NxN weight matrix
-  threshold?: number; // Only show edges with weight >= threshold
+  weightMatrix?: number[][];
+  threshold?: number;
 }
 
-const GraphView: React.FC<GraphViewProps> = ({ 
-  is2D, 
+const GraphView: React.FC<GraphViewProps> = ({
+  is2D,
   weightMatrix: customWeightMatrix,
-  threshold = 0.5 // Default threshold
+  threshold = 0.5,
 }) => {
   const nodes = useMemo(() => generateNodes(), []);
+
   const weightMatrix = useMemo(
     () => customWeightMatrix || generateWeightMatrix(NODE_COUNT),
     [customWeightMatrix],
   );
+
   const edges = useMemo(
     () => matrixToEdges(weightMatrix, threshold),
     [weightMatrix, threshold],
   );
-  const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(
-    null,
-  );
+
+  const [selectedNodeIndex, setSelectedNodeIndex] =
+    useState<number | null>(null);
+
+  const controlsRef = useRef<any>(null);
 
   return (
     <Canvas
       camera={{ position: [0, 0, 6.5], fov: 42 }}
       gl={{ antialias: true, alpha: true }}
     >
-      <CameraController is2D={is2D} />
+      <CameraController
+        is2D={is2D}
+        controlsRef={controlsRef}
+      />
+
       <ambientLight intensity={1.2} />
-      <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
-      <pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
+
+      <pointLight
+        position={[0, 0, 5]}
+        intensity={12}
+        color="#ffffff"
+      />
+
+      <pointLight
+        position={[-2, -2, -2]}
+        intensity={6}
+        color="#ffffff"
+      />
 
       <Suspense fallback={null}>
         <ForceSimulation
@@ -324,12 +421,24 @@ const GraphView: React.FC<GraphViewProps> = ({
       </Suspense>
 
       <OrbitControls
+        ref={controlsRef}
         enableZoom={true}
         enablePan={true}
         autoRotate={!is2D}
         autoRotateSpeed={0.2}
         maxPolarAngle={is2D ? 0 : Math.PI}
         minPolarAngle={is2D ? 0 : 0}
+
+        // Zoom limits
+        minDistance={3}
+        maxDistance={10}
+
+        // Pan limits
+        maxTargetRadius={2.5}
+
+        // Smoothness
+        enableDamping
+        dampingFactor={0.08}
       />
     </Canvas>
   );
