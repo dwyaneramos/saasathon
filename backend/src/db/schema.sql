@@ -7,12 +7,23 @@ CREATE TABLE users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE document_categories (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  keywords    TEXT[] NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE documents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  filename TEXT NOT NULL,
-  file_type TEXT,             
-  summary TEXT,
-  extracted_text TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
+  id                 SERIAL PRIMARY KEY,
+  file_name          TEXT NOT NULL,
+  mime_type          TEXT NOT NULL,
+  page_count         INTEGER NOT NULL DEFAULT 0,
+  extracted_text     TEXT NOT NULL,
+  summary            TEXT NOT NULL,
+  category_id        INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
+  confidence         NUMERIC(5, 4) NOT NULL DEFAULT 0,
+  needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

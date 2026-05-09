@@ -5,10 +5,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 export const Navbar = () => {
   const { user, logout } = useAuth(); // Access user state
 
+  const navigate = useNavigate();
+  const handleLogout = () => {
+
+    toast.success("Logout successful!", { position: "bottom-center" });
+    navigate("/");
+    logout()
+
+  }
   console.log(user);
 
   return (
@@ -23,7 +33,7 @@ export const Navbar = () => {
 
         {!user ? (
           <>
-            <Link className="text-lg" to="/login">
+            <Link className="text-lg cursor" to="/login">
               Login
             </Link>
             <Link className="text-lg" to="/register">
@@ -34,7 +44,7 @@ export const Navbar = () => {
           <Popover>
             <PopoverTrigger asChild>
               <img
-                className="w-8 h-8 cursor-pointer rounded-full border-2 border-primary p-1"
+                className="w-8 h-8 cursor-pointer rounded-full border-2 border-bg p-1"
                 src="/default.svg"
                 alt="User Profile"
               />
@@ -66,7 +76,7 @@ export const Navbar = () => {
                   </p>
                 </div>
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="w-full text-left text-sm text-red-500 hover:underline pt-2 border-t"
                 >
                   Log out
