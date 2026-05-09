@@ -3,6 +3,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import type { MultipleUploadResponse, UploadedFile } from "../types/upload";
 
 export default function Upload() {
+  const apiBaseUrl = "http://localhost:3000/api/v1";
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [summary, setSummary] = useState<string>("");
@@ -34,7 +35,7 @@ export default function Upload() {
     try {
       const body = new FormData();
       files.forEach((f) => body.append("files", f));
-      const res = await fetch("/upload/multiple", {
+      const res = await fetch(`${apiBaseUrl}/upload/multiple`, {
         method: "POST",
         body,
       });

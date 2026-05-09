@@ -4,6 +4,7 @@ import express, {
   type Response,
 } from "express";
 import multer from "multer";
+import { getDb } from "../db/index.js";
 
 const router = express.Router();
 
@@ -79,11 +80,29 @@ router.post("/multiple", (req: Request, res: Response, next: NextFunction) => {
       size: file.size,
     }));
 
-    res.status(201).json({
-      message: `Successfully uploaded ${files.length} file(s).`,
-      files,
-      totalSize: files.reduce((sum, file) => sum + file.size, 0),
-    });
+    Promise.all(
+      files.map((file) =>
+        getDb().query(
+          `INSERT INTO documents (filename, file_type, summary, extracted_text, metadata)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            file.originalName,
+            file.mimeType,
+            null,
+            null,
+            JSON.stringify({ originalName: file.originalName, sizeBytes: file.size }),
+          ],
+        ),
+      ),
+    )
+      .then(() => {
+        res.status(201).json({
+          message: `Successfully uploaded ${files.length} file(s).`,
+          files,
+          totalSize: files.reduce((sum, file) => sum + file.size, 0),
+        });
+      })
+      .catch(next);
   });
 });
 
