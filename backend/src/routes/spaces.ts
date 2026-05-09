@@ -8,6 +8,7 @@ import {
 } from "../services/spaceService.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import {
+	getItem,
 	listCategories,
 	listItemsForCategory,
 	toPublicCategory,
@@ -76,6 +77,23 @@ router.get("/:spaceId/categories/:categoryId/items", async (req, res) => {
 	res.json({
 		items: items.map(toPublicItem),
 	});
+});
+
+router.get("/:spaceId/items/:itemId", async (req, res) => {
+	const spaceId = parsePositiveInteger(req.params.spaceId, "spaceId");
+	const itemId = parsePositiveInteger(req.params.itemId, "itemId");
+
+	const space = await getSpace(spaceId);
+	if (!space) {
+		throw new HttpError(404, "Space not found");
+	}
+
+	const item = await getItem({ spaceId, itemId });
+	if (!item) {
+		throw new HttpError(404, "Item not found");
+	}
+
+	res.json({ item: toPublicItem(item) });
 });
 
 router.use("/:spaceId/upload", uploadRoutes);
