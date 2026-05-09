@@ -33,6 +33,7 @@ CREATE TABLE documents (
   filename           TEXT NOT NULL,
   filepath           TEXT,
   metadata           JSONB NOT NULL DEFAULT '{}',
+  keywords           TEXT[] NOT NULL DEFAULT '{}',
   file_name          TEXT NOT NULL,
   original_file_name TEXT,
   stored_file_name   TEXT,
@@ -48,3 +49,6 @@ CREATE TABLE documents (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX documents_keywords_gin_idx
+  ON documents
+  USING GIN (keywords);
