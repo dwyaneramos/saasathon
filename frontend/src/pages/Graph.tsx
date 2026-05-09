@@ -6,7 +6,19 @@ import {
   useRef,
   useState,
 } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import {
+  useNavigate,
+  useOutletContext,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import GraphView from "@/components/GraphView";
 import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
@@ -24,11 +36,14 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 
 type AppLayoutContext = {
   activeSpaceId: number | null;
+  activeSpaceName: string | null;
 };
 
 export default function Graph() {
   const navigate = useNavigate();
-  const { activeSpaceId } = useOutletContext<AppLayoutContext>();
+  const [searchParams] = useSearchParams();
+  const { activeSpaceId, activeSpaceName } =
+    useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
   const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -48,13 +63,21 @@ export default function Graph() {
   const tooltipHoveredRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [documentPreviewUrl, setDocumentPreviewUrl] = useState<string | null>(
-    null,
-  );
   const [tooltipFrameSize, setTooltipFrameSize] = useState({
     width: 0,
     height: 0,
   });
+  const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const requestedCategoryId = useMemo(() => {
+    const rawValue = searchParams.get("categoryId");
+    if (!rawValue) return null;
+
+    const parsedValue = Number(rawValue);
+    return Number.isInteger(parsedValue) && parsedValue > 0
+      ? parsedValue
+      : null;
+  }, [searchParams]);
 
   const hideTooltip = useCallback(() => {
     setTooltipVisible(false);
@@ -120,49 +143,29 @@ export default function Graph() {
   }, [activeSpaceId, graphRefreshKey]);
 
   useEffect(() => {
-    if (mode !== "files" || !hoveredNode?.documentId) {
-      setDocumentPreviewUrl(null);
+    if (requestedCategoryId == null) {
+      setActiveCategoryId(null);
+      setMode("categories");
       return;
     }
 
-    let ignore = false;
-    let objectUrl: string | null = null;
-    const token = localStorage.getItem("token");
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-    async function loadDocumentPreview() {
-      try {
-        const response = await fetch(
-          `${apiBaseUrl}/documents/${hoveredNode!.documentId}/file`,
-          { headers },
-        );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const blob = await response.blob();
-        objectUrl = URL.createObjectURL(blob);
-
-        if (!ignore) {
-          setDocumentPreviewUrl(objectUrl);
-        }
-      } catch {
-        if (!ignore) {
-          setDocumentPreviewUrl(null);
-        }
-      }
+    if (categories.length === 0) {
+      return;
     }
 
-    loadDocumentPreview();
+    const matchingCategory = categories.find(
+      (category) => category.id === requestedCategoryId,
+    );
 
-    return () => {
-      ignore = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [hoveredNode?.documentId, mode]);
+    if (matchingCategory) {
+      setActiveCategoryId(matchingCategory.id);
+      setMode("files");
+      return;
+    }
+
+    setActiveCategoryId(null);
+    setMode("categories");
+  }, [categories, requestedCategoryId]);
 
   // Track viewport mouse position without re-rendering.
   useEffect(() => {
@@ -284,8 +287,7 @@ export default function Graph() {
   const handleNodeClick = (node: GraphNode) => {
     if (mode === "categories" && node.categoryId) {
       hideTooltip();
-      setActiveCategoryId(node.categoryId);
-      setMode("files");
+      navigate(`/graph?categoryId=${node.categoryId}`);
       return;
     }
 
@@ -310,8 +312,69 @@ export default function Graph() {
     mode === "categories" && hoveredNode?.categoryId != null;
   const showTooltip =
     tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
+  const documentPreviewUrl = hoveredNode?.documentId
+    ? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
+    : "";
   const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
   const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
+
+  useEffect(() => {
+    if (!showTooltip || !hoveredNode?.documentId || (!isImagePreview && !isPdfPreview)) {
+      setPreviewObjectUrl(null);
+      setIsPreviewLoading(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+    let objectUrl: string | null = null;
+    const token = localStorage.getItem("token");
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    setIsPreviewLoading(true);
+    setPreviewObjectUrl(null);
+
+    async function loadPreview() {
+      try {
+        const response = await fetch(documentPreviewUrl, {
+          headers,
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Could not load preview");
+        }
+
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewObjectUrl(objectUrl);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setPreviewObjectUrl(null);
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsPreviewLoading(false);
+        }
+      }
+    }
+
+    void loadPreview();
+
+    return () => {
+      abortController.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [
+    documentPreviewUrl,
+    hoveredNode?.documentId,
+    isImagePreview,
+    isPdfPreview,
+    showTooltip,
+  ]);
 
   // Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
   const TOOLTIP_WIDTH = 320;
@@ -439,6 +502,53 @@ export default function Graph() {
       ref={containerRef}
       className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
     >
+      <div className="absolute left-5 top-5 z-20">
+        <Breadcrumb>
+          <BreadcrumbList className="rounded-lg border border-stone-200/80 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+            <BreadcrumbItem>
+              {activeCategory ? (
+                <BreadcrumbLink asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      hideTooltip();
+                      navigate("/graph");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    {activeSpaceName ?? "Space"}
+                  </button>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{activeSpaceName ?? "Space"}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+            {activeCategory ? (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{activeCategory.name}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            ) : null}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
+      {mode === "files" ? (
+        <div className="absolute bottom-5 left-5 z-20">
+          <button
+            onClick={() => {
+              hideTooltip();
+              navigate("/graph");
+            }}
+            className="rounded border border-stone-300 bg-white px-4 py-2 text-stone-700 shadow-sm transition hover:bg-stone-100"
+          >
+            Back
+          </button>
+        </div>
+      ) : null}
+
       <div className="absolute right-5 bottom-5 z-20 flex gap-3">
         <Button
           type="button"
@@ -564,15 +674,19 @@ export default function Graph() {
 
                 <div className="border-b border-stone-100 bg-stone-100/70 p-3">
                   <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
-                    {isImagePreview && documentPreviewUrl ? (
+                    {isPreviewLoading ? (
+                      <p className="px-4 text-center text-xs leading-5 text-stone-500">
+                        Loading preview...
+                      </p>
+                    ) : isImagePreview && previewObjectUrl ? (
                       <img
-                        src={documentPreviewUrl}
+                        src={previewObjectUrl}
                         alt={`${hoveredNode!.label} preview`}
                         className="h-full w-full object-cover"
                       />
-                    ) : isPdfPreview && documentPreviewUrl ? (
+                    ) : isPdfPreview && previewObjectUrl ? (
                       <iframe
-                        src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                        src={`${previewObjectUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
                         title={`${hoveredNode!.label} preview`}
                         className="h-full w-full border-0"
                       />

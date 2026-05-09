@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+	Link,
+	useNavigate,
+	useOutletContext,
+	useParams,
+} from "react-router-dom";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import {
 	Download,
 	Edit3,
@@ -24,11 +37,13 @@ const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type PublicDocument = {
 	id: number;
+	spaceId: number | null;
 	filename: string;
 	fileName: string;
 	originalFileName: string | null;
 	mimeType: string;
 	fileSize: number;
+	categoryId: number | null;
 	summary: string;
 	createdAt: string;
 };
@@ -40,6 +55,20 @@ type DocumentResponse = {
 
 type ApiErrorPayload = {
 	error?: string;
+};
+
+type CategorySummary = {
+	id: number;
+	name: string;
+};
+
+type CategoriesResponse = {
+	categories?: CategorySummary[];
+};
+
+type AppLayoutContext = {
+	activeSpaceId: number | null;
+	activeSpaceName: string | null;
 };
 
 function authHeaders() {
@@ -157,7 +186,10 @@ function toFriendlyDocumentError(
 export default function FileView() {
 	const { documentId } = useParams();
 	const navigate = useNavigate();
+	const { activeSpaceId, activeSpaceName } =
+		useOutletContext<AppLayoutContext>();
 	const [document, setDocument] = useState<PublicDocument | null>(null);
+	const [categoryName, setCategoryName] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [editableName, setEditableName] = useState("");
@@ -302,6 +334,50 @@ export default function FileView() {
 			}
 		};
 	}, [document, fileUrl, navigate]);
+
+	useEffect(() => {
+		let ignore = false;
+
+		async function loadCategoryName() {
+			if (!document?.categoryId || !activeSpaceId) {
+				setCategoryName(null);
+				return;
+			}
+
+			try {
+				const response = await fetch(
+					`${apiBaseUrl}/categories?spaceId=${activeSpaceId}`,
+					{ headers: authHeaders() },
+				);
+
+				if (!response.ok) {
+					throw new Error("Unable to load categories");
+				}
+
+				const payload = (await response
+					.json()
+					.catch(() => null)) as CategoriesResponse | null;
+				const matchingCategory =
+					payload?.categories?.find(
+						(category) => category.id === document.categoryId,
+					) ?? null;
+
+				if (!ignore) {
+					setCategoryName(matchingCategory?.name ?? null);
+				}
+			} catch {
+				if (!ignore) {
+					setCategoryName(null);
+				}
+			}
+		}
+
+		void loadCategoryName();
+
+		return () => {
+			ignore = true;
+		};
+	}, [activeSpaceId, document?.categoryId]);
 
 	if (isLoading) {
 		return (
@@ -452,8 +528,42 @@ export default function FileView() {
 	const fileSummary = document.summary?.trim();
 
 	return (
-		<main className="min-h-[calc(100svh-var(--header-height))] bg-muted/40">
-			<header className="border-b border-border bg-background px-6 py-4">
+		<div className="graph-page relative min-h-[calc(100vh-var(--header-height)-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50">
+			<main className="min-h-[calc(100svh-var(--header-height)-1rem)] bg-muted/40">
+				<header className="border-b border-border bg-background px-6 py-4">
+				<Breadcrumb className="mb-4">
+					<BreadcrumbList>
+						<BreadcrumbItem>
+							<BreadcrumbLink asChild>
+								<Link to="/graph">
+									{activeSpaceName ?? "Space"}
+								</Link>
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						{categoryName ? (
+							<>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbLink asChild>
+										<Link
+											to={
+												document.categoryId
+													? `/graph?categoryId=${document.categoryId}`
+													: "/graph"
+											}
+										>
+											{categoryName}
+										</Link>
+									</BreadcrumbLink>
+								</BreadcrumbItem>
+							</>
+						) : null}
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbPage>{displayName}</BreadcrumbPage>
+						</BreadcrumbItem>
+					</BreadcrumbList>
+				</Breadcrumb>
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
 						<div className="flex min-w-0 items-center gap-2">
@@ -567,7 +677,7 @@ export default function FileView() {
 						</p>
 					</div>
 				) : null}
-			</header>
+				</header>
 
 			<section className="min-h-[480px] flex-1 p-4 md:p-6">
 				{canPreview ? (
@@ -649,8 +759,9 @@ export default function FileView() {
 						</div>
 					</div>
 				</div>
-			) : null}
-		</main>
+				) : null}
+			</main>
+		</div>
 	);
 }
 
