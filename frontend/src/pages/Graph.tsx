@@ -233,8 +233,8 @@ export default function Graph() {
 
   // Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
   const TOOLTIP_WIDTH = 320;
-  const TOOLTIP_OFFSET = 16;
-  const TOOLTIP_BRIDGE = 18;
+  const TOOLTIP_OFFSET = 28;
+  const TOOLTIP_BRIDGE = 8;
   const TOOLTIP_EDGE_GAP = 8;
   const tooltipStyle = useMemo(() => {
     const clamp = (value: number, min: number, max: number) =>
@@ -370,7 +370,7 @@ export default function Graph() {
       {showTooltip && (
         <div
           ref={tooltipFrameRef}
-          className="fixed z-50 p-[18px]"
+          className="pointer-events-none fixed z-50 p-2"
           style={{
             left: tooltipStyle.left,
             top: tooltipStyle.top,
@@ -385,7 +385,7 @@ export default function Graph() {
           }}
         >
           <div
-            className="overflow-y-auto overflow-x-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
+            className="pointer-events-auto overflow-y-auto overflow-x-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
             style={{
               width: tooltipStyle.width,
               maxHeight: tooltipStyle.maxHeight,
