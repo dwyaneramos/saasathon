@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { apiBaseUrl } from "@/lib/api";
 
 // Define exactly what a User looks like
 export interface User {
@@ -60,7 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    fetch("http://localhost:3000/api/v1/users/me", {
+    fetch(`${apiBaseUrl}/users/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {

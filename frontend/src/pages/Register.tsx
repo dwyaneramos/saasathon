@@ -11,6 +11,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { apiBaseUrl } from "@/lib/api";
 
 const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -83,7 +84,7 @@ export default function Register() {
 
 		try {
 			const response = await fetch(
-				"http://localhost:3000/api/v1/users/register",
+				`${apiBaseUrl}/users/register`,
 				{
 					method: "POST",
 					headers: {

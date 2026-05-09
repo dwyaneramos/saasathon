@@ -51,6 +51,35 @@ export async function createSpace(input: {
 	return rows[0];
 }
 
+export async function updateSpace(input: {
+	spaceId: number;
+	userId: number;
+	name: string;
+}) {
+	await ensureSpaceSchema();
+	const { rows } = await getDb().query<Space>(
+		`UPDATE spaces
+		 SET name = $3
+		 WHERE id = $1
+		   AND created_by = $2
+		 RETURNING id, created_by, name, created_at`,
+		[input.spaceId, input.userId, input.name.trim()],
+	);
+	return rows[0] ?? null;
+}
+
+export async function deleteSpace(input: { spaceId: number; userId: number }) {
+	await ensureSpaceSchema();
+	const { rows } = await getDb().query<Space>(
+		`DELETE FROM spaces
+		 WHERE id = $1
+		   AND created_by = $2
+		 RETURNING id, created_by, name, created_at`,
+		[input.spaceId, input.userId],
+	);
+	return rows[0] ?? null;
+}
+
 export async function getOrCreateUserSpace(input: {
 	userId: number;
 	name?: string;
@@ -86,6 +115,19 @@ export async function getSpace(spaceId: number) {
 		[spaceId],
 	);
 	return rows[0] ?? null;
+}
+
+export async function userCanAccessSpace(userId: number, spaceId: number) {
+	await ensureSpaceSchema();
+	const { rows } = await getDb().query<{ id: number }>(
+		`SELECT id
+		 FROM spaces
+		 WHERE id = $1
+		   AND created_by = $2
+		 LIMIT 1`,
+		[spaceId, userId],
+	);
+	return Boolean(rows[0]);
 }
 
 export async function getOrCreateDefaultSpace() {
