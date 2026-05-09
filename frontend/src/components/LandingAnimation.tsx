@@ -7,37 +7,37 @@ const NODE_COUNT = 25;
 const NETWORK_SIZE = 2.8;
 
 const LABELS = [
-  "tax.pdf",
-  "audit.pdf",
-  "wire.pdf",
-  "cash.pdf",
-  "fund.pdf",
-  "risk.pdf",
-  "bank.pdf",
-  "pay.pdf",
-  "loan.pdf",
-  "trade.pdf",
-  "asset.pdf",
-  "rev.pdf",
-  "fin.pdf",
-  "cap.pdf",
-  "docs.pdf",
-  "fy25.pdf",
-  "q1.pdf",
-  "inv.pdf",
-  "ops.pdf",
-  "sec.pdf",
+	"tax.pdf",
+	"audit.pdf",
+	"wire.pdf",
+	"cash.pdf",
+	"fund.pdf",
+	"risk.pdf",
+	"bank.pdf",
+	"pay.pdf",
+	"loan.pdf",
+	"trade.pdf",
+	"asset.pdf",
+	"rev.pdf",
+	"fin.pdf",
+	"cap.pdf",
+	"docs.pdf",
+	"fy25.pdf",
+	"q1.pdf",
+	"inv.pdf",
+	"ops.pdf",
+	"sec.pdf",
 ];
 
 const generateNodes = () => {
-  return Array.from({ length: NODE_COUNT }, (_, i) => ({
-    position: new THREE.Vector3(
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-      (Math.random() - 0.5) * NETWORK_SIZE,
-    ),
-    label: LABELS[i % LABELS.length],
-  }));
+	return Array.from({ length: NODE_COUNT }, (_, i) => ({
+		position: new THREE.Vector3(
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+			(Math.random() - 0.5) * NETWORK_SIZE,
+		),
+		label: LABELS[i % LABELS.length],
+	}));
 };
 
 export const LandingAnimation = () => {
