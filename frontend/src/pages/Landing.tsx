@@ -5,7 +5,7 @@ export const Landing = () => {
 	return (
 		<>
 			{/* HERO */}
-			<main className="relative min-h-screen flex items-center px-6 py-6 overflow-visible">
+			<main className="relative min-h-screen flex items-center px-6 py-6 overflow-hidden">
 				<div className="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-20 items-start">
 					<div className="text-center lg:text-left flex flex-col items-center lg:items-start">
 						<h1 className="max-w-4xl text-6xl md:text-8xl font-bold tracking-tighter bg-gradient-to-b from-zinc-900 to-zinc-500 bg-clip-text text-transparent leading-[0.9] pb-8">
