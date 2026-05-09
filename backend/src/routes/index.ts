@@ -2,10 +2,12 @@ import { Router } from "express";
 import uploadRoutes from "./upload.js";
 import userRoutes from "./users.js";
 import documentRoutes from "./documents.js";
+import spaceRoutes from "./spaces.js";
 
 const router = Router();
 
 router.use("/users", userRoutes);
+router.use("/spaces", spaceRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/", documentRoutes);
 

@@ -77,6 +77,7 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
+		getDocumentId(req),
 	);
 
 	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
@@ -94,6 +95,7 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -111,6 +113,7 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
+		getDocumentId(req),
 	);
 
 	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
@@ -128,6 +131,7 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -145,3 +149,16 @@ router.post(
 );
 
 export default router;
+
+function getDocumentId(req: Request) {
+	const documentId =
+		typeof req.body?.documentId === "string"
+			? Number(req.body.documentId)
+			: undefined;
+
+	return typeof documentId === "number" &&
+		Number.isInteger(documentId) &&
+		documentId > 0
+		? documentId
+		: undefined;
+}

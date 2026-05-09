@@ -8,12 +8,18 @@ import express, {
 	type Response,
 } from "express";
 import multer from "multer";
+import { getDb } from "../db/index.js";
+import {
+	ensureSpaceExists,
+	getOrCreateDefaultSpace,
+} from "../services/spaceService.js";
+import { HttpError } from "../utils/httpError.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadDir = path.resolve(__dirname, "../../upload");
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -41,19 +47,7 @@ function safeFilename(originalName: string) {
 }
 
 const upload = multer({
-	storage: multer.diskStorage({
-		destination: async (_req, _file, cb) => {
-			try {
-				await fs.mkdir(uploadDir, { recursive: true });
-				cb(null, uploadDir);
-			} catch (err) {
-				cb(err as Error, uploadDir);
-			}
-		},
-		filename: (_req, file, cb) => {
-			cb(null, safeFilename(file.originalname));
-		},
-	}),
+	storage: multer.memoryStorage(),
 	limits: {
 		fileSize: MAX_FILE_SIZE_BYTES,
 		files: MAX_FILES,
@@ -68,18 +62,30 @@ const upload = multer({
 	},
 });
 
-function uploadedFileResponse(file: Express.Multer.File) {
+type StoredUpload = {
+	documentId: number;
+	spaceId: number;
+	originalName: string;
+	filename: string;
+	mimeType: string;
+	size: number;
+	path: string;
+};
+
+function uploadedFileResponse(file: StoredUpload) {
 	return {
-		originalName: file.originalname,
+		documentId: file.documentId,
+		spaceId: file.spaceId,
+		originalName: file.originalName,
 		filename: file.filename,
-		mimeType: file.mimetype,
+		mimeType: file.mimeType,
 		size: file.size,
-		path: `backend/upload/${file.filename}`,
+		path: file.path,
 	};
 }
 
 router.post("/", (req: Request, res: Response, next: NextFunction) => {
-	upload.single("file")(req, res, (err) => {
+	upload.single("file")(req, res, async (err) => {
 		if (err) {
 			next(err);
 			return;
@@ -93,15 +99,20 @@ router.post("/", (req: Request, res: Response, next: NextFunction) => {
 			return;
 		}
 
-		res.status(201).json({
-			message: "File uploaded successfully.",
-			file: uploadedFileResponse(req.file),
-		});
+		try {
+			const storedFile = await storeUploadedFile(req, req.file);
+			res.status(201).json({
+				message: "File uploaded successfully.",
+				file: uploadedFileResponse(storedFile),
+			});
+		} catch (err) {
+			next(err);
+		}
 	});
 });
 
 router.post("/multiple", (req: Request, res: Response, next: NextFunction) => {
-	upload.array("files", MAX_FILES)(req, res, (err) => {
+	upload.array("files", MAX_FILES)(req, res, async (err) => {
 		if (err) {
 			next(err);
 			return;
@@ -117,13 +128,91 @@ router.post("/multiple", (req: Request, res: Response, next: NextFunction) => {
 			return;
 		}
 
-		res.status(201).json({
-			message: `Successfully uploaded ${files.length} file(s).`,
-			files: files.map(uploadedFileResponse),
-			totalSize: files.reduce((sum, file) => sum + file.size, 0),
-		});
+		try {
+			const storedFiles = [];
+			for (const file of files) {
+				storedFiles.push(await storeUploadedFile(req, file));
+			}
+
+			res.status(201).json({
+				message: `Successfully uploaded ${storedFiles.length} file(s).`,
+				files: storedFiles.map(uploadedFileResponse),
+				totalSize: storedFiles.reduce((sum, file) => sum + file.size, 0),
+			});
+		} catch (err) {
+			next(err);
+		}
 	});
 });
+
+async function resolveSpace(req: Request) {
+	const rawSpaceId =
+		req.params.spaceId ??
+		req.body?.spaceId ??
+		req.query?.spaceId;
+
+	if (!rawSpaceId) {
+		return getOrCreateDefaultSpace();
+	}
+
+	const spaceId = Number(rawSpaceId);
+	if (!Number.isInteger(spaceId) || spaceId < 1) {
+		throw new HttpError(400, "spaceId must be a positive integer");
+	}
+
+	const space = await ensureSpaceExists(spaceId);
+	if (!space) {
+		throw new HttpError(404, "Space not found");
+	}
+
+	return space;
+}
+
+async function storeUploadedFile(req: Request, file: Express.Multer.File) {
+	const space = await resolveSpace(req);
+	const filename = safeFilename(file.originalname);
+	const spaceDir = path.join(uploadDir, `space-${space.id}`);
+	const absolutePath = path.join(spaceDir, filename);
+	const storagePath = `backend/upload/space-${space.id}/${filename}`;
+
+	await fs.mkdir(spaceDir, { recursive: true });
+	await fs.writeFile(absolutePath, file.buffer);
+
+	const { rows } = await getDb().query<{ id: number }>(
+		`INSERT INTO documents (
+			space_id,
+			file_name,
+			original_file_name,
+			stored_file_name,
+			storage_path,
+			mime_type,
+			file_size,
+			extracted_text,
+			summary
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, '', '')
+		RETURNING id`,
+		[
+			space.id,
+			file.originalname,
+			file.originalname,
+			filename,
+			storagePath,
+			file.mimetype,
+			file.size,
+		],
+	);
+
+	return {
+		documentId: rows[0].id,
+		spaceId: space.id,
+		originalName: file.originalname,
+		filename,
+		mimeType: file.mimetype,
+		size: file.size,
+		path: storagePath,
+	};
+}
 
 router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
 	if (err instanceof multer.MulterError) {
