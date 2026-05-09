@@ -120,51 +120,20 @@ const DEFAULT_CATEGORIES: CategoryInput[] = [
   },
 ];
 
-let defaultCategoriesReady = false;
-let defaultCategoriesPromise: Promise<void> | null = null;
+const seededDefaultCategorySpaces = new Set<number>();
+const defaultCategorySeedPromises = new Map<number, Promise<void>>();
 
 export async function ensureDocumentSchema() {
   await ensureCoreSchema();
-
-  if (defaultCategoriesReady) {
-    return;
-  }
-
-  if (!defaultCategoriesPromise) {
-    defaultCategoriesPromise = (async () => {
-      for (const category of DEFAULT_CATEGORIES) {
-        await getDb().query(
-          `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
-           SELECT $1, NULL, $2, $3, $4
-           WHERE NOT EXISTS (
-             SELECT 1 FROM document_categories
-             WHERE lower(name) = lower($1) AND space_id IS NULL
-           )`,
-          [
-            category.name,
-            buildCategoryMetadata(category),
-            category.description ?? null,
-            category.keywords ?? [],
-          ],
-        );
-      }
-
-      defaultCategoriesReady = true;
-    })().catch((error) => {
-      defaultCategoriesPromise = null;
-      throw error;
-    });
-  }
-
-  await defaultCategoriesPromise;
 }
 
 export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
+  await ensureDefaultCategoriesForSpace(spaceId ?? null);
   const { rows } = await getDb().query<CategoryRow>(
     `SELECT id, name, space_id, metadata, description, keywords, created_at
 		 FROM document_categories
-		 WHERE $1::integer IS NULL OR space_id IS NULL OR space_id = $1
+		 WHERE space_id = $1
 		 ORDER BY name ASC`,
     [spaceId ?? null],
   );
@@ -223,6 +192,10 @@ export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);
   const spaceId = input.spaceId ?? await getDocumentSpaceId(input.documentId);
+  if (spaceId == null) {
+    throw new HttpError(400, "A space is required to create categories.");
+  }
+
   const metadata = buildCategoryMetadata({
     ...input,
     keywords,
@@ -233,7 +206,7 @@ export async function createCategory(input: CategoryInput) {
 		 WHERE lower(name) = lower($1)
 			AND space_id IS NOT DISTINCT FROM $2
 		 LIMIT 1`,
-    [input.name.trim(), spaceId ?? null],
+    [input.name.trim(), spaceId],
   );
 
   if (existing.rows[0]) {
@@ -261,7 +234,7 @@ export async function createCategory(input: CategoryInput) {
 		 RETURNING id, name, space_id, metadata, description, keywords, created_at`,
     [
       input.name.trim(),
-      spaceId ?? null,
+      spaceId,
       metadata,
       input.description?.trim() || null,
       keywords,
@@ -873,6 +846,45 @@ async function getDocumentSpaceId(documentId?: number) {
     [documentId],
   );
   return rows[0]?.space_id ?? null;
+}
+
+async function ensureDefaultCategoriesForSpace(spaceId: number | null) {
+  if (spaceId == null || seededDefaultCategorySpaces.has(spaceId)) {
+    return;
+  }
+
+  const inFlight = defaultCategorySeedPromises.get(spaceId);
+  if (inFlight) {
+    await inFlight;
+    return;
+  }
+
+  const promise = (async () => {
+    for (const category of DEFAULT_CATEGORIES) {
+      await getDb().query(
+        `INSERT INTO document_categories (name, space_id, metadata, description, keywords)
+         SELECT $1, $2, $3, $4, $5
+         WHERE NOT EXISTS (
+           SELECT 1 FROM document_categories
+           WHERE lower(name) = lower($1) AND space_id = $2
+         )`,
+        [
+          category.name,
+          spaceId,
+          buildCategoryMetadata(category),
+          category.description ?? null,
+          category.keywords ?? [],
+        ],
+      );
+    }
+
+    seededDefaultCategorySpaces.add(spaceId);
+  })().finally(() => {
+    defaultCategorySeedPromises.delete(spaceId);
+  });
+
+  defaultCategorySeedPromises.set(spaceId, promise);
+  await promise;
 }
 
 function buildCategoryMetadata(input: CategoryInput): CategoryMetadata {
