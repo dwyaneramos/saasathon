@@ -12,6 +12,7 @@ import {
 	UploadCloud,
 	X,
 } from "lucide-react";
+import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import type {
 	FileAnalysisResult,
@@ -87,7 +88,6 @@ type UploadWorkspaceProps = {
 	spaceId?: number | null;
 };
 
-const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 const textareaClassName =
 	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";

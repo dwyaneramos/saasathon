@@ -9,9 +9,9 @@ import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { ArrowUp, RotateCcw, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { openUploadModalEvent } from "@/components/app-sidebar";
+import { apiBaseUrl } from "@/lib/api";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
 
-const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type AppLayoutContext = {
