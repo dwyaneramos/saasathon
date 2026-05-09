@@ -6,7 +6,9 @@ import {
 	assignDocumentCategory,
 	createCategory,
 	listCategories,
+	listCategoryConnections,
 	toPublicCategory,
+	toPublicCategoryConnection,
 	type DocumentAnalysis,
 } from "../services/documentAnalyzer.js";
 
@@ -41,8 +43,20 @@ export const uploadImageMiddleware = multer({
 });
 
 export async function getCategories(req: Request, res: Response) {
-	const categories = await listCategories();
-	res.json({ categories: categories.map(toPublicCategory) });
+	const spaceId = getQuerySpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const [categories, connections] = await Promise.all([
+		listCategories(spaceId),
+		listCategoryConnections(spaceId),
+	]);
+	res.json({
+		categories: categories.map(toPublicCategory),
+		connections: connections.map(toPublicCategoryConnection),
+	});
 }
 
 export async function postCategory(req: Request, res: Response) {
@@ -108,6 +122,16 @@ function getDocumentId(req: Request) {
 		documentId > 0
 		? documentId
 		: undefined;
+}
+
+function getQuerySpaceId(req: Request) {
+	const rawSpaceId = req.query.spaceId;
+	if (typeof rawSpaceId !== "string" || rawSpaceId.trim() === "") {
+		return null;
+	}
+
+	const spaceId = Number(rawSpaceId);
+	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
 }
 
 function sendAnalysisResponse(res: Response, analysis: DocumentAnalysis) {

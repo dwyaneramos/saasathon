@@ -5,7 +5,6 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	type DragEvent,
 } from "react";
 import {
 	useNavigate,
@@ -20,24 +19,27 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { ArrowLeft, Box, SquareStack } from "lucide-react";
 import GraphView from "@/components/GraphView";
-import { apiBaseUrl } from "@/lib/api";
-import { fileIconFor } from "@/lib/file-icons";
-import {
-	fileTreeUpdatedEvent,
-	openUploadModalEvent,
-} from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { UploadCloud } from "lucide-react";
+import { fileIconFor } from "@/lib/file-icons";
+import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
 import type {
+	CategoryConnectionSummary,
 	CategorySummary,
 	DocumentSummary,
 	GraphNode,
 } from "@/types/graph";
 
 type GraphMode = "categories" | "files";
-type CategoriesResponse = { categories?: CategorySummary[]; error?: string };
+type CategoriesResponse = {
+	categories?: CategorySummary[];
+	connections?: CategoryConnectionSummary[];
+	error?: string;
+};
 type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
+
+const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
 	activeSpaceId: number | null;
@@ -52,6 +54,9 @@ export default function Graph() {
 	const [is2D, setIs2D] = useState(true);
 	const [mode, setMode] = useState<GraphMode>("categories");
 	const [categories, setCategories] = useState<CategorySummary[]>([]);
+	const [categoryConnections, setCategoryConnections] = useState<
+		CategoryConnectionSummary[]
+	>([]);
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
 	const [graphRefreshKey, setGraphRefreshKey] = useState(0);
 	const [activeCategoryId, setActiveCategoryId] = useState<number | null>(
@@ -77,12 +82,6 @@ export default function Graph() {
 		width: 0,
 		height: 0,
 	});
-	const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(
-		null,
-	);
-	const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-	const [isDragUploadActive, setIsDragUploadActive] = useState(false);
-	const dragDepthRef = useRef(0);
 	const requestedCategoryId = useMemo(() => {
 		const rawValue = searchParams.get("categoryId");
 		if (!rawValue) return null;
@@ -124,6 +123,7 @@ export default function Graph() {
 
 		if (!activeSpaceId) {
 			setCategories([]);
+			setCategoryConnections([]);
 			setDocuments([]);
 			return () => {
 				ignore = true;
@@ -150,6 +150,7 @@ export default function Graph() {
 
 			if (!ignore) {
 				setCategories(categoriesPayload?.categories ?? []);
+				setCategoryConnections(categoriesPayload?.connections ?? []);
 				setDocuments(documentsPayload?.documents ?? []);
 			}
 		}
@@ -256,55 +257,6 @@ export default function Graph() {
 		[cancelHide, scheduleHide],
 	);
 
-	const handleGraphDragEnter = (event: DragEvent<HTMLDivElement>) => {
-		if (!event.dataTransfer.types.includes("Files")) {
-			return;
-		}
-
-		event.preventDefault();
-		dragDepthRef.current += 1;
-		setIsDragUploadActive(true);
-	};
-
-	const handleGraphDragOver = (event: DragEvent<HTMLDivElement>) => {
-		if (!event.dataTransfer.types.includes("Files")) {
-			return;
-		}
-
-		event.preventDefault();
-		event.dataTransfer.dropEffect = "copy";
-		if (!isDragUploadActive) {
-			setIsDragUploadActive(true);
-		}
-	};
-
-	const handleGraphDragLeave = (event: DragEvent<HTMLDivElement>) => {
-		if (!event.dataTransfer.types.includes("Files")) {
-			return;
-		}
-
-		event.preventDefault();
-		dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-		if (dragDepthRef.current === 0) {
-			setIsDragUploadActive(false);
-		}
-	};
-
-	const handleGraphDrop = (event: DragEvent<HTMLDivElement>) => {
-		if (!event.dataTransfer.files.length) {
-			return;
-		}
-
-		event.preventDefault();
-		dragDepthRef.current = 0;
-		setIsDragUploadActive(false);
-		window.dispatchEvent(
-			new CustomEvent(openUploadModalEvent, {
-				detail: { files: Array.from(event.dataTransfer.files) },
-			}),
-		);
-	};
-
 	const categoryNodes = useMemo<GraphNode[]>(() => {
 		return categories.map((category) => ({
 			id: `category-${category.id}`,
@@ -351,10 +303,15 @@ export default function Graph() {
 		setMode("categories");
 	}, [activeCategoryId, categories, hideTooltip]);
 
-	const currentMatrix = useMemo(
-		() => buildConnectedMatrix(currentNodes.length),
-		[currentNodes.length],
+	const categoryMatrix = useMemo(
+		() => buildCategoryConnectionMatrix(categoryNodes, categoryConnections),
+		[categoryConnections, categoryNodes],
 	);
+	const fileMatrix = useMemo(
+		() => buildEmptyMatrix(fileNodes.length),
+		[fileNodes.length],
+	);
+	const currentMatrix = mode === "categories" ? categoryMatrix : fileMatrix;
 
 	const handleNodeClick = (node: GraphNode) => {
 		if (mode === "categories" && node.categoryId) {
@@ -392,73 +349,6 @@ export default function Graph() {
 		: "";
 	const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
 	const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
-
-	useEffect(() => {
-		if (
-			!showTooltip ||
-			!hoveredNode?.documentId ||
-			(!isImagePreview && !isPdfPreview)
-		) {
-			setPreviewObjectUrl(null);
-			setIsPreviewLoading(false);
-			return;
-		}
-
-		const abortController = new AbortController();
-		let objectUrl: string | null = null;
-		const token = localStorage.getItem("token");
-		const headers = token
-			? { Authorization: `Bearer ${token}` }
-			: undefined;
-
-		setIsPreviewLoading(true);
-		setPreviewObjectUrl(null);
-
-		async function loadPreview() {
-			try {
-				const response = await fetch(documentPreviewUrl, {
-					headers,
-					signal: abortController.signal,
-				});
-
-				if (!response.ok) {
-					throw new Error("Could not load preview");
-				}
-
-				const blob = await response.blob();
-				objectUrl = URL.createObjectURL(blob);
-				setPreviewObjectUrl(objectUrl);
-			} catch (error) {
-				if (
-					error instanceof DOMException &&
-					error.name === "AbortError"
-				) {
-					return;
-				}
-
-				setPreviewObjectUrl(null);
-			} finally {
-				if (!abortController.signal.aborted) {
-					setIsPreviewLoading(false);
-				}
-			}
-		}
-
-		void loadPreview();
-
-		return () => {
-			abortController.abort();
-			if (objectUrl) {
-				URL.revokeObjectURL(objectUrl);
-			}
-		};
-	}, [
-		documentPreviewUrl,
-		hoveredNode?.documentId,
-		isImagePreview,
-		isPdfPreview,
-		showTooltip,
-	]);
 
 	// Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
 	const TOOLTIP_WIDTH = 320;
@@ -593,15 +483,11 @@ export default function Graph() {
 	return (
 		<div
 			ref={containerRef}
-			className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
-			onDragEnter={handleGraphDragEnter}
-			onDragOver={handleGraphDragOver}
-			onDragLeave={handleGraphDragLeave}
-			onDrop={handleGraphDrop}
+			className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
 		>
-			<div className="absolute left-5 top-5 z-20">
+			<div className="absolute top-5 left-5 z-20">
 				<Breadcrumb>
-					<BreadcrumbList className="rounded-lg border border-stone-200/80 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+					<BreadcrumbList className="rounded-lg border border-zinc-200/80 bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
 						<BreadcrumbItem>
 							{activeCategory ? (
 								<BreadcrumbLink asChild>
@@ -636,48 +522,38 @@ export default function Graph() {
 				</Breadcrumb>
 			</div>
 
-			{mode === "files" ? (
-				<div className="absolute bottom-5 left-5 z-20">
-					<button
+			<div className="absolute right-5 bottom-5 z-20 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white/90 p-1.5 shadow-sm backdrop-blur-md">
+				{mode === "files" ? (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
 						onClick={() => {
 							hideTooltip();
 							navigate("/graph");
 						}}
-						className="rounded border border-stone-300 bg-white px-4 py-2 text-stone-700 shadow-sm transition hover:bg-stone-100"
+						className="border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
 					>
+						<ArrowLeft className="size-3.5" />
 						Back
-					</button>
-				</div>
-			) : null}
+					</Button>
+				) : null}
 
-			<div className="absolute right-5 bottom-5 z-20 flex gap-3">
 				<Button
 					type="button"
 					variant="accent"
-					size="lg"
+					size="sm"
 					onClick={() => setIs2D((current) => !current)}
+					className="min-w-28"
 				>
+					{is2D ? (
+						<Box className="size-3.5" />
+					) : (
+						<SquareStack className="size-3.5" />
+					)}
 					{is2D ? "Switch to 3D" : "Switch to 2D"}
 				</Button>
 			</div>
-
-			{isDragUploadActive ? (
-				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-stone-950/20 backdrop-blur-[2px]">
-					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-stone-200 bg-white/95 px-6 py-7 text-center shadow-xl">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-black">
-							<UploadCloud className="size-6" />
-						</span>
-						<div>
-							<p className="text-base font-semibold text-stone-900">
-								Drag and drop to upload
-							</p>
-							<p className="mt-1 text-sm text-stone-500">
-								Drop files anywhere to continue
-							</p>
-						</div>
-					</div>
-				</div>
-			) : null}
 
 			{/* Anchored tooltip with a hover bridge so the card can be entered. */}
 			{showTooltip && (
@@ -698,7 +574,7 @@ export default function Graph() {
 					}}
 				>
 					<div
-						className="pointer-events-auto overflow-y-auto overflow-x-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
+						className="pointer-events-auto overflow-y-auto overflow-x-hidden rounded-xl border border-zinc-200 bg-white/95 shadow-sm backdrop-blur-md"
 						style={{
 							width: tooltipStyle.width,
 							maxHeight: tooltipStyle.maxHeight,
@@ -706,25 +582,27 @@ export default function Graph() {
 					>
 						{isCategoryTooltip ? (
 							<>
-								<div className="border-b border-stone-100 px-4 py-3">
-									<p className="text-sm font-semibold text-stone-900">
-										{hoveredNode!.label}
-									</p>
-									<p className="mt-1 break-words text-xs leading-5 text-stone-600">
+								<div className="border-b border-zinc-100 px-4 py-3">
+									<div className="flex items-start justify-between gap-3">
+										<p className="min-w-0 break-words text-sm font-semibold text-zinc-900">
+											{hoveredNode!.label}
+										</p>
+										<span className="shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-500">
+											{hoveredCategoryFiles.length} file
+											{hoveredCategoryFiles.length === 1
+												? ""
+												: "s"}
+										</span>
+									</div>
+									<p className="mt-2 break-words text-xs leading-5 text-zinc-600">
 										{hoveredNode!.summary ||
 											"No category summary yet."}
-									</p>
-									<p className="mt-2 text-xs text-stone-500">
-										{hoveredCategoryFiles.length} file
-										{hoveredCategoryFiles.length === 1
-											? ""
-											: "s"}
 									</p>
 								</div>
 
 								<ul className="max-h-[260px] overflow-y-auto py-1">
 									{hoveredCategoryFiles.length === 0 ? (
-										<li className="px-4 py-3 text-xs text-stone-400 italic">
+										<li className="px-4 py-3 text-xs text-zinc-400 italic">
 											No files in this category
 										</li>
 									) : (
@@ -747,13 +625,13 @@ export default function Graph() {
 																`/file/${doc.id}`,
 															)
 														}
-														className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-stone-50"
+														className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-zinc-50"
 														title={name}
 													>
-														<span className="flex size-6 flex-shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
+														<span className="flex size-6 flex-shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-500">
 															<FileIcon className="size-3.5" />
 														</span>
-														<span className="truncate text-xs text-stone-700">
+														<span className="truncate text-xs text-zinc-700">
 															{name}
 														</span>
 													</button>
@@ -763,11 +641,12 @@ export default function Graph() {
 									)}
 								</ul>
 
-								<div className="border-t border-stone-100 px-4 py-2">
+								<div className="border-t border-zinc-100 px-4 py-3">
 									<Button
 										type="button"
-										onClick={handleTooltipAction}
+										variant="accent"
 										size="sm"
+										onClick={handleTooltipAction}
 										className="w-full"
 									>
 										Explore files
@@ -776,37 +655,32 @@ export default function Graph() {
 							</>
 						) : (
 							<>
-								<div className="border-b border-stone-100 px-4 py-3">
-									<p className="text-sm font-semibold text-stone-900">
+								<div className="border-b border-zinc-100 px-4 py-3">
+									<p className="text-sm font-semibold text-zinc-900">
 										{hoveredNode!.label}
 									</p>
-									<p className="mt-1 break-words text-xs leading-5 text-stone-600">
+									<p className="mt-2 break-words text-xs leading-5 text-zinc-600">
 										{hoveredNode!.summary ||
 											"No document summary yet."}
 									</p>
 								</div>
 
-								<div className="border-b border-stone-100 bg-stone-100/70 p-3">
-									<div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
-										{isPreviewLoading ? (
-											<p className="px-4 text-center text-xs leading-5 text-stone-500">
-												Loading preview...
-											</p>
-										) : isImagePreview &&
-										  previewObjectUrl ? (
+								<div className="border-b border-zinc-100 bg-zinc-50 p-3">
+									<div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white">
+										{isImagePreview ? (
 											<img
-												src={previewObjectUrl}
+												src={documentPreviewUrl}
 												alt={`${hoveredNode!.label} preview`}
 												className="h-full w-full object-cover"
 											/>
-										) : isPdfPreview && previewObjectUrl ? (
+										) : isPdfPreview ? (
 											<iframe
-												src={`${previewObjectUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+												src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
 												title={`${hoveredNode!.label} preview`}
 												className="h-full w-full border-0"
 											/>
 										) : (
-											<p className="px-4 text-center text-xs leading-5 text-stone-500">
+											<p className="px-4 text-center text-xs leading-5 text-zinc-500">
 												Preview unavailable for this
 												file type.
 											</p>
@@ -814,11 +688,12 @@ export default function Graph() {
 									</div>
 								</div>
 
-								<div className="px-4 py-2">
+								<div className="px-4 py-3">
 									<Button
 										type="button"
-										onClick={handleTooltipAction}
+										variant="accent"
 										size="sm"
+										onClick={handleTooltipAction}
 										className="w-full"
 									>
 										Open file page
@@ -836,18 +711,18 @@ export default function Graph() {
 						is2D={is2D}
 						nodes={currentNodes}
 						weightMatrix={currentMatrix}
-						threshold={0.16}
+						threshold={mode === "categories" ? 0.08 : 0.16}
 						onNodeClick={handleNodeClick}
 						onNodeHover={handleNodeHover}
 					/>
 				) : mode === "files" ? (
 					<div className="flex h-full items-center justify-center px-6 text-center">
 						<div className="max-w-sm">
-							<p className="text-sm font-semibold text-stone-900">
+							<p className="text-sm font-semibold text-zinc-900">
 								No documents in{" "}
 								{activeCategory?.name ?? "this category"}
 							</p>
-							<p className="mt-2 text-xs leading-5 text-stone-500">
+							<p className="mt-2 text-xs leading-5 text-zinc-500">
 								Add documents to this category to build its file
 								graph.
 							</p>
@@ -859,30 +734,41 @@ export default function Graph() {
 	);
 }
 
-function buildConnectedMatrix(nodeCount: number) {
+function buildEmptyMatrix(nodeCount: number) {
 	const matrix: number[][] = Array.from({ length: nodeCount }, () =>
 		Array.from({ length: nodeCount }, () => 0),
 	);
 
-	for (let i = 0; i < nodeCount; i++) {
-		for (let j = i + 1; j < nodeCount; j++) {
-			let weight = 0.08;
+	return matrix;
+}
 
-			if (Math.abs(i - j) === 1) {
-				weight = 0.42;
-			}
+function buildCategoryConnectionMatrix(
+	nodes: GraphNode[],
+	connections: CategoryConnectionSummary[],
+) {
+	const matrix = Array.from({ length: nodes.length }, () =>
+		Array.from({ length: nodes.length }, () => 0),
+	);
+	const indexByCategoryId = new Map<number, number>();
 
-			if (
-				(i === 0 && j === nodeCount - 1) ||
-				(j === 0 && i === nodeCount - 1)
-			) {
-				weight = Math.max(weight, 0.28);
-			}
-
-			matrix[i][j] = weight;
-			matrix[j][i] = weight;
+	nodes.forEach((node, index) => {
+		if (node.categoryId != null) {
+			indexByCategoryId.set(node.categoryId, index);
 		}
-	}
+	});
+
+	connections.forEach((connection) => {
+		const sourceIndex = indexByCategoryId.get(connection.sourceCategoryId);
+		const targetIndex = indexByCategoryId.get(connection.targetCategoryId);
+
+		if (sourceIndex == null || targetIndex == null) {
+			return;
+		}
+
+		const weight = Math.max(0, Math.min(1, connection.weight));
+		matrix[sourceIndex][targetIndex] = weight;
+		matrix[targetIndex][sourceIndex] = weight;
+	});
 
 	return matrix;
 }

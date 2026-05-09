@@ -24,6 +24,10 @@ export const createCategorySchema = z.object({
 	documentId: z.number().int().positive().optional(),
 });
 
+export const updateCategorySchema = z.object({
+	name: z.string().trim().min(2).max(80),
+});
+
 export const updateDocumentSchema = z.object({
 	name: documentNameSchema,
 });

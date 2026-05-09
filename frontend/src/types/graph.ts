@@ -8,6 +8,17 @@ export interface CategorySummary {
   metadata: Record<string, unknown>;
 }
 
+export interface CategoryConnectionSummary {
+  id: number;
+  spaceId: number | null;
+  sourceCategoryId: number;
+  targetCategoryId: number;
+  weight: number;
+  reason: string;
+  metadata: Record<string, unknown>;
+  updatedAt: string;
+}
+
 export interface DocumentSummary {
   id: number;
   spaceId: number | null;

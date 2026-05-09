@@ -1113,12 +1113,14 @@ export function UploadWorkspace({
 										{file.name} (
 										{(file.size / 1024).toFixed(2)} KB)
 									</span>
-									<button
-										onClick={() => removeFile(index)}
-										className="text-destructive hover:text-destructive"
-									>
-										Remove
-									</button>
+										<Button
+											type="button"
+											variant="destructive"
+											size="xs"
+											onClick={() => removeFile(index)}
+										>
+											Remove
+										</Button>
 								</li>
 							))}
 						</ul>

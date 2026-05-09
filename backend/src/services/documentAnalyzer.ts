@@ -8,6 +8,32 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
 const CATEGORY_SUMMARY_DOCUMENT_LIMIT = 24;
 const CATEGORY_SUMMARY_SOURCE_LIMIT = 280;
+const CATEGORY_CONNECTION_MIN_WEIGHT = 0.08;
+const CATEGORY_CONNECTION_REASON_LIMIT = 5;
+
+const CATEGORY_CONNECTION_RELATED_TOKENS: Record<string, string[]> = {
+  account: ["banking", "finance", "transaction"],
+  agreement: ["contract", "legal", "terms"],
+  amount: ["invoice", "payment", "finance"],
+  balance: ["banking", "finance", "statement"],
+  bank: ["banking", "finance", "account", "transaction"],
+  clause: ["contract", "legal", "terms"],
+  contract: ["agreement", "legal", "terms"],
+  deduction: ["tax", "accounting", "finance"],
+  deposit: ["banking", "finance", "income", "transaction"],
+  finance: ["accounting", "banking", "payment", "tax"],
+  gst: ["tax", "invoice", "accounting"],
+  income: ["tax", "banking", "finance", "statement"],
+  invoice: ["payment", "tax", "accounting", "finance"],
+  ird: ["tax", "compliance", "income"],
+  payment: ["invoice", "banking", "finance", "transaction"],
+  receipt: ["invoice", "payment", "tax"],
+  return: ["tax", "compliance", "income"],
+  statement: ["banking", "finance", "account", "income"],
+  tax: ["finance", "accounting", "compliance", "invoice", "income"],
+  transaction: ["banking", "finance", "payment", "account"],
+  withdrawal: ["banking", "finance", "transaction"],
+};
 
 type CategoryRow = {
   id: number;
@@ -26,6 +52,17 @@ type CategoryMetadata = {
   [key: string]: unknown;
 };
 
+type CategoryConnectionRow = {
+  id: number;
+  space_id: number | null;
+  source_category_id: number;
+  target_category_id: number;
+  weight: string | number;
+  reason: string;
+  metadata: Record<string, unknown>;
+  updated_at: Date;
+};
+
 export type PublicCategory = {
   id: number;
   name: string;
@@ -36,6 +73,17 @@ export type PublicCategory = {
   keywords: string[];
 };
 
+export type PublicCategoryConnection = {
+  id: number;
+  spaceId: number | null;
+  sourceCategoryId: number;
+  targetCategoryId: number;
+  weight: number;
+  reason: string;
+  metadata: Record<string, unknown>;
+  updatedAt: Date;
+};
+
 type CategorySummaryDocumentRow = {
   id: number;
   filename: string;
@@ -43,6 +91,16 @@ type CategorySummaryDocumentRow = {
   original_file_name: string | null;
   summary: string;
   created_at: Date;
+};
+
+type CategoryConnectionDocumentRow = {
+  id: number;
+  category_id: number;
+  filename: string;
+  file_name: string;
+  original_file_name: string | null;
+  summary: string;
+  keywords: string[];
 };
 
 type DocumentRow = {
@@ -171,11 +229,30 @@ export async function listCategories(spaceId?: number | null) {
   await ensureDocumentSchema();
   await ensureDefaultCategoriesForSpace(spaceId ?? null);
   const { rows } = await getDb().query<CategoryRow>(
-    `SELECT c.id, c.name, c.space_id, c.metadata, c.description, c.summary, c.keywords, c.created_at
-		 FROM document_categories c
-     LEFT JOIN spaces s ON s.id = c.space_id
-		 WHERE c.space_id = $1
+    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
+		 FROM document_categories
+		 WHERE space_id IS NOT DISTINCT FROM $1
 		 ORDER BY name ASC`,
+    [spaceId ?? null],
+  );
+  return rows;
+}
+
+export async function listCategoryConnections(spaceId?: number | null) {
+  await refreshCategoryConnections(spaceId ?? null);
+  const { rows } = await getDb().query<CategoryConnectionRow>(
+    `SELECT
+        id,
+        space_id,
+        source_category_id,
+        target_category_id,
+        weight,
+        reason,
+        metadata,
+        updated_at
+     FROM category_connections
+     WHERE space_id IS NOT DISTINCT FROM $1
+     ORDER BY weight DESC, updated_at DESC`,
     [spaceId ?? null],
   );
   return rows;
@@ -193,29 +270,27 @@ export async function getCategory(categoryId: number) {
   return rows[0] ?? null;
 }
 
-export async function listDocuments(spaceId?: number | null, userId?: number | null) {
+export async function listDocuments(spaceId?: number | null) {
   await ensureDocumentSchema();
   const { rows } = await getDb().query<DocumentRow>(
     `SELECT
-        d.id,
-        d.space_id,
-        d.filename,
-        d.filepath,
-        d.file_name,
-        d.original_file_name,
-        d.stored_file_name,
-        d.mime_type,
-        d.file_size,
-        d.category_id,
-        d.summary,
-        d.keywords,
-        d.created_at
-     FROM documents d
-     LEFT JOIN spaces s ON s.id = d.space_id
-     WHERE ($1::integer IS NULL OR d.space_id = $1)
-       AND ($2::integer IS NULL OR s.created_by = $2)
-     ORDER BY d.created_at DESC`,
-    [spaceId ?? null, userId ?? null],
+        id,
+        space_id,
+        filename,
+        filepath,
+        file_name,
+        original_file_name,
+        stored_file_name,
+        mime_type,
+        file_size,
+        category_id,
+        summary,
+        keywords,
+        created_at
+     FROM documents
+     WHERE $1::integer IS NULL OR space_id = $1
+     ORDER BY created_at DESC`,
+    [spaceId ?? null],
   );
   return rows;
 }
@@ -245,38 +320,10 @@ export async function getDocument(documentId: number) {
   return rows[0] ?? null;
 }
 
-export async function userCanAccessDocument(documentId: number, userId: number) {
-  await ensureDocumentSchema();
-  const { rows } = await getDb().query<{ allowed: true }>(
-    `SELECT TRUE AS allowed
-     FROM documents d
-     INNER JOIN spaces s ON s.id = d.space_id
-     WHERE d.id = $1
-       AND s.created_by = $2
-     LIMIT 1`,
-    [documentId, userId],
-  );
-  return Boolean(rows[0]?.allowed);
-}
-
-export async function userCanAccessSpace(spaceId: number, userId: number) {
-  await ensureDocumentSchema();
-  const { rows } = await getDb().query<{ allowed: true }>(
-    `SELECT TRUE AS allowed
-     FROM spaces
-     WHERE id = $1
-       AND created_by = $2
-     LIMIT 1`,
-    [spaceId, userId],
-  );
-  return Boolean(rows[0]?.allowed);
-}
-
 export async function searchDocuments(input: {
   query: string;
   spaceId?: number | null;
   limit?: number;
-  userId?: number | null;
 }) {
   await ensureDocumentSchema();
 
@@ -360,13 +407,11 @@ export async function searchDocuments(input: {
           ), 0)
         )::float8 AS score
      FROM documents d
-     LEFT JOIN spaces s ON s.id = d.space_id
      LEFT JOIN document_categories c ON c.id = d.category_id
      WHERE ($1::integer IS NULL OR d.space_id = $1)
-       AND ($5::integer IS NULL OR s.created_by = $5)
      ORDER BY score DESC, d.created_at DESC
      LIMIT $4`,
-    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit, input.userId ?? null],
+    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit],
   );
 
   return rows.filter((row) => row.score > 0);
@@ -376,29 +421,24 @@ export async function askDashboardAssistant({
   prompt,
   spaceId,
   pathname,
-  userId,
 }: {
   prompt?: string;
   spaceId?: number | null;
   pathname?: string;
-  userId?: number | null;
 }): Promise<DashboardAssistantResponse> {
   await ensureDocumentSchema();
 
   const trimmedPrompt = prompt?.trim() ?? "";
   const categories = await listCategories(spaceId ?? null);
-  const documents = await listDocuments(spaceId ?? null, userId ?? null);
+  const documents = await listDocuments(spaceId ?? null);
   const searchRows = trimmedPrompt
     ? await searchDocuments({
         query: trimmedPrompt,
         spaceId: spaceId ?? null,
-        userId: userId ?? null,
         limit: 6,
       })
     : [];
-  const publicSearchResults = searchRows.map((row) =>
-    toPublicDocumentSearchResult(row, trimmedPrompt),
-  );
+  const publicSearchResults = searchRows.map(toPublicDocumentSearchResult);
   const suggestionsSeed = buildSuggestedActions({
     pathname: pathname ?? "/dashboard",
     categories,
@@ -457,20 +497,15 @@ export async function askDashboardAssistant({
   }
 
   const parsed = parseDashboardAssistantJson(rawContent);
-  const parsedMessage = cleanString(parsed.message);
-  const fallbackMessage = buildFallbackAssistantMessage({
+  return {
+    message:
+      cleanString(parsed.message) ||
+      buildFallbackAssistantMessage({
         prompt: trimmedPrompt,
         categories,
         documents,
         searchResults: searchRows,
-      });
-  const message =
-    searchRows.length > 0 && answerLooksLikeNoMatch(parsedMessage)
-      ? fallbackMessage
-      : parsedMessage || fallbackMessage;
-
-  return {
-    message,
+      }),
     navigateTo: sanitizeDashboardNavigateTo(
       cleanString(parsed.navigateTo),
       searchRows,
@@ -541,6 +576,7 @@ export async function deleteDocument(documentId: number) {
   const deletedDocument = rows[0] ?? null;
   if (deletedDocument?.category_id) {
     await refreshCategorySummary(deletedDocument.category_id);
+    await refreshCategoryConnections(deletedDocument.space_id);
   }
   return deletedDocument;
 }
@@ -582,6 +618,7 @@ export async function createCategory(input: CategoryInput) {
         keywords,
       ],
     );
+    await refreshCategoryConnections(spaceId);
     return rows[0];
   }
 
@@ -597,36 +634,47 @@ export async function createCategory(input: CategoryInput) {
       keywords,
     ],
   );
+  await refreshCategoryConnections(spaceId);
   return rows[0];
 }
 
-export async function updateCategory(
-  categoryId: number,
-  input: {
-    name?: string;
-    description?: string | null;
-  },
-) {
+export async function updateCategory(categoryId: number, input: { name: string }) {
   await ensureDocumentSchema();
-  const name = input.name?.trim();
-  const shouldUpdateDescription = Object.hasOwn(input, "description");
-  const description =
-    typeof input.description === "string" ? input.description.trim() : null;
+  const existing = await getCategory(categoryId);
+  if (!existing) {
+    return null;
+  }
+
+  const name = input.name.trim();
+  const duplicate = await getDb().query<{ id: number }>(
+    `SELECT id
+     FROM document_categories
+     WHERE id <> $1
+       AND lower(name) = lower($2::text)
+       AND space_id IS NOT DISTINCT FROM $3::integer
+     LIMIT 1`,
+    [categoryId, name, existing.space_id],
+  );
+
+  if (duplicate.rows[0]) {
+    throw new HttpError(409, "A category with this name already exists.");
+  }
+
+  const keywords = normalizeKeywords([name]);
   const { rows } = await getDb().query<CategoryRow>(
     `UPDATE document_categories
-     SET
-      name = COALESCE(NULLIF($2::text, ''), name),
-      description = CASE WHEN $3::boolean THEN $4::text ELSE description END,
-      metadata = CASE
-        WHEN $3::boolean THEN COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(
-          'description', $4::text
-        ))
-        ELSE metadata
-      END
+     SET name = $2::text,
+       keywords = $3::text[],
+       metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('keywords', $3::text[])
      WHERE id = $1
      RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
-    [categoryId, name ?? null, shouldUpdateDescription, description],
+    [categoryId, name, keywords],
   );
+
+  if (rows[0]) {
+    await refreshCategoryConnections(rows[0].space_id);
+  }
+
   return rows[0] ?? null;
 }
 
@@ -638,6 +686,11 @@ export async function deleteCategory(categoryId: number) {
      RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
     [categoryId],
   );
+
+  if (rows[0]) {
+    await refreshCategoryConnections(rows[0].space_id);
+  }
+
   return rows[0] ?? null;
 }
 
@@ -651,6 +704,21 @@ export function toPublicCategory(category: CategoryRow): PublicCategory {
     description: getCategoryDescription(category),
     summary: category.summary,
     keywords: getCategoryKeywords(category),
+  };
+}
+
+export function toPublicCategoryConnection(
+  connection: CategoryConnectionRow,
+): PublicCategoryConnection {
+  return {
+    id: connection.id,
+    spaceId: connection.space_id,
+    sourceCategoryId: connection.source_category_id,
+    targetCategoryId: connection.target_category_id,
+    weight: clampConfidence(connection.weight),
+    reason: connection.reason,
+    metadata: connection.metadata,
+    updatedAt: connection.updated_at,
   };
 }
 
@@ -674,13 +742,12 @@ export function toPublicDocument(document: DocumentRow): PublicDocument {
 
 export function toPublicDocumentSearchResult(
   document: DocumentSearchRow,
-  query?: string,
 ): PublicDocumentSearchResult {
   return {
     ...toPublicDocument(document),
     categoryName: document.category_name,
     score: document.score,
-    snippet: buildSearchSnippet(document, query),
+    snippet: buildSearchSnippet(document),
   };
 }
 
@@ -690,7 +757,7 @@ export async function assignDocumentCategory(
 ) {
   await ensureDocumentSchema();
   const previousCategoryId = await getDocumentCategoryId(documentId);
-  const { rows } = await getDb().query(
+  const { rows } = await getDb().query<{ id: number; space_id: number | null }>(
     `UPDATE documents
 		 SET
 			category_id = $1::integer,
@@ -698,7 +765,7 @@ export async function assignDocumentCategory(
 			confidence = 1,
 			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('categoryId', $1::integer)
 		 WHERE id = $2
-		 RETURNING id`,
+		 RETURNING id, space_id`,
     [categoryId, documentId],
   );
 
@@ -707,6 +774,7 @@ export async function assignDocumentCategory(
   }
 
   await refreshCategorySummaries([previousCategoryId, categoryId]);
+  await refreshCategoryConnections(rows[0].space_id);
   return true;
 }
 
@@ -797,6 +865,9 @@ async function saveAnalysis(
 
     if (rows[0]) {
       await refreshCategorySummaries([previousCategoryId, match.category?.id ?? null]);
+      await refreshCategoryConnections(
+        await getConnectionRefreshSpaceId(previousCategoryId, match.category),
+      );
       return buildDocumentAnalysis(
         rows[0].id,
         file,
@@ -843,6 +914,9 @@ async function saveAnalysis(
   );
 
   await refreshCategorySummaries([match.category?.id ?? null]);
+  await refreshCategoryConnections(
+    await getConnectionRefreshSpaceId(previousCategoryId, match.category),
+  );
 
   return buildDocumentAnalysis(
     rows[0].id,
@@ -1300,6 +1374,105 @@ export async function refreshCategorySummary(categoryId: number) {
   return updatedRows[0] ?? null;
 }
 
+export async function refreshCategoryConnections(spaceId: number | null) {
+  await ensureDocumentSchema();
+  await ensureDefaultCategoriesForSpace(spaceId);
+
+  const { rows: categories } = await getDb().query<CategoryRow>(
+    `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
+     FROM document_categories
+     WHERE space_id IS NOT DISTINCT FROM $1
+     ORDER BY name ASC`,
+    [spaceId],
+  );
+
+  await getDb().query(
+    `DELETE FROM category_connections
+     WHERE space_id IS NOT DISTINCT FROM $1`,
+    [spaceId],
+  );
+
+  if (categories.length < 2) {
+    return [];
+  }
+
+  const categoryIds = categories.map((category) => category.id);
+  const { rows: documents } = await getDb().query<CategoryConnectionDocumentRow>(
+    `SELECT
+        id,
+        category_id,
+        filename,
+        file_name,
+        original_file_name,
+        summary,
+        keywords
+     FROM documents
+     WHERE category_id = ANY($1::integer[])
+     ORDER BY created_at DESC`,
+    [categoryIds],
+  );
+  const documentsByCategory = new Map<number, CategoryConnectionDocumentRow[]>();
+  documents.forEach((document) => {
+    const documentsForCategory = documentsByCategory.get(document.category_id) ?? [];
+    documentsForCategory.push(document);
+    documentsByCategory.set(document.category_id, documentsForCategory);
+  });
+
+  const profiles = categories.map((category) =>
+    buildCategoryConnectionProfile(
+      category,
+      documentsByCategory.get(category.id) ?? [],
+    ),
+  );
+  const inserted: CategoryConnectionRow[] = [];
+
+  for (let i = 0; i < profiles.length; i += 1) {
+    for (let j = i + 1; j < profiles.length; j += 1) {
+      const relationship = scoreCategoryConnection(profiles[i], profiles[j]);
+
+      if (relationship.weight < CATEGORY_CONNECTION_MIN_WEIGHT) {
+        continue;
+      }
+
+      const { rows } = await getDb().query<CategoryConnectionRow>(
+        `INSERT INTO category_connections (
+            space_id,
+            source_category_id,
+            target_category_id,
+            weight,
+            reason,
+            metadata
+         )
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT DO NOTHING
+         RETURNING
+            id,
+            space_id,
+            source_category_id,
+            target_category_id,
+            weight,
+            reason,
+            metadata,
+            updated_at`,
+        [
+          spaceId,
+          profiles[i].category.id,
+          profiles[j].category.id,
+          relationship.weight,
+          relationship.reason,
+          relationship.metadata,
+        ],
+      );
+
+      if (rows[0]) {
+        inserted.push(rows[0]);
+      }
+    }
+  }
+
+  return inserted;
+}
+
 async function generateCategorySummary(
   category: CategoryRow,
   documents: CategorySummaryDocumentRow[],
@@ -1399,7 +1572,147 @@ function buildFallbackCategorySummary(
   return `${category.name} contains ${documents.length} document${documents.length === 1 ? "" : "s"}.${exampleText}${themeText}`.trim();
 }
 
-function getCategorySummaryDocumentName(document: CategorySummaryDocumentRow) {
+type CategoryConnectionProfile = {
+  category: CategoryRow;
+  tokenWeights: Map<string, number>;
+  keywordSet: Set<string>;
+  documentCount: number;
+};
+
+function buildCategoryConnectionProfile(
+  category: CategoryRow,
+  documents: CategoryConnectionDocumentRow[],
+): CategoryConnectionProfile {
+  const tokenWeights = new Map<string, number>();
+  const keywordSet = new Set(getCategoryKeywords(category));
+  const baseTokens: string[] = [];
+
+  baseTokens.push(...normalizeSearchTokens(category.name));
+  baseTokens.push(...normalizeSearchTokens(getCategoryDescription(category) ?? ""));
+  baseTokens.push(...keywordSet);
+  baseTokens.push(...normalizeSearchTokens(category.summary));
+
+  addWeightedTokens(tokenWeights, normalizeSearchTokens(category.name), 1.5);
+  addWeightedTokens(
+    tokenWeights,
+    normalizeSearchTokens(getCategoryDescription(category) ?? ""),
+    1.15,
+  );
+  addWeightedTokens(tokenWeights, [...keywordSet], 1.8);
+  addWeightedTokens(tokenWeights, normalizeSearchTokens(category.summary), 1);
+
+  documents.slice(0, CATEGORY_SUMMARY_DOCUMENT_LIMIT).forEach((document) => {
+    const name = getCategorySummaryDocumentName(document);
+    baseTokens.push(...normalizeSearchTokens(name));
+    baseTokens.push(...(document.keywords ?? []));
+    baseTokens.push(...normalizeSearchTokens(document.summary));
+    addWeightedTokens(tokenWeights, normalizeSearchTokens(name), 0.7);
+    addWeightedTokens(tokenWeights, document.keywords ?? [], 0.9);
+    addWeightedTokens(tokenWeights, normalizeSearchTokens(document.summary), 0.45);
+  });
+  addWeightedTokens(tokenWeights, expandRelatedCategoryTokens(baseTokens), 0.48);
+
+  return {
+    category,
+    tokenWeights,
+    keywordSet,
+    documentCount: documents.length,
+  };
+}
+
+function expandRelatedCategoryTokens(tokens: string[]) {
+  return [
+    ...new Set(
+      normalizeKeywords(tokens).flatMap((token) =>
+        CATEGORY_CONNECTION_RELATED_TOKENS[token] ?? [],
+      ),
+    ),
+  ];
+}
+
+function scoreCategoryConnection(
+  first: CategoryConnectionProfile,
+  second: CategoryConnectionProfile,
+) {
+  const sharedTokens = [...first.tokenWeights.keys()]
+    .filter((token) => second.tokenWeights.has(token))
+    .map((token) => ({
+      token,
+      score:
+        Math.min(
+          first.tokenWeights.get(token) ?? 0,
+          second.tokenWeights.get(token) ?? 0,
+        ) +
+        (first.keywordSet.has(token) && second.keywordSet.has(token) ? 0.75 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const dotProduct = [...first.tokenWeights.entries()].reduce(
+    (total, [token, weight]) => total + weight * (second.tokenWeights.get(token) ?? 0),
+    0,
+  );
+  const firstMagnitude = vectorMagnitude(first.tokenWeights);
+  const secondMagnitude = vectorMagnitude(second.tokenWeights);
+  const cosine =
+    firstMagnitude > 0 && secondMagnitude > 0
+      ? dotProduct / (firstMagnitude * secondMagnitude)
+      : 0;
+  const keywordOverlap = setOverlapRatio(first.keywordSet, second.keywordSet);
+  const documentBalance =
+    first.documentCount > 0 && second.documentCount > 0 ? 0.06 : 0;
+  const weight = clampConfidence(cosine * 0.72 + keywordOverlap * 0.22 + documentBalance);
+  const topTokens = sharedTokens
+    .slice(0, CATEGORY_CONNECTION_REASON_LIMIT)
+    .map(({ token }) => token);
+  const reason = topTokens.length
+    ? `Shared signals: ${topTokens.join(", ")}.`
+    : "Related category summaries and document context.";
+
+  return {
+    weight,
+    reason,
+    metadata: {
+      sharedTokens: topTokens,
+      cosine: clampConfidence(cosine),
+      keywordOverlap: clampConfidence(keywordOverlap),
+      documentCounts: {
+        source: first.documentCount,
+        target: second.documentCount,
+      },
+    },
+  };
+}
+
+function addWeightedTokens(
+  tokenWeights: Map<string, number>,
+  tokens: string[],
+  weight: number,
+) {
+  normalizeKeywords(tokens).forEach((token) => {
+    tokenWeights.set(token, (tokenWeights.get(token) ?? 0) + weight);
+  });
+}
+
+function vectorMagnitude(tokenWeights: Map<string, number>) {
+  return Math.sqrt(
+    [...tokenWeights.values()].reduce((total, weight) => total + weight ** 2, 0),
+  );
+}
+
+function setOverlapRatio(first: Set<string>, second: Set<string>) {
+  if (first.size === 0 || second.size === 0) {
+    return 0;
+  }
+
+  const shared = [...first].filter((token) => second.has(token)).length;
+  return shared / Math.sqrt(first.size * second.size);
+}
+
+function getCategorySummaryDocumentName(
+  document: Pick<
+    CategorySummaryDocumentRow,
+    "original_file_name" | "file_name" | "filename"
+  >,
+) {
   return document.original_file_name || document.file_name || document.filename;
 }
 
@@ -1437,6 +1750,21 @@ async function getDocumentSpaceId(documentId?: number) {
     [documentId],
   );
   return rows[0]?.space_id ?? null;
+}
+
+async function getConnectionRefreshSpaceId(
+  previousCategoryId: number | null,
+  nextCategory: CategoryRow | null,
+) {
+  if (nextCategory) {
+    return nextCategory.space_id;
+  }
+
+  if (!previousCategoryId) {
+    return null;
+  }
+
+  return (await getCategory(previousCategoryId))?.space_id ?? null;
 }
 
 async function ensureDefaultCategoriesForSpace(spaceId: number | null) {
@@ -1646,16 +1974,7 @@ function buildDashboardAssistantPrompt({
       summary: document.summary,
       keywords: document.keywords,
     })),
-    contentSearchResults: searchResults.map((result) => ({
-      id: result.id,
-      name: result.originalFileName || result.fileName || result.filename,
-      categoryName: result.categoryName,
-      score: result.score,
-      summary: result.summary,
-      snippet: result.snippet,
-      keywords: result.keywords,
-      navigateTo: `/file/${result.id}`,
-    })),
+    searchResults,
     defaultSuggestedActions: suggestions,
   };
 
@@ -1683,9 +2002,6 @@ Return exactly this JSON:
 
 Rules:
 - Use the prompt and search results first, not canned wording.
-- contentSearchResults are matches from filenames, categories, summaries, keywords, OCR text, and parsed document content.
-- If contentSearchResults is not empty, do not say that no file was found. Tell the user the best matching file name and why it matched, using the snippet when available.
-- If the user asks where something is, which file mentions something, or asks to find/search for a term, answer with the best contentSearchResults item even if the term only appears in parsed content.
 - If the user asks to open/view/read a specific file and the best search result is a strong match, set navigateTo to /file/<id>.
 - If the user asks about categories or collections, navigateTo can be /graph.
 - If the user asks to add or import files, set navigateTo to /upload so the app can open the upload modal on the graph view.
@@ -1797,24 +2113,10 @@ function buildFallbackAssistantMessage({
 
   if (searchResults[0]) {
     const bestMatch = searchResults[0];
-    const snippet = buildSearchSnippet(bestMatch, prompt);
-    return `I searched this space for "${prompt}" and the closest match is ${displayDocumentName(bestMatch)}${bestMatch.category_name ? ` in ${bestMatch.category_name}` : ""}.${snippet ? ` Matching passage: ${snippet}` : ""}`;
+    return `I searched this space for "${prompt}" and the closest match is ${displayDocumentName(bestMatch)}${bestMatch.category_name ? ` in ${bestMatch.category_name}` : ""}.`;
   }
 
   return `I searched this workspace for "${prompt}" but did not find a strong file match. Try a filename, category name, or a phrase that should appear in the document.`;
-}
-
-function answerLooksLikeNoMatch(message: string) {
-  const normalizedMessage = message.toLowerCase();
-  return [
-    "couldn't find",
-    "could not find",
-    "didn't find",
-    "did not find",
-    "no matching",
-    "no file",
-    "not find",
-  ].some((phrase) => normalizedMessage.includes(phrase));
 }
 
 function resolveSuggestedNavigation({
@@ -1901,42 +2203,10 @@ function containsSearchPhrase(text: string, values: string[]) {
   return values.some((value) => text.includes(value));
 }
 
-function buildSearchSnippet(row: DocumentSearchRow, query?: string) {
-  const summary = normalizeWhitespace(row.summary);
-  const extractedText = normalizeWhitespace(row.extracted_text);
-  const snippet =
-    findSearchSnippet(summary, query) ?? findSearchSnippet(extractedText, query);
-
-  return snippet ?? (summary ? summary.slice(0, 140) : null);
+function buildSearchSnippet(row: DocumentSearchRow) {
+  return row.summary ? normalizeWhitespace(row.summary).slice(0, 140) : null;
 }
 
 function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
-}
-
-function findSearchSnippet(text: string, query?: string) {
-  if (!text) {
-    return null;
-  }
-
-  const normalizedQuery = query?.trim().toLowerCase() ?? "";
-  const tokens = normalizeSearchTokens(normalizedQuery);
-  const lowerText = text.toLowerCase();
-  const matchIndex =
-    normalizedQuery && lowerText.includes(normalizedQuery)
-      ? lowerText.indexOf(normalizedQuery)
-      : tokens
-          .map((token) => lowerText.indexOf(token))
-          .filter((index) => index >= 0)
-          .sort((a, b) => a - b)[0];
-
-  if (matchIndex == null || matchIndex < 0) {
-    return null;
-  }
-
-  const start = Math.max(0, matchIndex - 70);
-  const end = Math.min(text.length, matchIndex + 150);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < text.length ? "..." : "";
-  return `${prefix}${text.slice(start, end)}${suffix}`;
 }

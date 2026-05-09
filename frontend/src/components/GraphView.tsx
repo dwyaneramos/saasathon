@@ -7,6 +7,7 @@ import {
 	useThree,
 } from "@react-three/fiber";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { GraphNode } from "@/types/graph";
 
 const NETWORK_SIZE = 2.8;
@@ -54,11 +55,11 @@ function CameraController({
 	controlsRef,
 }: {
 	is2D: boolean;
-	controlsRef: React.RefObject<any>;
+	controlsRef: React.RefObject<OrbitControlsImpl | null>;
 }) {
 	const { camera } = useThree();
 
-	const recenter = () => {
+	const recenter = React.useCallback(() => {
 		if (is2D) {
 			camera.position.set(0, 16.5, 0.01);
 		} else {
@@ -71,11 +72,11 @@ function CameraController({
 			controlsRef.current.target.set(0, 0, 0);
 			controlsRef.current.update();
 		}
-	};
+	}, [camera, controlsRef, is2D]);
 
 	useEffect(() => {
 		recenter();
-	}, [is2D]);
+	}, [recenter]);
 
 	return null;
 }
@@ -105,9 +106,20 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 	const nodesRef = useRef(nodes);
 	const prevIs2DRef = useRef(is2D);
 	const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
-	const graphRotationRef = useRef(new THREE.Euler(0.1, 0, 0));
+	const graphRotation = useMemo(() => new THREE.Euler(0.1, 0, 0), []);
 	const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [, forceUpdate] = useState({});
+	const edgeWeightRange = useMemo(() => {
+		const weights = edges.map((edge) => edge.weight);
+		if (weights.length === 0) {
+			return { min: 0, max: 1 };
+		}
+
+		return {
+			min: Math.min(...weights),
+			max: Math.max(...weights),
+		};
+	}, [edges]);
 
 	const handlePointerOver = (
 		index: number,
@@ -175,7 +187,6 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 		const t = clock.getElapsedTime();
 		const currentNodes = nodesRef.current;
 
-		const graphRotation = graphRotationRef.current;
 		const nodeScreenPosition = new THREE.Vector3();
 		const FREEZE_PADDING_PX = 34;
 		const isCursorOnCanvas = cursorRef.current.x !== 9999;
@@ -300,21 +311,27 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 			}
 		});
 
-		// Always re-render — drift keeps the graph moving perpetually
 		forceUpdate({});
 	});
 
 	return (
-		<group scale={1} rotation={graphRotationRef.current}>
+		<group scale={1} rotation={graphRotation}>
 			{edges.map((edge, index) => {
-				const start = nodesRef.current[edge.source]?.position;
-				const end = nodesRef.current[edge.target]?.position;
+				const start = nodes[edge.source]?.position;
+				const end = nodes[edge.target]?.position;
 				if (!start || !end) {
 					return null;
 				}
 
-				const opacity = 0.2 + edge.weight * 0.35;
-				const lineWidth = 0.35 + edge.weight * 0.65;
+				const visualWeight =
+					edgeWeightRange.max > edgeWeightRange.min
+						? (edge.weight - edgeWeightRange.min) /
+							(edgeWeightRange.max - edgeWeightRange.min)
+						: edge.weight;
+				const opacity = 0.24 + visualWeight * 0.58;
+				const lineWidth = 1.2 + visualWeight * 2.6;
+				const dashSize = 0.05 + visualWeight * 0.012;
+				const gapSize = 0.34 - visualWeight * 0.29;
 
 				return (
 					<Line
@@ -323,17 +340,23 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 							new THREE.Vector3(start.x, start.y, start.z),
 							new THREE.Vector3(end.x, end.y, end.z),
 						]}
-						color="#111111"
+						color="#1c1c1c"
 						transparent
 						opacity={opacity}
 						lineWidth={lineWidth}
+						dashed
+						dashSize={dashSize}
+						gapSize={Math.max(0.045, gapSize)}
 					/>
 				);
 			})}
 
-			{nodesRef.current.map((node, index) => {
+			{nodes.map((node, index) => {
 				const isSelected = selectedNodeIndex === index;
 				const radius = nodeSizeScale(node);
+				const nodeColor =
+					node.documentId != null ? "#111111" : "#111111";
+				const color = isSelected ? "#22c55e" : nodeColor;
 
 				return (
 					<group key={node.id} position={node.position.clone()}>
@@ -356,13 +379,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 										16,
 									]}
 								/>
-								<meshStandardMaterial
-									color={isSelected ? "#2563eb" : "#111111"}
-									emissive={
-										isSelected ? "#2563eb" : "#111111"
-									}
-									emissiveIntensity={isSelected ? 2.2 : 1.4}
-								/>
+								<meshBasicMaterial color={color} />
 							</mesh>
 						</Float>
 
@@ -413,7 +430,7 @@ const GraphView: React.FC<GraphViewProps> = ({
 	const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(
 		null,
 	);
-	const controlsRef = useRef<any>(null);
+	const controlsRef = useRef<OrbitControlsImpl | null>(null);
 	const canvasKey = useMemo(
 		() => graphNodes.map((node) => node.id).join("|"),
 		[graphNodes],
@@ -448,8 +465,12 @@ const GraphView: React.FC<GraphViewProps> = ({
 	}, [graphNodes]);
 
 	useEffect(() => {
-		setSelectedNodeIndex(null);
-		onNodeHover?.(null);
+		const frame = requestAnimationFrame(() => {
+			setSelectedNodeIndex(null);
+			onNodeHover?.(null);
+		});
+
+		return () => cancelAnimationFrame(frame);
 	}, [graphNodes, onNodeHover]);
 
 	const handleNodeClick = (index: number) => {
@@ -467,9 +488,6 @@ const GraphView: React.FC<GraphViewProps> = ({
 			gl={{ antialias: true, alpha: true }}
 		>
 			<CameraController is2D={is2D} controlsRef={controlsRef} />
-			<ambientLight intensity={1.2} />
-			<pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
-			<pointLight position={[-2, -2, -2]} intensity={6} color="#ffffff" />
 
 			<Suspense fallback={null}>
 				<ForceSimulation

@@ -49,3 +49,30 @@ CREATE TABLE documents (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE category_connections (
+  id                 SERIAL PRIMARY KEY,
+  space_id           INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
+  source_category_id INTEGER NOT NULL REFERENCES document_categories(id) ON DELETE CASCADE,
+  target_category_id INTEGER NOT NULL REFERENCES document_categories(id) ON DELETE CASCADE,
+  weight             NUMERIC(5, 4) NOT NULL DEFAULT 0,
+  reason             TEXT NOT NULL DEFAULT '',
+  metadata           JSONB NOT NULL DEFAULT '{}',
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (source_category_id <> target_category_id)
+);
+
+CREATE UNIQUE INDEX category_connections_pair_unique_idx
+  ON category_connections (
+    COALESCE(space_id, 0),
+    LEAST(source_category_id, target_category_id),
+    GREATEST(source_category_id, target_category_id)
+  );
+
+CREATE INDEX category_connections_space_idx
+  ON category_connections (space_id);
+
+CREATE INDEX category_connections_source_idx
+  ON category_connections (source_category_id);
+
+CREATE INDEX category_connections_target_idx
+  ON category_connections (target_category_id);
