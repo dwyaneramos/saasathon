@@ -80,7 +80,7 @@ interface ForceSimulationProps {
   edges: Edge[];
   is2D: boolean;
   selectedNodeIndex: number | null;
-  nodeSizeScale: (fileCount: number) => number;
+  nodeSizeScale: (node: GraphNode) => number;
   onNodeClick?: (index: number) => void;
   onNodeHover?: (index: number | null) => void;
 }
@@ -278,7 +278,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
       {nodesRef.current.map((node, index) => {
         const isSelected = selectedNodeIndex === index;
-        const radius = nodeSizeScale(node.fileCount ?? 0);
+        const radius = nodeSizeScale(node);
 
         return (
           <group key={node.id} position={node.position.clone()}>
@@ -349,17 +349,29 @@ const GraphView: React.FC<GraphViewProps> = ({
     [graphNodes],
   );
 
-  // Build a size scale based on fileCount range across all nodes
+  // Build a size scale from category file counts or document file sizes.
   const nodeSizeScale = useMemo(() => {
-    const counts = graphNodes.map((n) => n.fileCount ?? 0);
-    const max = Math.max(...counts, 1);
-    const min = Math.min(...counts, 0);
-    const BASE = 0.07;
-    const MAX_R = 0.18;
-    return (fileCount: number) => {
-      if (max === min) return BASE + (MAX_R - BASE) * 0.5;
-      const t = (fileCount - min) / (max - min);
-      return BASE + (MAX_R - BASE) * t;
+    const isDocumentGraph = graphNodes.some((node) => node.documentId != null);
+    const transformValue = (node: GraphNode) => {
+      if (!isDocumentGraph) return node.fileCount ?? 0;
+
+      const fileSize = Math.max(node.fileSize ?? 0, 0);
+      return Math.pow(fileSize, 0.65);
+    };
+    const values = graphNodes.map(transformValue);
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const BASE = 0.085;
+    const MAX_CATEGORY_R = 0.205;
+    const MAX_DOCUMENT_R = 0.34;
+    const maxRadius = isDocumentGraph ? MAX_DOCUMENT_R : MAX_CATEGORY_R;
+
+    return (node: GraphNode) => {
+      const value = transformValue(node);
+
+      if (max === min) return BASE + (maxRadius - BASE) * 0.5;
+      const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+      return BASE + (maxRadius - BASE) * t;
     };
   }, [graphNodes]);
 
