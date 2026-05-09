@@ -1,12 +1,15 @@
 import {
 	ChevronRight,
+	Edit3,
 	Layers,
 	LayersPlus,
+	Trash2,
 } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -20,11 +23,15 @@ export function SpaceSwitcher({
 	activeSpace,
 	onSelect,
 	onCreateSpace,
+	onEditActiveSpace,
+	onDeleteActiveSpace,
 }: {
 	spaces: Space[];
 	activeSpace: Space | null;
 	onSelect: (space: Space) => void;
 	onCreateSpace?: () => void;
+	onEditActiveSpace?: () => void;
+	onDeleteActiveSpace?: () => void;
 }) {
 	const { isMobile } = useSidebar();
 	const activeSpaceName = activeSpace?.name ?? "No spaces";
@@ -90,6 +97,22 @@ export function SpaceSwitcher({
 						New space
 					</span>
 				</DropdownMenuItem>
+				{activeSpace ? (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onClick={onEditActiveSpace}>
+							<Edit3 className="size-4" />
+							Rename current space
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							variant="destructive"
+							onClick={onDeleteActiveSpace}
+						>
+							<Trash2 className="size-4" />
+							Delete current space
+						</DropdownMenuItem>
+					</>
+				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

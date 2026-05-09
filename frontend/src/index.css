@@ -65,7 +65,9 @@ button {
 				rgba(21, 230, 124, 0.25)
 			)
 			border-box;
-	background-size: 100% 100%, 260% 260%;
+	background-size:
+		100% 100%,
+		260% 260%;
 	animation: upload-processing-gradient 3.4s ease-in-out infinite;
 }
 
