@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Router, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -36,13 +36,17 @@ import {
 	updateCategory,
 	type DownloadableDocumentRow,
 } from "../services/documentAnalyzer.js";
-import { userCanAccessSpace as userCanAccessUserSpace } from "../services/spaceService.js";
+import { userCanAccessSpace } from "../services/spaceService.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, "../../..");
 const uploadRoot = path.join(workspaceRoot, "backend/upload");
+const archiveDownloadRateLimit = createPerUserRateLimiter({
+	maxRequests: 30,
+	windowMs: 60_000,
+});
 const ARCHIVE_NAME_STOPWORDS = new Set([
 	"a",
 	"all",
@@ -75,6 +79,43 @@ const ARCHIVE_NAME_STOPWORDS = new Set([
 	"with",
 	"zip",
 ]);
+type RateLimitEntry = {
+	count: number;
+	startedAt: number;
+};
+
+function createPerUserRateLimiter({
+	windowMs,
+	maxRequests,
+}: {
+	windowMs: number;
+	maxRequests: number;
+}) {
+	const buckets = new Map<string, RateLimitEntry>();
+
+	return (req: AuthRequest, res: Response, next: NextFunction) => {
+		const key = `${req.userId ?? "anonymous"}:${req.ip}:${req.path}`;
+		const now = Date.now();
+		const existingBucket = buckets.get(key);
+
+		if (!existingBucket || now - existingBucket.startedAt >= windowMs) {
+			buckets.set(key, { count: 1, startedAt: now });
+			next();
+			return;
+		}
+
+		if (existingBucket.count >= maxRequests) {
+			res.status(429).json({
+				error: "Too many requests. Please try again in a minute.",
+			});
+			return;
+		}
+
+		existingBucket.count += 1;
+		next();
+	};
+}
+
 export const uploadPdfMiddleware = multer({
 	storage: multer.memoryStorage(),
 	limits: {
@@ -166,6 +207,7 @@ router.get("/documents/search", requireAuth, async (req: AuthRequest, res) => {
 router.post(
 	"/documents/download-query",
 	requireAuth,
+	archiveDownloadRateLimit,
 	async (req: AuthRequest, res) => {
 		const spaceId =
 			typeof req.body?.spaceId === "number"
@@ -183,7 +225,7 @@ router.post(
 
 		if (
 			spaceId !== null &&
-			!(await userCanAccessUserSpace(req.userId!, spaceId))
+			!(await userCanAccessSpace(req.userId!, spaceId))
 		) {
 			res.status(404).json({ error: "Space not found" });
 			return;
@@ -224,7 +266,7 @@ router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) =
 		return;
 	}
 
-	if (!(await userCanAccessUserSpace(req.userId!, parsedSpaceId))) {
+	if (!(await userCanAccessSpace(req.userId!, parsedSpaceId))) {
 		res.status(403).json({ error: "You do not have access to this space" });
 		return;
 	}
@@ -247,6 +289,7 @@ router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) =
 router.get(
 	"/categories/:categoryId/download",
 	requireAuth,
+	archiveDownloadRateLimit,
 	async (req: AuthRequest, res) => {
 		const categoryId = getCategoryIdFromParams(req);
 		if (!categoryId) {
@@ -268,7 +311,7 @@ router.get(
 		if (
 			!category ||
 			typeof category.space_id !== "number" ||
-			!(await userCanAccessUserSpace(req.userId!, category.space_id)) ||
+			!(await userCanAccessSpace(req.userId!, category.space_id)) ||
 			(typeof spaceId === "number" && category.space_id !== spaceId)
 		) {
 			res.status(404).json({ error: "Category not found" });
@@ -486,7 +529,7 @@ router.post(
 			return;
 		}
 
-		if (!(await userCanAccessUserSpace(req.userId!, spaceId))) {
+		if (!(await userCanAccessSpace(req.userId!, spaceId))) {
 			res.status(403).json({ error: "You do not have access to this space" });
 			return;
 		}
@@ -888,7 +931,7 @@ async function getAuthorizedQuerySpaceId(req: AuthRequest, res: Response) {
 		return null;
 	}
 
-	if (!req.userId || !(await userCanAccessUserSpace(req.userId, spaceId))) {
+	if (!req.userId || !(await userCanAccessSpace(req.userId, spaceId))) {
 		res.status(403).json({ error: "You do not have access to this space" });
 		return null;
 	}
@@ -952,7 +995,7 @@ async function getManageableCategory(req: AuthRequest, categoryId: number) {
 		return null;
 	}
 
-	return (await userCanAccessUserSpace(req.userId, category.space_id))
+	return (await userCanAccessSpace(req.userId, category.space_id))
 		? category
 		: null;
 }
@@ -963,7 +1006,7 @@ async function getManageableDocument(req: AuthRequest, documentId: number) {
 		return null;
 	}
 
-	return (await userCanAccessUserSpace(req.userId, document.space_id))
+	return (await userCanAccessSpace(req.userId, document.space_id))
 		? document
 		: null;
 }

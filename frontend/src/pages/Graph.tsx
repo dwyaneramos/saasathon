@@ -308,18 +308,18 @@ export default function Graph() {
 		event.preventDefault();
 		dragDepthRef.current = 0;
 		setIsDragUploadActive(false);
-			window.dispatchEvent(
-				new CustomEvent(openUploadModalEvent, {
-					detail: {
-						files: Array.from(event.dataTransfer.files),
-						categoryId:
-							mode === "files" && typeof activeCategoryId === "number"
-								? activeCategoryId
-								: null,
-					},
-				}),
-			);
-		};
+		window.dispatchEvent(
+			new CustomEvent(openUploadModalEvent, {
+				detail: {
+					files: Array.from(event.dataTransfer.files),
+					categoryId:
+						mode === "files" && typeof activeCategoryId === "number"
+							? activeCategoryId
+							: null,
+				},
+			}),
+		);
+	};
 
 	const categoryNodes = useMemo<GraphNode[]>(() => {
 		return categories.map((category) => ({
@@ -683,7 +683,7 @@ export default function Graph() {
 			{isDragUploadActive ? (
 				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
 					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-zinc-900">
 							<UploadCloud className="size-6" />
 						</span>
 						<div>

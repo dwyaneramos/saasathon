@@ -254,7 +254,7 @@ function ChatMessage({ message }: { message: Message }) {
 			<div
 				className={`min-w-0 max-w-[78%] overflow-hidden px-3 py-2 text-sm leading-relaxed ${
 					isUser
-						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
+						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-[var(--color-accent)] text-black"
 						: "rounded-xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
 				}`}
 			>
@@ -903,7 +903,7 @@ export default function Dashboard() {
 								<button
 									onClick={() => void sendMessage(input)}
 									disabled={!input.trim() || isLoading}
-									className={`flex items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
+									className={`flex items-center justify-center rounded-full bg-[var(--color-accent)] transition-all hover:bg-[var(--color-accent-hover)] active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
 										hasStartedConversation
 											? "h-9 w-9"
 											: "h-10 w-10 md:h-11 md:w-11"
@@ -934,7 +934,7 @@ export default function Dashboard() {
 			{isDragUploadActive ? (
 				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
 					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-zinc-900">
 							<UploadCloud className="size-6" />
 						</span>
 						<div>
