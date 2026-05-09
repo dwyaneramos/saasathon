@@ -110,6 +110,8 @@ export default function Graph() {
         label:
           document.originalFileName || document.fileName || document.filename,
         documentId: document.id,
+        summary: document.summary,
+        mimeType: document.mimeType,
       }));
   }, [activeCategoryId, documents]);
 
@@ -138,8 +140,17 @@ export default function Graph() {
     return documents.filter((doc) => doc.categoryId === hoveredNode.categoryId);
   }, [hoveredNode, documents, mode]);
 
+  const isDocumentTooltip = mode === "files" && hoveredNode?.documentId != null;
+  const isCategoryTooltip = mode === "categories" && hoveredNode?.categoryId != null;
+  const showTooltip = isCategoryTooltip || isDocumentTooltip;
+  const documentPreviewUrl = hoveredNode?.documentId
+    ? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
+    : "";
+  const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
+  const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
+
   // Tooltip positioning: try to keep it on screen
-  const TOOLTIP_WIDTH = 280;
+  const TOOLTIP_WIDTH = 320;
   const TOOLTIP_OFFSET = 16;
   const tooltipStyle = useMemo(() => {
     if (!containerRef.current)
@@ -158,19 +169,15 @@ export default function Graph() {
       x = cursorPos.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
     }
 
-    // Clamp vertically (rough estimate: max tooltip height ~320px)
-    const estimatedHeight = Math.min(
-      48 + hoveredCategoryFiles.length * 36,
-      320,
-    );
+    const estimatedHeight = isDocumentTooltip
+      ? 420
+      : Math.min(120 + hoveredCategoryFiles.length * 36, 360);
     if (y + estimatedHeight > containerHeight - 8) {
       y = containerHeight - estimatedHeight - 8;
     }
 
     return { left: x, top: y };
-  }, [cursorPos, hoveredCategoryFiles.length]);
-
-  const showTooltip = mode === "categories" && hoveredNode?.categoryId != null;
+  }, [cursorPos, hoveredCategoryFiles.length, isDocumentTooltip]);
 
   return (
     <div
@@ -199,62 +206,99 @@ export default function Graph() {
         ) : null}
       </div>
 
-      {/* Cursor-following tooltip with file list */}
+      {/* Cursor-following tooltip */}
       {showTooltip && (
         <div
-          className="pointer-events-none absolute z-30 w-[280px] rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
+          className="pointer-events-none absolute z-30 w-[320px] overflow-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
           style={{ left: tooltipStyle.left, top: tooltipStyle.top }}
         >
-          {/* Header */}
-          <div className="border-b border-stone-100 px-4 py-3">
-            <p className="text-sm font-semibold text-stone-900">
-              {hoveredNode!.label}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-stone-600">
-              {hoveredNode!.summary || "No category summary yet."}
-            </p>
-            <p className="mt-2 text-xs text-stone-500">
-              {hoveredCategoryFiles.length} file
-              {hoveredCategoryFiles.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          {isCategoryTooltip ? (
+            <>
+              <div className="border-b border-stone-100 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-900">
+                  {hoveredNode!.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-stone-600">
+                  {hoveredNode!.summary || "No category summary yet."}
+                </p>
+                <p className="mt-2 text-xs text-stone-500">
+                  {hoveredCategoryFiles.length} file
+                  {hoveredCategoryFiles.length === 1 ? "" : "s"}
+                </p>
+              </div>
 
-          {/* File list */}
-          <ul className="max-h-[260px] overflow-y-auto py-1">
-            {hoveredCategoryFiles.length === 0 ? (
-              <li className="px-4 py-3 text-xs text-stone-400 italic">
-                No files in this category
-              </li>
-            ) : (
-              hoveredCategoryFiles.map((doc) => {
-                const name =
-                  doc.originalFileName || doc.fileName || doc.filename;
-                const ext = name.split(".").pop()?.toUpperCase() ?? "";
-                return (
-                  <li
-                    key={doc.id}
-                    className="flex items-center gap-3 px-4 py-2 hover:bg-stone-50"
-                  >
-                    {/* File type badge */}
-                    <span className="flex-shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-500">
-                      {ext || "—"}
-                    </span>
-                    <span
-                      className="truncate text-xs text-stone-700"
-                      title={name}
-                    >
-                      {name}
-                    </span>
+              <ul className="max-h-[260px] overflow-y-auto py-1">
+                {hoveredCategoryFiles.length === 0 ? (
+                  <li className="px-4 py-3 text-xs text-stone-400 italic">
+                    No files in this category
                   </li>
-                );
-              })
-            )}
-          </ul>
+                ) : (
+                  hoveredCategoryFiles.map((doc) => {
+                    const name =
+                      doc.originalFileName || doc.fileName || doc.filename;
+                    const ext = name.split(".").pop()?.toUpperCase() ?? "";
+                    return (
+                      <li
+                        key={doc.id}
+                        className="flex items-center gap-3 px-4 py-2 hover:bg-stone-50"
+                      >
+                        <span className="flex-shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-500">
+                          {ext || "—"}
+                        </span>
+                        <span
+                          className="truncate text-xs text-stone-700"
+                          title={name}
+                        >
+                          {name}
+                        </span>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
 
-          {/* Click hint */}
-          <div className="border-t border-stone-100 px-4 py-2">
-            <p className="text-[10px] text-stone-400">Click to explore files</p>
-          </div>
+              <div className="border-t border-stone-100 px-4 py-2">
+                <p className="text-[10px] text-stone-400">Click to explore files</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="border-b border-stone-100 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-900">
+                  {hoveredNode!.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-stone-600">
+                  {hoveredNode!.summary || "No document summary yet."}
+                </p>
+              </div>
+
+              <div className="border-b border-stone-100 bg-stone-100/70 p-3">
+                <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
+                  {isImagePreview ? (
+                    <img
+                      src={documentPreviewUrl}
+                      alt={`${hoveredNode!.label} preview`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : isPdfPreview ? (
+                    <iframe
+                      src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                      title={`${hoveredNode!.label} preview`}
+                      className="h-full w-full border-0"
+                    />
+                  ) : (
+                    <p className="px-4 text-center text-xs leading-5 text-stone-500">
+                      Preview unavailable for this file type.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="px-4 py-2">
+                <p className="text-[10px] text-stone-400">Click to open file page</p>
+              </div>
+            </>
+          )}
         </div>
       )}
 

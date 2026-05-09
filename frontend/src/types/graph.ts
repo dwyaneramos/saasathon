@@ -30,4 +30,5 @@ export interface GraphNode {
   documentId?: number;
   fileCount?: number;
   summary?: string;
+  mimeType?: string;
 }
