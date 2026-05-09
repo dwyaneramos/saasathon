@@ -5,6 +5,7 @@ import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { requireAuth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { HttpError } from "../utils/httpError.js";
 import {
 	createCategorySchema,
 	updateDocumentSchema,
@@ -304,6 +305,37 @@ router.post("/categories", validate(createCategorySchema), async (req, res) => {
 	res.status(201).json({ category: toPublicCategory(responseCategory) });
 });
 
+async function getRequestedCategory(req: Request) {
+	const rawCategoryId = req.body?.categoryId;
+	if (!rawCategoryId) {
+		return null;
+	}
+
+	const categoryId = Number(rawCategoryId);
+	if (!Number.isInteger(categoryId) || categoryId < 1) {
+		throw new HttpError(400, "categoryId must be a positive integer");
+	}
+
+	const category = await getCategory(categoryId);
+	if (!category) {
+		throw new HttpError(404, "Category not found");
+	}
+
+	return category;
+}
+
+async function applyRequestedCategory(
+	documentId: number,
+	category: Awaited<ReturnType<typeof getCategory>> | null,
+) {
+	if (!category) {
+		return null;
+	}
+
+	await assignDocumentCategory(documentId, category.id);
+	return category;
+}
+
 export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "PDF file is required" });
@@ -314,13 +346,22 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		typeof req.body?.minConfidence === "string"
 			? Number(req.body.minConfidence)
 			: undefined;
+	const requestedCategory = await getRequestedCategory(req);
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
 		getDocumentId(req),
 	);
+	const assignedCategory = await applyRequestedCategory(
+		analysis.documentId,
+		requestedCategory,
+	);
+	const responseCategory = assignedCategory ?? analysis.match.category;
+	const needsNewCategory = assignedCategory
+		? false
+		: analysis.match.needsNewCategory;
 
-	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+	res.status(needsNewCategory ? 202 : 200).json({
 		document: {
 			id: analysis.documentId,
 			fileName: analysis.fileName,
@@ -330,16 +371,17 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category
-			? toPublicCategory(analysis.match.category)
-			: null,
-		confidence: analysis.match.confidence,
-		matchedKeywords: analysis.match.matchedKeywords,
-		needsNewCategory: analysis.match.needsNewCategory,
-		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription:
-			analysis.match.suggestedCategoryDescription,
-		prompt: analysis.match.prompt,
+		category: responseCategory ? toPublicCategory(responseCategory) : null,
+		confidence: assignedCategory ? 1 : analysis.match.confidence,
+		matchedKeywords: assignedCategory ? [] : analysis.match.matchedKeywords,
+		needsNewCategory,
+		suggestedCategoryName: assignedCategory
+			? assignedCategory.name
+			: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: assignedCategory
+			? assignedCategory.description
+			: analysis.match.suggestedCategoryDescription,
+		prompt: assignedCategory ? null : analysis.match.prompt,
 	});
 }
 
@@ -353,13 +395,22 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		typeof req.body?.minConfidence === "string"
 			? Number(req.body.minConfidence)
 			: undefined;
+	const requestedCategory = await getRequestedCategory(req);
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
 		getDocumentId(req),
 	);
+	const assignedCategory = await applyRequestedCategory(
+		analysis.documentId,
+		requestedCategory,
+	);
+	const responseCategory = assignedCategory ?? analysis.match.category;
+	const needsNewCategory = assignedCategory
+		? false
+		: analysis.match.needsNewCategory;
 
-	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
+	res.status(needsNewCategory ? 202 : 200).json({
 		document: {
 			id: analysis.documentId,
 			fileName: analysis.fileName,
@@ -369,16 +420,17 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category
-			? toPublicCategory(analysis.match.category)
-			: null,
-		confidence: analysis.match.confidence,
-		matchedKeywords: analysis.match.matchedKeywords,
-		needsNewCategory: analysis.match.needsNewCategory,
-		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription:
-			analysis.match.suggestedCategoryDescription,
-		prompt: analysis.match.prompt,
+		category: responseCategory ? toPublicCategory(responseCategory) : null,
+		confidence: assignedCategory ? 1 : analysis.match.confidence,
+		matchedKeywords: assignedCategory ? [] : analysis.match.matchedKeywords,
+		needsNewCategory,
+		suggestedCategoryName: assignedCategory
+			? assignedCategory.name
+			: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: assignedCategory
+			? assignedCategory.description
+			: analysis.match.suggestedCategoryDescription,
+		prompt: assignedCategory ? null : analysis.match.prompt,
 	});
 }
 
