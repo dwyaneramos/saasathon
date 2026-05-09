@@ -10,6 +10,7 @@ import {
 	updateDocumentSchema,
 } from "../validation/documents.js";
 import {
+	askDashboardAssistant,
 	analyzeImage,
 	analyzePdf,
 	assignDocumentCategory,
@@ -19,8 +20,10 @@ import {
 	listCategories,
 	listDocuments,
 	renameDocument,
+	searchDocuments,
 	toPublicCategory,
 	toPublicDocument,
+	toPublicDocumentSearchResult,
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
@@ -77,6 +80,63 @@ router.get("/documents", async (req, res) => {
 
 	const documents = await listDocuments(spaceId);
 	res.json({ documents: documents.map(toPublicDocument) });
+});
+
+router.get("/documents/search", async (req, res) => {
+	const spaceId = getSpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+	if (!query) {
+		res.json({ query: "", documents: [] });
+		return;
+	}
+
+	const requestedLimit =
+		typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+	const documents = await searchDocuments(
+		query,
+		spaceId,
+		Number.isInteger(requestedLimit) ? requestedLimit : undefined,
+	);
+
+	res.json({
+		query,
+		documents: documents.map(toPublicDocumentSearchResult),
+	});
+});
+
+router.post("/assistant/dashboard", requireAuth, async (req, res) => {
+	const spaceId =
+		typeof req.body?.spaceId === "number"
+			? req.body.spaceId
+			: typeof req.body?.spaceId === "string"
+				? Number(req.body.spaceId)
+				: null;
+
+	if (
+		spaceId !== null &&
+		(!Number.isInteger(spaceId) || spaceId < 1)
+	) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const prompt =
+		typeof req.body?.prompt === "string" ? req.body.prompt : "";
+	const pathname =
+		typeof req.body?.pathname === "string" ? req.body.pathname : "/dashboard";
+
+	const response = await askDashboardAssistant({
+		prompt,
+		spaceId,
+		pathname,
+	});
+
+	res.json(response);
 });
 
 router.get("/documents/:documentId", async (req, res) => {

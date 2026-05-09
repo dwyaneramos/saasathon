@@ -45,27 +45,18 @@ type ModeChip = {
 };
 
 type Suggestion = {
-	prompt: string;
 	label: string;
 	sub: string;
-};
-
-type DashboardAssistantContext = {
-	activeSpaceId: number | null;
-	categories: CategorySummary[];
-	documents: DocumentSummary[];
-	isContextLoading: boolean;
-	pathname: string;
-	userFirstName: string | null;
-};
-
-type AssistantReply = {
-	message: string;
-	navigateTo?: string;
+	prompt: string;
 };
 
 type CategoriesResponse = { categories?: CategorySummary[] };
 type DocumentsResponse = { documents?: DocumentSummary[] };
+type AssistantResponse = {
+	message: string;
+	navigateTo: string | null;
+	suggestedActions?: Suggestion[];
+};
 
 const DEFAULT_MODES: ModeChip[] = [
 	{
@@ -105,16 +96,6 @@ function authHeaders() {
 	return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
-function normalizeText(value: string) {
-	return value.toLowerCase().replace(/[^\w\s.-]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function tokenize(value: string) {
-	return normalizeText(value)
-		.split(" ")
-		.filter((token) => token.length > 1);
-}
-
 function documentDisplayName(document: DocumentSummary) {
 	return document.originalFileName || document.fileName || document.filename;
 }
@@ -122,391 +103,10 @@ function documentDisplayName(document: DocumentSummary) {
 function sortDocumentsByNewest(documents: DocumentSummary[]) {
 	return [...documents].sort((left, right) => {
 		return (
-			new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+			new Date(right.createdAt).getTime() -
+			new Date(left.createdAt).getTime()
 		);
 	});
-}
-
-function formatNameList(names: string[]) {
-	if (names.length === 0) return "";
-	if (names.length === 1) return names[0];
-	if (names.length === 2) return `${names[0]} and ${names[1]}`;
-
-	return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
-}
-
-function findBestDocumentMatch(
-	input: string,
-	documents: DocumentSummary[],
-): DocumentSummary | null {
-	const normalizedInput = normalizeText(input);
-	const inputTokens = tokenize(input);
-
-	let bestMatch: DocumentSummary | null = null;
-	let bestScore = 0;
-
-	for (const document of documents) {
-		const name = documentDisplayName(document);
-		const normalizedName = normalizeText(name);
-		const nameTokens = tokenize(name);
-		let score = 0;
-
-		if (normalizedInput.includes(normalizedName)) {
-			score += 12;
-		}
-
-		if (normalizedName.includes(normalizedInput) && normalizedInput.length > 2) {
-			score += 8;
-		}
-
-		for (const token of inputTokens) {
-			if (normalizedName.includes(token)) {
-				score += 2;
-			}
-		}
-
-		for (const token of nameTokens) {
-			if (inputTokens.includes(token)) {
-				score += 1;
-			}
-		}
-
-		if (score > bestScore) {
-			bestScore = score;
-			bestMatch = document;
-		}
-	}
-
-	return bestScore >= 3 ? bestMatch : null;
-}
-
-function findBestCategoryMatch(
-	input: string,
-	categories: CategorySummary[],
-): CategorySummary | null {
-	const normalizedInput = normalizeText(input);
-	const inputTokens = tokenize(input);
-
-	let bestMatch: CategorySummary | null = null;
-	let bestScore = 0;
-
-	for (const category of categories) {
-		const normalizedName = normalizeText(category.name);
-		const nameTokens = tokenize(category.name);
-		let score = 0;
-
-		if (normalizedInput.includes(normalizedName)) {
-			score += 10;
-		}
-
-		if (normalizedName.includes(normalizedInput) && normalizedInput.length > 2) {
-			score += 6;
-		}
-
-		for (const token of inputTokens) {
-			if (normalizedName.includes(token)) {
-				score += 2;
-			}
-		}
-
-		for (const token of nameTokens) {
-			if (inputTokens.includes(token)) {
-				score += 1;
-			}
-		}
-
-		if (score > bestScore) {
-			bestScore = score;
-			bestMatch = category;
-		}
-	}
-
-	return bestScore >= 3 ? bestMatch : null;
-}
-
-function buildSuggestions(
-	context: DashboardAssistantContext,
-): Suggestion[] {
-	const { activeSpaceId, categories, documents, isContextLoading } = context;
-	const suggestions: Suggestion[] = [];
-	const documentsByNewest = sortDocumentsByNewest(documents);
-
-	if (!activeSpaceId) {
-		return [
-			{
-				prompt: "Take me to the upload page",
-				label: "Open uploads",
-				sub: "Start adding files",
-			},
-			{
-				prompt: "Show me the category view",
-				label: "View categories",
-				sub: "Browse the graph",
-			},
-			{
-				prompt: "What can you help me with here?",
-				label: "Get oriented",
-				sub: "See what the assistant can do",
-			},
-		];
-	}
-
-	if (isContextLoading) {
-		return [
-			{
-				prompt: "What can you help me with here?",
-				label: "Assistant help",
-				sub: "Context is updating",
-			},
-		];
-	}
-
-	suggestions.push({
-		prompt: "Take me to the upload page",
-		label: "Open uploads",
-		sub: documents.length === 0 ? "Add your first file" : "Add more files",
-	});
-
-	if (categories.length > 0) {
-		suggestions.push({
-			prompt: "Show me the categories in this space",
-			label: "View categories",
-			sub: `${categories.length} available`,
-		});
-	}
-
-	const busiestCategory = [...categories]
-		.map((category) => ({
-			category,
-			fileCount: documents.filter(
-				(document) => document.categoryId === category.id,
-			).length,
-		}))
-		.sort((left, right) => right.fileCount - left.fileCount)[0];
-
-	if (busiestCategory && busiestCategory.fileCount > 0) {
-		suggestions.push({
-			prompt: `Show me the files in ${busiestCategory.category.name}`,
-			label: `Open ${busiestCategory.category.name}`,
-			sub: `${busiestCategory.fileCount} files inside`,
-		});
-	}
-
-	if (documentsByNewest[0]) {
-		suggestions.push({
-			prompt: `Open ${documentDisplayName(documentsByNewest[0])}`,
-			label: "Open recent file",
-			sub: documentDisplayName(documentsByNewest[0]),
-		});
-	}
-
-	if (documents.length > 1) {
-		suggestions.push({
-			prompt: "Show me my most recent files",
-			label: "Recent files",
-			sub: `${documents.length} files in this space`,
-		});
-	}
-
-	return suggestions
-		.filter(
-			(suggestion, index, all) =>
-				all.findIndex((candidate) => candidate.prompt === suggestion.prompt) ===
-				index,
-		)
-		.slice(0, 4);
-}
-
-function resolveAssistantPrompt(
-	input: string,
-	context: DashboardAssistantContext,
-): AssistantReply {
-	const normalizedInput = normalizeText(input);
-	const documentsByNewest = sortDocumentsByNewest(context.documents);
-	const matchedDocument = findBestDocumentMatch(input, context.documents);
-	const matchedCategory = findBestCategoryMatch(input, context.categories);
-	const categoryDocuments = matchedCategory
-		? documentsByNewest.filter(
-				(document) => document.categoryId === matchedCategory.id,
-			)
-		: [];
-
-	if (!context.activeSpaceId) {
-		return {
-			message:
-				"Choose a space from the sidebar first, then I can open uploads, surface files, and guide you through the categories in that space.",
-		};
-	}
-
-	if (
-		normalizedInput.includes("upload") ||
-		normalizedInput.includes("add file") ||
-		normalizedInput.includes("import")
-	) {
-		return {
-			navigateTo: "/upload",
-			message:
-				context.documents.length === 0
-					? "Opening the upload page so we can bring your first files in."
-					: "Taking you to uploads so you can add more files.",
-		};
-	}
-
-	if (
-		normalizedInput.includes("dashboard") ||
-		normalizedInput.includes("home")
-	) {
-		return {
-			navigateTo: "/dashboard",
-			message:
-				context.pathname === "/dashboard"
-					? "You are already on the dashboard."
-					: "Bringing the dashboard back up.",
-		};
-	}
-
-	if (
-		normalizedInput.includes("graph") ||
-		normalizedInput.includes("view categories") ||
-		normalizedInput.includes("show categories") ||
-		normalizedInput.includes("category view")
-	) {
-		const categorySummary =
-			context.categories.length === 0
-				? "There are no categories in this space yet."
-				: `You currently have ${context.categories.length} categor${context.categories.length === 1 ? "y" : "ies"}.`;
-
-		return {
-			navigateTo: "/graph",
-			message: `Opening the category view. ${categorySummary}`,
-		};
-	}
-
-	if (
-		normalizedInput.includes("recent files") ||
-		normalizedInput.includes("recent file") ||
-		normalizedInput.includes("show files") ||
-		normalizedInput.includes("list files") ||
-		normalizedInput.includes("what files")
-	) {
-		if (matchedCategory) {
-			const fileNames = categoryDocuments
-				.slice(0, 4)
-				.map((document) => documentDisplayName(document));
-			return {
-				navigateTo: "/graph",
-				message:
-					categoryDocuments.length === 0
-						? `${matchedCategory.name} is empty right now. I opened the category view so you can keep browsing.`
-						: `${matchedCategory.name} has ${categoryDocuments.length} file${categoryDocuments.length === 1 ? "" : "s"}, including ${formatNameList(fileNames)}. I opened the category view for you too.`,
-			};
-		}
-
-		if (documentsByNewest.length === 0) {
-			return {
-				message:
-					"I do not see any files in this space yet. I can take you straight to uploads whenever you are ready.",
-			};
-		}
-
-		const recentNames = documentsByNewest
-			.slice(0, 4)
-			.map((document) => documentDisplayName(document));
-		return {
-			message: `The newest files in this space are ${formatNameList(recentNames)}.`,
-		};
-	}
-
-	if (
-		documentsByNewest[0] &&
-		(normalizedInput.includes("latest") ||
-			normalizedInput.includes("most recent")) &&
-		(normalizedInput.includes("open") ||
-			normalizedInput.includes("view") ||
-			normalizedInput.includes("show") ||
-			normalizedInput.includes("edit"))
-	) {
-		const latestDocument = documentsByNewest[0];
-		const displayName = documentDisplayName(latestDocument);
-		const isEditingRequest = normalizedInput.includes("edit");
-
-		return {
-			navigateTo: `/file/${latestDocument.id}`,
-			message: isEditingRequest
-				? `Opening ${displayName}. Direct editing is not wired in yet, but I brought the newest file up so you can review it right away.`
-				: `Opening your most recent file, ${displayName}.`,
-		};
-	}
-
-	if (
-		matchedDocument &&
-		(normalizedInput.includes("open") ||
-			normalizedInput.includes("view") ||
-			normalizedInput.includes("show") ||
-			normalizedInput.includes("edit") ||
-			normalizedInput.includes("read") ||
-			normalizedInput.includes("file") ||
-			normalizedInput.includes("document"))
-	) {
-		const displayName = documentDisplayName(matchedDocument);
-		const isEditingRequest = normalizedInput.includes("edit");
-
-		return {
-			navigateTo: `/file/${matchedDocument.id}`,
-			message: isEditingRequest
-				? `Opening ${displayName}. The app does not support direct file editing yet, but I brought the file viewer up so you can inspect it right away.`
-				: `Opening ${displayName} now.`,
-		};
-	}
-
-	if (
-		matchedCategory &&
-		(normalizedInput.includes("category") ||
-			normalizedInput.includes("folder") ||
-			normalizedInput.includes("collection"))
-	) {
-		const fileNames = categoryDocuments
-			.slice(0, 3)
-			.map((document) => documentDisplayName(document));
-		return {
-			navigateTo: "/graph",
-			message:
-				categoryDocuments.length === 0
-					? `${matchedCategory.name} exists, but it does not have files yet. I opened the category view so you can keep moving from there.`
-					: `${matchedCategory.name} has ${categoryDocuments.length} file${categoryDocuments.length === 1 ? "" : "s"}, including ${formatNameList(fileNames)}. I opened the category view for you.`,
-		};
-	}
-
-	if (
-		normalizedInput.includes("what can you do") ||
-		normalizedInput.includes("help") ||
-		normalizedInput.includes("suggest")
-	) {
-		return {
-			message:
-				"I can navigate you to uploads, categories, and files in the current space, summarize what is already here, and open the closest matching document when you mention it by name.",
-		};
-	}
-
-	if (matchedDocument) {
-		return {
-			navigateTo: `/file/${matchedDocument.id}`,
-			message: `I found ${documentDisplayName(matchedDocument)} and opened it for you.`,
-		};
-	}
-
-	if (context.categories.length === 0 && context.documents.length === 0) {
-		return {
-			navigateTo: "/upload",
-			message:
-				"This space is still empty, so I am taking you to uploads. Once files are in, I can help surface categories and jump you into specific documents.",
-		};
-	}
-
-	return {
-		message:
-			"I can open uploads, bring up the category view, list recent files, or open a file by name. Try something like 'take me to uploads', 'show categories', or 'open the latest contract'.",
-	};
 }
 
 function TypingIndicator() {
@@ -576,7 +176,62 @@ function ChatMessage({ message }: { message: Message }) {
 	);
 }
 
-function Dashboard() {
+function QuickActions({
+	suggestions,
+	isLoading,
+	onSelect,
+	compact = false,
+}: {
+	suggestions: Suggestion[];
+	isLoading: boolean;
+	onSelect: (prompt: string) => void;
+	compact?: boolean;
+}) {
+	if (!isLoading && suggestions.length === 0) {
+		return (
+			<div className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-400 shadow-sm">
+				No suggestions yet.
+			</div>
+		);
+	}
+
+	return (
+		<div
+			className={`grid gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm ${
+				compact ? "grid-cols-1 md:grid-cols-2" : "w-full max-w-3xl sm:grid-cols-2"
+			}`}
+		>
+			{isLoading
+				? Array.from({ length: compact ? 2 : 4 }).map((_, index) => (
+						<div
+							key={index}
+							className="bg-white p-5"
+						>
+							<div className="h-4 w-32 animate-pulse rounded bg-zinc-100" />
+							<div className="mt-2 h-3 w-40 animate-pulse rounded bg-zinc-100" />
+						</div>
+					))
+				: suggestions.map((suggestion) => (
+						<button
+							key={suggestion.prompt}
+							onClick={() => onSelect(suggestion.prompt)}
+							className={`group bg-white text-left transition-colors hover:bg-zinc-50 ${
+								compact ? "p-4" : "p-5"
+							}`}
+						>
+							<p className="text-sm font-medium leading-snug text-zinc-900">
+								{suggestion.label}
+							</p>
+							<p className="mt-1 text-xs text-zinc-400">
+								{suggestion.sub}
+							</p>
+						</button>
+					))}
+		</div>
+	);
+}
+
+export default function Dashboard() {
 	const { user } = useAuth();
 	const { activeSpaceId } = useOutletContext<AppLayoutContext>();
 	const navigate = useNavigate();
@@ -585,9 +240,11 @@ function Dashboard() {
 	const [input, setInput] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [isContextLoading, setIsContextLoading] = useState(false);
+	const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
 	const [modes, setModes] = useState<ModeChip[]>(DEFAULT_MODES);
 	const [categories, setCategories] = useState<CategorySummary[]>([]);
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+	const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 	const [contextRefreshKey, setContextRefreshKey] = useState(0);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -637,23 +294,25 @@ function Dashboard() {
 
 			try {
 				const query = `?spaceId=${activeSpaceId}`;
-				const [categoriesResponse, documentsResponse] = await Promise.all([
-					fetch(`${apiBaseUrl}/categories${query}`, {
-						headers: authHeaders(),
-					}),
-					fetch(`${apiBaseUrl}/documents${query}`, {
-						headers: authHeaders(),
-					}),
-				]);
+				const [categoriesResponse, documentsResponse] =
+					await Promise.all([
+						fetch(`${apiBaseUrl}/categories${query}`, {
+							headers: authHeaders(),
+						}),
+						fetch(`${apiBaseUrl}/documents${query}`, {
+							headers: authHeaders(),
+						}),
+					]);
 
 				if (!categoriesResponse.ok || !documentsResponse.ok) {
 					throw new Error("Unable to load dashboard context.");
 				}
 
-				const [categoriesPayload, documentsPayload] = (await Promise.all([
-					categoriesResponse.json(),
-					documentsResponse.json(),
-				])) as [CategoriesResponse, DocumentsResponse];
+				const [categoriesPayload, documentsPayload] =
+					(await Promise.all([
+						categoriesResponse.json(),
+						documentsResponse.json(),
+					])) as [CategoriesResponse, DocumentsResponse];
 
 				if (!ignore) {
 					setCategories(categoriesPayload.categories ?? []);
@@ -678,22 +337,54 @@ function Dashboard() {
 		};
 	}, [activeSpaceId, contextRefreshKey]);
 
-	const assistantContext = useMemo<DashboardAssistantContext>(
-		() => ({
-			activeSpaceId,
-			categories,
-			documents,
-			isContextLoading,
-			pathname: location.pathname,
-			userFirstName,
-		}),
-		[activeSpaceId, categories, documents, isContextLoading, location.pathname, userFirstName],
-	);
+	useEffect(() => {
+		let ignore = false;
 
-	const suggestions = useMemo(
-		() => buildSuggestions(assistantContext),
-		[assistantContext],
-	);
+		async function loadSuggestions() {
+			setIsSuggestionsLoading(true);
+
+			try {
+				const response = await fetch(
+					`${apiBaseUrl}/assistant/dashboard`,
+					{
+						method: "POST",
+						headers: {
+							...authHeaders(),
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							prompt: "",
+							spaceId: activeSpaceId,
+							pathname: location.pathname,
+						}),
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error("Could not load suggestions.");
+				}
+
+				const payload = (await response.json()) as AssistantResponse;
+				if (!ignore) {
+					setSuggestions(payload.suggestedActions ?? []);
+				}
+			} catch {
+				if (!ignore) {
+					setSuggestions([]);
+				}
+			} finally {
+				if (!ignore) {
+					setIsSuggestionsLoading(false);
+				}
+			}
+		}
+
+		void loadSuggestions();
+
+		return () => {
+			ignore = true;
+		};
+	}, [activeSpaceId, location.pathname, contextRefreshKey]);
 
 	const contextSummary = useMemo(() => {
 		if (!activeSpaceId) {
@@ -701,7 +392,7 @@ function Dashboard() {
 		}
 
 		if (isContextLoading) {
-			return "Refreshing your files and categories for this space.";
+			return "Refreshing your files, categories, and assistant context for this space.";
 		}
 
 		const newestDocument = sortDocumentsByNewest(documents)[0];
@@ -730,11 +421,48 @@ function Dashboard() {
 		setIsLoading(true);
 
 		try {
-			const reply = resolveAssistantPrompt(trimmedText, assistantContext);
+			const response = await fetch(`${apiBaseUrl}/assistant/dashboard`, {
+				method: "POST",
+				headers: {
+					...authHeaders(),
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					prompt: trimmedText,
+					spaceId: activeSpaceId,
+					pathname: location.pathname,
+				}),
+			});
+
+			const payload = (await response.json().catch(() => null)) as
+				| AssistantResponse
+				| { error?: string }
+				| null;
+
+			if (!response.ok) {
+				const errorMessage =
+					payload &&
+					typeof payload === "object" &&
+					"error" in payload &&
+					typeof payload.error === "string"
+						? payload.error
+						: "Something went wrong. Please try again.";
+				throw new Error(errorMessage);
+			}
+
+			const assistantReply = payload as AssistantResponse;
+
+			if (assistantReply.suggestedActions?.length) {
+				setSuggestions(assistantReply.suggestedActions);
+			}
+
 			await new Promise((resolve) => window.setTimeout(resolve, 220));
 
-			if (reply.navigateTo && reply.navigateTo !== location.pathname) {
-				navigate(reply.navigateTo);
+			if (
+				assistantReply.navigateTo &&
+				assistantReply.navigateTo !== location.pathname
+			) {
+				navigate(assistantReply.navigateTo);
 			}
 
 			setMessages((currentMessages) => [
@@ -742,7 +470,20 @@ function Dashboard() {
 				{
 					id: crypto.randomUUID(),
 					role: "assistant",
-					content: reply.message,
+					content: assistantReply.message,
+					timestamp: new Date(),
+				},
+			]);
+		} catch (error) {
+			setMessages((currentMessages) => [
+				...currentMessages,
+				{
+					id: crypto.randomUUID(),
+					role: "assistant",
+					content:
+						error instanceof Error
+							? error.message
+							: "Something went wrong. Please try again.",
 					timestamp: new Date(),
 				},
 			]);
@@ -759,7 +500,9 @@ function Dashboard() {
 	};
 
 	const removeMode = (id: string) => {
-		setModes((currentModes) => currentModes.filter((mode) => mode.id !== id));
+		setModes((currentModes) =>
+			currentModes.filter((mode) => mode.id !== id),
+		);
 	};
 
 	const resetConversation = () => {
@@ -775,7 +518,11 @@ function Dashboard() {
 						<div className="flex min-h-[50vh] flex-col items-center justify-center gap-8 text-center">
 							<div>
 								<h1 className="bg-gradient-to-b from-zinc-900 to-zinc-400 bg-clip-text pb-3 text-5xl font-bold leading-[0.9] tracking-tighter text-transparent md:text-7xl">
-									Hi{userFirstName ? ` ${userFirstName}` : " there"},
+									Hi
+									{userFirstName
+										? ` ${userFirstName}`
+										: " there"}
+									,
 								</h1>
 								<p className="text-lg text-zinc-500">
 									How can I help inside this workspace?
@@ -785,22 +532,11 @@ function Dashboard() {
 								</p>
 							</div>
 
-							<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm sm:grid-cols-2">
-								{suggestions.map((suggestion) => (
-									<button
-										key={suggestion.prompt}
-										onClick={() => void sendMessage(suggestion.prompt)}
-										className="group bg-white p-5 text-left transition-colors hover:bg-zinc-50"
-									>
-										<p className="text-sm font-medium leading-snug text-zinc-900">
-											{suggestion.label}
-										</p>
-										<p className="mt-1 text-xs text-zinc-400">
-											{suggestion.sub} -
-										</p>
-									</button>
-								))}
-							</div>
+							<QuickActions
+								suggestions={suggestions}
+								isLoading={isSuggestionsLoading}
+								onSelect={(prompt) => void sendMessage(prompt)}
+							/>
 						</div>
 					) : (
 						<>
@@ -818,9 +554,25 @@ function Dashboard() {
 								</button>
 							</div>
 							{messages.map((message) => (
-								<ChatMessage key={message.id} message={message} />
+								<ChatMessage
+									key={message.id}
+									message={message}
+								/>
 							))}
 							{isLoading && <TypingIndicator />}
+							<div className="mt-8">
+								<p className="mb-3 text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
+									Quick Actions
+								</p>
+								<QuickActions
+									suggestions={suggestions}
+									isLoading={isSuggestionsLoading}
+									onSelect={(prompt) =>
+										void sendMessage(prompt)
+									}
+									compact
+								/>
+							</div>
 							<div ref={messagesEndRef} />
 						</>
 					)}
@@ -839,9 +591,11 @@ function Dashboard() {
 								ref={textareaRef}
 								rows={1}
 								value={input}
-								onChange={(event) => setInput(event.target.value)}
+								onChange={(event) =>
+									setInput(event.target.value)
+								}
 								onKeyDown={handleKeyDown}
-								placeholder="Ask me to open uploads, show categories, or find a file"
+								placeholder="Ask me to find a file, open an image, or search this workspace"
 								className="flex-1 resize-none bg-transparent py-0.5 text-sm leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400"
 								style={{ maxHeight: "140px" }}
 							/>
@@ -853,12 +607,12 @@ function Dashboard() {
 								<button
 									onClick={() => void sendMessage(input)}
 									disabled={!input.trim() || isLoading}
-									className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 transition-all hover:bg-zinc-700 active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:opacity-30"
+									className="flex h-8 w-8 items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30"
 								>
 									<ArrowUp
 										size={14}
 										strokeWidth={2.5}
-										className="text-white"
+										className="text-black"
 									/>
 								</button>
 							</div>
@@ -889,5 +643,3 @@ function Dashboard() {
 		</div>
 	);
 }
-
-export default Dashboard;

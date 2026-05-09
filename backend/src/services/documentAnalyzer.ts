@@ -44,6 +44,7 @@ type DocumentRow = {
   file_size: number;
   category_id: number | null;
   summary: string;
+  keywords: string[];
   created_at: Date;
 };
 
@@ -59,7 +60,31 @@ export type PublicDocument = {
   fileSize: number;
   categoryId: number | null;
   summary: string;
+  keywords: string[];
   createdAt: Date;
+};
+
+type DocumentSearchRow = DocumentRow & {
+  category_name: string | null;
+  score: number;
+};
+
+export type PublicDocumentSearchResult = PublicDocument & {
+  categoryName: string | null;
+  score: number;
+};
+
+export type DashboardAssistantSuggestion = {
+  label: string;
+  sub: string;
+  prompt: string;
+};
+
+export type DashboardAssistantResponse = {
+  message: string;
+  navigateTo: string | null;
+  suggestedActions: DashboardAssistantSuggestion[];
+  searchResults: PublicDocumentSearchResult[];
 };
 
 export type CategoryInput = {
@@ -155,6 +180,7 @@ export async function listDocuments(spaceId?: number | null) {
         file_size,
         category_id,
         summary,
+        keywords,
         created_at
      FROM documents
      WHERE $1::integer IS NULL OR space_id = $1
@@ -179,6 +205,7 @@ export async function getDocument(documentId: number) {
         file_size,
         category_id,
         summary,
+        keywords,
         created_at
      FROM documents
      WHERE id = $1
@@ -186,6 +213,206 @@ export async function getDocument(documentId: number) {
     [documentId],
   );
   return rows[0] ?? null;
+}
+
+export async function searchDocuments(
+  query: string,
+  spaceId?: number | null,
+  limit = 8,
+) {
+  await ensureDocumentSchema();
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const normalizedQuery = trimmedQuery.toLowerCase();
+  const tokens = normalizeSearchTokens(trimmedQuery);
+  const safeLimit = Math.min(Math.max(limit, 1), 20);
+
+  const { rows } = await getDb().query<DocumentSearchRow>(
+    `SELECT
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.created_at,
+        c.name AS category_name,
+        (
+          CASE
+            WHEN lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) = $2 THEN 140
+            ELSE 0
+          END +
+          CASE
+            WHEN lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) LIKE '%' || $2 || '%' THEN 80
+            ELSE 0
+          END +
+          CASE
+            WHEN lower(COALESCE(c.name, '')) LIKE '%' || $2 || '%' THEN 45
+            ELSE 0
+          END +
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest(COALESCE(c.keywords, '{}'::text[])) AS category_keyword
+              WHERE lower(category_keyword) LIKE '%' || $2 || '%'
+            ) THEN 24
+            ELSE 0
+          END +
+          CASE
+            WHEN lower(COALESCE(d.summary, '')) LIKE '%' || $2 || '%' THEN 35
+            ELSE 0
+          END +
+          CASE
+            WHEN lower(COALESCE(d.extracted_text, '')) LIKE '%' || $2 || '%' THEN 18
+            ELSE 0
+          END +
+          COALESCE((
+            SELECT SUM(
+              CASE
+                WHEN token = '' THEN 0
+                WHEN lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) LIKE '%' || token || '%' THEN 16
+                WHEN lower(COALESCE(c.name, '')) LIKE '%' || token || '%' THEN 10
+                WHEN EXISTS (
+                  SELECT 1
+                  FROM unnest(COALESCE(c.keywords, '{}'::text[])) AS category_keyword
+                  WHERE lower(category_keyword) = token
+                ) THEN 10
+                WHEN lower(COALESCE(d.summary, '')) LIKE '%' || token || '%' THEN 8
+                WHEN lower(COALESCE(d.extracted_text, '')) LIKE '%' || token || '%' THEN 4
+                WHEN EXISTS (
+                  SELECT 1
+                  FROM unnest(COALESCE(d.keywords, '{}'::text[])) AS document_keyword
+                  WHERE lower(document_keyword) = token
+                ) THEN 12
+                ELSE 0
+              END
+            )
+            FROM unnest($3::text[]) AS token
+          ), 0)
+        )::float8 AS score
+     FROM documents d
+     LEFT JOIN document_categories c ON c.id = d.category_id
+     WHERE ($1::integer IS NULL OR d.space_id = $1)
+     ORDER BY score DESC, d.created_at DESC
+     LIMIT $4`,
+    [spaceId ?? null, normalizedQuery, tokens, safeLimit],
+  );
+
+  return rows.filter((row) => row.score > 0);
+}
+
+export async function askDashboardAssistant({
+  prompt,
+  spaceId,
+  pathname,
+}: {
+  prompt?: string;
+  spaceId?: number | null;
+  pathname?: string;
+}): Promise<DashboardAssistantResponse> {
+  await ensureDocumentSchema();
+
+  const trimmedPrompt = prompt?.trim() ?? "";
+  const categories = await listCategories(spaceId ?? null);
+  const documents = await listDocuments(spaceId ?? null);
+  const searchRows = trimmedPrompt
+    ? await searchDocuments(trimmedPrompt, spaceId ?? null, 6)
+    : [];
+  const publicSearchResults = searchRows.map(toPublicDocumentSearchResult);
+  const suggestionsSeed = buildSuggestedActions({
+    prompt: trimmedPrompt,
+    pathname: pathname ?? "/dashboard",
+    categories,
+    documents,
+    searchResults: searchRows,
+  });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return {
+      message: buildFallbackAssistantMessage({
+        prompt: trimmedPrompt,
+        categories,
+        documents,
+        searchResults: searchRows,
+      }),
+      navigateTo: resolveSuggestedNavigation({
+        prompt: trimmedPrompt,
+        pathname: pathname ?? "/dashboard",
+        searchResults: searchRows,
+      }),
+      suggestedActions: suggestionsSeed,
+      searchResults: publicSearchResults,
+    };
+  }
+
+  const model = process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const body = {
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are Kibi's dashboard assistant. Stay grounded in the provided workspace context and search results. Return only valid JSON and never invent files, categories, or capabilities.",
+      },
+      {
+        role: "user",
+        content: buildDashboardAssistantPrompt({
+          prompt: trimmedPrompt,
+          pathname: pathname ?? "/dashboard",
+          categories,
+          documents,
+          searchResults: publicSearchResults,
+          suggestions: suggestionsSeed,
+        }),
+      },
+    ],
+    temperature: 0.2,
+    max_tokens: 1200,
+  };
+
+  const { payload } = await sendOpenRouterRequest(body, apiKey);
+  const rawContent = payload?.choices?.[0]?.message?.content;
+  if (!rawContent) {
+    throw new HttpError(502, "OpenRouter returned an empty response");
+  }
+
+  const parsed = parseDashboardAssistantJson(rawContent);
+  return {
+    message:
+      cleanString(parsed.message) ||
+      buildFallbackAssistantMessage({
+        prompt: trimmedPrompt,
+        categories,
+        documents,
+        searchResults: searchRows,
+      }),
+    navigateTo: sanitizeDashboardNavigateTo(
+      cleanString(parsed.navigateTo),
+      searchRows,
+      pathname ?? "/dashboard",
+      trimmedPrompt,
+    ),
+    suggestedActions: (() => {
+      const normalizedSuggestions = normalizeDashboardSuggestions(
+        parsed.suggestedActions,
+      ).slice(0, 4);
+      return normalizedSuggestions.length > 0
+        ? normalizedSuggestions
+        : suggestionsSeed;
+    })(),
+    searchResults: publicSearchResults,
+  };
 }
 
 export async function renameDocument(documentId: number, name: string) {
@@ -318,7 +545,18 @@ export function toPublicDocument(document: DocumentRow): PublicDocument {
     fileSize: document.file_size,
     categoryId: document.category_id,
     summary: document.summary,
+    keywords: document.keywords,
     createdAt: document.created_at,
+  };
+}
+
+export function toPublicDocumentSearchResult(
+  document: DocumentSearchRow,
+): PublicDocumentSearchResult {
+  return {
+    ...toPublicDocument(document),
+    categoryName: document.category_name,
+    score: document.score,
   };
 }
 
@@ -389,6 +627,7 @@ async function saveAnalysis(
     modelAnalysis,
     match,
   });
+  const keywords = buildDocumentKeywords(file, modelAnalysis, match);
 
   if (documentId) {
     const { rows } = await getDb().query<{ id: number }>(
@@ -405,7 +644,8 @@ async function saveAnalysis(
         summary = $6,
         category_id = $7,
         confidence = $8,
-        needs_new_category = $9
+        needs_new_category = $9,
+        keywords = $11
        WHERE id = $1
        RETURNING id`,
       [
@@ -419,6 +659,7 @@ async function saveAnalysis(
         match.confidence,
         match.needsNewCategory,
         documentMetadata,
+        keywords,
       ],
     );
 
@@ -445,11 +686,12 @@ async function saveAnalysis(
 				page_count,
 				extracted_text,
 				summary,
+				keywords,
 				category_id,
 				confidence,
 				needs_new_category
 			)
-			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id`,
     [
       file.originalname,
@@ -460,6 +702,7 @@ async function saveAnalysis(
       sourceType === "pdf" ? modelAnalysis.pageCount ?? 0 : 0,
       extractedText,
       modelAnalysis.summary,
+      keywords,
       match.category?.id ?? null,
       match.confidence,
       match.needsNewCategory,
@@ -1005,6 +1248,7 @@ function buildDocumentMetadata({
     sourceType,
     pageCount: sourceType === "pdf" ? modelAnalysis.pageCount ?? 0 : 0,
     summary: modelAnalysis.summary,
+    keywords: buildDocumentKeywords(file, modelAnalysis, match),
     categoryId: match.category?.id ?? null,
     needsNewCategory: match.needsNewCategory,
     suggestedCategoryName: match.suggestedCategoryName,
@@ -1013,7 +1257,325 @@ function buildDocumentMetadata({
 }
 
 function normalizeKeywords(keywords: string[]) {
-  return [...new Set(keywords.map((keyword) => keyword.trim()).filter(Boolean))];
+  return [...new Set(
+    keywords
+      .map((keyword) => keyword.trim().toLowerCase())
+      .filter(Boolean),
+  )];
+}
+
+function normalizeSearchTokens(query: string) {
+  return [...new Set(
+    query
+      .toLowerCase()
+      .replace(/[^\w\s.-]/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2),
+  )];
+}
+
+type DashboardAssistantJson = {
+  message?: unknown;
+  navigateTo?: unknown;
+  suggestedActions?: unknown;
+};
+
+function parseDashboardAssistantJson(content: unknown): DashboardAssistantJson {
+  return parseJsonObject(content) as DashboardAssistantJson;
+}
+
+function normalizeDashboardSuggestions(
+  value: unknown,
+): DashboardAssistantSuggestion[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const suggestion = item as Record<string, unknown>;
+      const label = cleanString(suggestion.label);
+      const sub = cleanString(suggestion.sub);
+      const prompt = cleanString(suggestion.prompt);
+
+      if (!label || !sub || !prompt) {
+        return null;
+      }
+
+      return { label, sub, prompt };
+    })
+    .filter((suggestion): suggestion is DashboardAssistantSuggestion => Boolean(suggestion));
+}
+
+function buildDashboardAssistantPrompt({
+  prompt,
+  pathname,
+  categories,
+  documents,
+  searchResults,
+  suggestions,
+}: {
+  prompt: string;
+  pathname: string;
+  categories: CategoryRow[];
+  documents: DocumentRow[];
+  searchResults: PublicDocumentSearchResult[];
+  suggestions: DashboardAssistantSuggestion[];
+}) {
+  const context = {
+    pathname,
+    categoryCount: categories.length,
+    documentCount: documents.length,
+    categories: categories.slice(0, 12).map((category) => ({
+      id: category.id,
+      name: category.name,
+      description: getCategoryDescription(category),
+      keywords: getCategoryKeywords(category),
+      fileCount: documents.filter((document) => document.category_id === category.id).length,
+    })),
+    recentDocuments: documents.slice(0, 8).map((document) => ({
+      id: document.id,
+      name:
+        document.original_file_name ||
+        document.file_name ||
+        document.filename,
+      categoryId: document.category_id,
+      summary: document.summary,
+      keywords: document.keywords,
+    })),
+    searchResults,
+    defaultSuggestedActions: suggestions,
+  };
+
+  return `
+Answer the user's dashboard request using only this workspace context.
+
+Current route: ${pathname}
+User prompt: ${prompt || "(no prompt, generate helpful suggested actions only)"}
+
+Workspace context:
+${JSON.stringify(context)}
+
+Return exactly this JSON:
+{
+  "message": "natural language response grounded in the context",
+  "navigateTo": "/upload" | "/graph" | "/dashboard" | "/file/123" | null,
+  "suggestedActions": [
+    {
+      "label": "short button label",
+      "sub": "brief supporting text",
+      "prompt": "the exact prompt this action should send"
+    }
+  ]
+}
+
+Rules:
+- Use the prompt and search results first, not canned wording.
+- If the user asks to open/view/read a specific file and the best search result is a strong match, set navigateTo to /file/<id>.
+- If the user asks about categories or collections, navigateTo can be /graph.
+- If the user asks to add or import files, navigateTo can be /upload.
+- Never claim direct file editing exists.
+- Suggested actions must fit the actual workspace state and should do what they say.
+- Do not invent files, categories, keywords, or routes.
+`;
+}
+
+function buildSuggestedActions({
+  prompt,
+  pathname,
+  categories,
+  documents,
+  searchResults,
+}: {
+  prompt: string;
+  pathname: string;
+  categories: CategoryRow[];
+  documents: DocumentRow[];
+  searchResults: DocumentSearchRow[];
+}) {
+  const actions: DashboardAssistantSuggestion[] = [];
+  const topSearchResult = searchResults[0];
+
+  if (topSearchResult) {
+    actions.push({
+      label: "Open match",
+      sub: displayDocumentName(topSearchResult),
+      prompt: `Open ${displayDocumentName(topSearchResult)}`,
+    });
+  }
+
+  if (documents[0]) {
+    actions.push({
+      label: "Open recent file",
+      sub: displayDocumentName(documents[0]),
+      prompt: `Open ${displayDocumentName(documents[0])}`,
+    });
+  }
+
+  if (categories[0]) {
+    const busiestCategory = [...categories]
+      .map((category) => ({
+        category,
+        fileCount: documents.filter((document) => document.category_id === category.id).length,
+      }))
+      .sort((left, right) => right.fileCount - left.fileCount)[0];
+
+    if (busiestCategory && busiestCategory.fileCount > 0) {
+      actions.push({
+        label: `Open ${busiestCategory.category.name}`,
+        sub: `${busiestCategory.fileCount} files`,
+        prompt: `Show me files in ${busiestCategory.category.name}`,
+      });
+    } else {
+      actions.push({
+        label: "View categories",
+        sub: `${categories.length} available`,
+        prompt: "Show me the categories in this space",
+      });
+    }
+  }
+
+  actions.push({
+    label: "Open uploads",
+    sub: documents.length === 0 ? "Add your first file" : "Add more files",
+    prompt: "Take me to the upload page",
+  });
+
+  if (pathname !== "/dashboard") {
+    actions.push({
+      label: "Back to dashboard",
+      sub: "Return to assistant home",
+      prompt: "Take me back to the dashboard",
+    });
+  }
+
+  return dedupeSuggestions(actions).slice(0, 4);
+}
+
+function dedupeSuggestions(suggestions: DashboardAssistantSuggestion[]) {
+  const seen = new Set<string>();
+  return suggestions.filter((suggestion) => {
+    const key = `${suggestion.label}::${suggestion.prompt}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildFallbackAssistantMessage({
+  prompt,
+  categories,
+  documents,
+  searchResults,
+}: {
+  prompt: string;
+  categories: CategoryRow[];
+  documents: DocumentRow[];
+  searchResults: DocumentSearchRow[];
+}) {
+  if (!prompt) {
+    return documents.length === 0
+      ? "This space is ready for its first upload. I can help you open uploads, browse categories, or find files once they are here."
+      : `This space has ${documents.length} files across ${categories.length} categories. Ask me for a file, an image, or a category and I will search the workspace context first.`;
+  }
+
+  if (searchResults[0]) {
+    const bestMatch = searchResults[0];
+    return `I searched this space for "${prompt}" and the closest match is ${displayDocumentName(bestMatch)}${bestMatch.category_name ? ` in ${bestMatch.category_name}` : ""}.`;
+  }
+
+  return `I searched this workspace for "${prompt}" but did not find a strong file match. Try a filename, category name, or a phrase that should appear in the document.`;
+}
+
+function resolveSuggestedNavigation({
+  prompt,
+  pathname,
+  searchResults,
+}: {
+  prompt: string;
+  pathname: string;
+  searchResults: DocumentSearchRow[];
+}) {
+  const normalizedPrompt = prompt.toLowerCase();
+  const topSearchResult = searchResults[0];
+
+  if (containsSearchPhrase(normalizedPrompt, ["upload", "import", "add file"])) {
+    return "/upload";
+  }
+
+  if (containsSearchPhrase(normalizedPrompt, ["dashboard", "home"])) {
+    return pathname === "/dashboard" ? null : "/dashboard";
+  }
+
+  if (containsSearchPhrase(normalizedPrompt, ["category", "categories", "graph", "folder"])) {
+    return "/graph";
+  }
+
+  if (
+    topSearchResult &&
+    containsSearchPhrase(normalizedPrompt, ["open", "view", "read", "show", "edit"])
+  ) {
+    return `/file/${topSearchResult.id}`;
+  }
+
+  return null;
+}
+
+function sanitizeDashboardNavigateTo(
+  value: string,
+  searchResults: DocumentSearchRow[],
+  pathname: string,
+  prompt: string,
+) {
+  if (value === "/upload" || value === "/graph") {
+    return value;
+  }
+
+  if (value === "/dashboard") {
+    return pathname === "/dashboard" ? null : value;
+  }
+
+  if (/^\/file\/\d+$/.test(value)) {
+    const documentId = Number(value.split("/").pop());
+    return searchResults.some((result) => result.id === documentId)
+      ? value
+      : null;
+  }
+
+  return resolveSuggestedNavigation({
+    prompt,
+    pathname,
+    searchResults,
+  });
+}
+
+function buildDocumentKeywords(
+  file: Express.Multer.File,
+  modelAnalysis: ClaudeAnalysis,
+  match: CategoryMatch,
+) {
+  return normalizeKeywords([
+    ...normalizeSearchTokens(file.originalname.replace(/\.[^.]+$/, "")),
+    ...normalizeSearchTokens(modelAnalysis.summary),
+    ...normalizeSearchTokens(modelAnalysis.extractedText),
+    ...normalizeSearchTokens(match.suggestedCategoryName),
+    ...modelAnalysis.matchedKeywords,
+  ]).slice(0, 40);
+}
+
+function displayDocumentName(document: Pick<DocumentRow, "original_file_name" | "file_name" | "filename">) {
+  return document.original_file_name || document.file_name || document.filename;
+}
+
+function containsSearchPhrase(text: string, values: string[]) {
+  return values.some((value) => text.includes(value));
 }
 
 function normalizeWhitespace(text: string) {
