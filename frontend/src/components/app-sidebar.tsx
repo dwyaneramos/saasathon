@@ -177,6 +177,8 @@ export function AppSidebar({
 	);
 	const [pendingUploadFilesToken, setPendingUploadFilesToken] =
 		React.useState(0);
+	const [pendingUploadCategoryId, setPendingUploadCategoryId] =
+		React.useState<number | null>(null);
 	const [searchQuery, setSearchQuery] = React.useState("");
 	const [contentSearchResults, setContentSearchResults] = React.useState<
 		ApiDocumentSearchResult[]
@@ -867,16 +869,21 @@ export function AppSidebar({
 		};
 	}, [activeSpaceId, searchQuery]);
 
-	React.useEffect(() => {
-		const handleOpenUploadModal = (event: Event) => {
-			const files =
-				(event as OpenUploadModalEvent).detail?.files ?? [];
-			if (files.length > 0) {
-				setPendingUploadFiles(files);
-				setPendingUploadFilesToken((currentValue) => currentValue + 1);
-			}
-			setIsUploadModalOpen(true);
-		};
+		React.useEffect(() => {
+			const handleOpenUploadModal = (event: Event) => {
+				const detail = (event as OpenUploadModalEvent).detail;
+				const files = detail?.files ?? [];
+				if (files.length > 0) {
+					setPendingUploadFiles(files);
+					setPendingUploadFilesToken((currentValue) => currentValue + 1);
+				}
+				setPendingUploadCategoryId(
+					typeof detail?.categoryId === "number"
+						? detail.categoryId
+						: null,
+				);
+				setIsUploadModalOpen(true);
+			};
 
 		window.addEventListener(openUploadModalEvent, handleOpenUploadModal);
 
@@ -1364,10 +1371,11 @@ export function AppSidebar({
 			<UploadModal
 				open={isUploadModalOpen}
 				onOpenChange={setIsUploadModalOpen}
-				spaceId={activeSpaceId}
-				incomingFiles={pendingUploadFiles}
-				incomingFilesToken={pendingUploadFilesToken}
-			/>
+					spaceId={activeSpaceId}
+					incomingFiles={pendingUploadFiles}
+					incomingFilesToken={pendingUploadFilesToken}
+					incomingCategoryId={pendingUploadCategoryId}
+				/>
 
 			{isManageCategoriesOpen && (
 				<ManageCategoriesModal

@@ -1,5 +1,4 @@
-import { Link, NavLink } from "react-router-dom";
-import { Share2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import kibiLogo from "../assets/kibi.svg";
 
 const Footer = () => {
@@ -33,25 +32,6 @@ const Footer = () => {
 					<div className="flex gap-12 text-sm">
 						<div className="flex flex-col gap-3">
 							<span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-								Product
-							</span>
-							<NavLink
-								to="/graph"
-								className={({ isActive }) =>
-									`flex items-center gap-1.5 transition-colors ${
-										isActive
-											? "text-zinc-900"
-											: "text-zinc-500 hover:text-zinc-900"
-									}`
-								}
-							>
-								<Share2 size={14} strokeWidth={2.25} />
-								Graph
-							</NavLink>
-						</div>
-
-						<div className="flex flex-col gap-3">
-							<span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
 								Company
 							</span>
 							<Link
@@ -59,12 +39,6 @@ const Footer = () => {
 								className="text-zinc-500 hover:text-zinc-900 transition-colors"
 							>
 								About
-							</Link>
-							<Link
-								to="/blog"
-								className="text-zinc-500 hover:text-zinc-900 transition-colors"
-							>
-								Blog
 							</Link>
 							<Link
 								to="/privacy"
@@ -82,12 +56,6 @@ const Footer = () => {
 						© {new Date().getFullYear()} Kibi. All rights reserved.
 					</p>
 					<div className="flex gap-4">
-						<Link
-							to="/terms"
-							className="text-xs text-zinc-500 hover:text-zinc-900"
-						>
-							Terms
-						</Link>
 						<Link
 							to="/contact"
 							className="text-xs text-zinc-500 hover:text-zinc-900"
