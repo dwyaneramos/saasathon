@@ -1030,13 +1030,14 @@ export function AppSidebar({
 					.sort((a, b) => a.name.localeCompare(b.name)),
 			);
 			setEditingCategoryId(null);
-			setEditingCategoryName("");
-			toast.success(
-				`Category renamed to '${payload?.category?.name ?? trimmedName}'`,
-			);
-		} catch (err) {
-			setCategoryActionError(
-				err instanceof Error
+				setEditingCategoryName("");
+				toast.success(
+					`Category renamed to '${payload?.category?.name ?? trimmedName}'`,
+				);
+				window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+			} catch (err) {
+				setCategoryActionError(
+					err instanceof Error
 					? err.message
 					: "Could not rename category.",
 			);
