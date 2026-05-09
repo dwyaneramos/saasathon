@@ -12,6 +12,7 @@ import Register from "./pages/Register";
 import GraphPage from "./pages/Graph";
 import Landing from "./pages/Landing";
 import Upload from "@/pages/Upload";
+import FileView from "@/pages/FileView";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import AppNavbar from "@/components/AppNavbar";
@@ -28,7 +29,7 @@ function AppLayout() {
 			>
 				<AppNavbar />
 				<AppSidebar />
-				<SidebarInset className="mt-[65px]">
+				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0">
 					<Outlet />
 				</SidebarInset>
 			</SidebarProvider>
@@ -72,6 +73,14 @@ function App() {
 								element={
 									<ProtectedRoute>
 										<GraphPage />
+									</ProtectedRoute>
+								}
+							/>
+							<Route
+								path="/file/:documentId"
+								element={
+									<ProtectedRoute>
+										<FileView />
 									</ProtectedRoute>
 								}
 							/>

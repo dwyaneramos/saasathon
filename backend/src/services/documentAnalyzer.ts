@@ -257,6 +257,30 @@ export async function listDocuments(spaceId?: number | null) {
   return rows;
 }
 
+export async function getDocument(documentId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<DocumentRow>(
+    `SELECT
+        id,
+        space_id,
+        filename,
+        filepath,
+        file_name,
+        original_file_name,
+        stored_file_name,
+        mime_type,
+        file_size,
+        category_id,
+        summary,
+        created_at
+     FROM documents
+     WHERE id = $1
+     LIMIT 1`,
+    [documentId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);

@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { Link } from "react-router-dom";
 import {
 	ChevronRight,
 	FileArchive,
@@ -291,8 +292,8 @@ function CategoryItem({
 							category.files.map((file) => (
 								<SidebarMenuSubItem key={file.id}>
 									<SidebarMenuSubButton asChild>
-										<a
-											href={`/file/${file.id}`}
+										<Link
+											to={`/file/${file.id}`}
 											className="flex items-start gap-2 text-muted-foreground"
 											onClick={() => onClearNewFile(category.id, file.id)}
 										>
@@ -307,7 +308,7 @@ function CategoryItem({
 											<span className="min-w-0 overflow-hidden whitespace-nowrap">
 												{file.name}
 											</span>
-										</a>
+										</Link>
 									</SidebarMenuSubButton>
 								</SidebarMenuSubItem>
 							))
