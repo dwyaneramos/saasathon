@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
+import { fileIconFor } from "@/components/app-sidebar";
 import type {
 	CategorySummary,
 	DocumentSummary,
@@ -415,21 +416,27 @@ export default function Graph() {
                   hoveredCategoryFiles.map((doc) => {
                     const name =
                       doc.originalFileName || doc.fileName || doc.filename;
-                    const ext = name.split(".").pop()?.toUpperCase() ?? "";
+                    const FileIcon = fileIconFor({
+                      id: doc.id,
+                      name,
+                      filename: name,
+                      mimeType: doc.mimeType,
+                    });
                     return (
-                      <li
-                        key={doc.id}
-                        className="flex items-center gap-3 px-4 py-2 hover:bg-stone-50"
-                      >
-                        <span className="flex-shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-500">
-                          {ext || "—"}
-                        </span>
-                        <span
-                          className="truncate text-xs text-stone-700"
+                      <li key={doc.id}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/file/${doc.id}`)}
+                          className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-stone-50"
                           title={name}
                         >
-                          {name}
-                        </span>
+                          <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
+                            <FileIcon className="size-3.5" />
+                          </span>
+                          <span className="truncate text-xs text-stone-700">
+                            {name}
+                          </span>
+                        </button>
                       </li>
                     );
                   })
