@@ -334,6 +334,7 @@ export async function searchDocuments(input: {
 
   const normalizedQuery = trimmedQuery.toLowerCase();
   const tokens = normalizeSearchTokens(trimmedQuery);
+  const fileTypeHints = resolveFileTypeSearchHints(trimmedQuery);
   const safeLimit = Math.min(Math.max(input.limit ?? 8, 1), 20);
 
   const { rows } = await getDb().query<DocumentSearchRow>(
@@ -382,11 +383,32 @@ export async function searchDocuments(input: {
             WHEN lower(COALESCE(d.extracted_text, '')) LIKE '%' || $2 || '%' THEN 18
             ELSE 0
           END +
+          CASE
+            WHEN lower(COALESCE(d.mime_type, '')) = ANY($5::text[]) THEN 90
+            ELSE 0
+          END +
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest($6::text[]) AS mime_prefix
+              WHERE lower(COALESCE(d.mime_type, '')) LIKE mime_prefix || '%'
+            ) THEN 85
+            ELSE 0
+          END +
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM unnest($7::text[]) AS extension
+              WHERE lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) LIKE '%.' || extension
+            ) THEN 88
+            ELSE 0
+          END +
           COALESCE((
             SELECT SUM(
               CASE
                 WHEN token = '' THEN 0
                 WHEN lower(COALESCE(d.original_file_name, d.file_name, d.filename, '')) LIKE '%' || token || '%' THEN 16
+                WHEN lower(COALESCE(d.mime_type, '')) LIKE '%' || token || '%' THEN 12
                 WHEN lower(COALESCE(c.name, '')) LIKE '%' || token || '%' THEN 10
                 WHEN EXISTS (
                   SELECT 1
@@ -411,7 +433,15 @@ export async function searchDocuments(input: {
      WHERE ($1::integer IS NULL OR d.space_id = $1)
      ORDER BY score DESC, d.created_at DESC
      LIMIT $4`,
-    [input.spaceId ?? null, normalizedQuery, tokens, safeLimit],
+    [
+      input.spaceId ?? null,
+      normalizedQuery,
+      tokens,
+      safeLimit,
+      fileTypeHints.exactMimeTypes,
+      fileTypeHints.mimePrefixes,
+      fileTypeHints.extensions,
+    ],
   );
 
   return rows.filter((row) => row.score > 0);
@@ -1899,6 +1929,186 @@ function normalizeSearchTokens(query: string) {
       .map((token) => token.trim())
       .filter((token) => token.length >= 2),
   )];
+}
+
+type FileTypeSearchHints = {
+  exactMimeTypes: string[];
+  mimePrefixes: string[];
+  extensions: string[];
+};
+
+const FILE_TYPE_SEARCH_ALIASES: Record<string, FileTypeSearchHints> = {
+  image: {
+    exactMimeTypes: [],
+    mimePrefixes: ["image/"],
+    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "svg", "webp"],
+  },
+  picture: {
+    exactMimeTypes: [],
+    mimePrefixes: ["image/"],
+    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "svg", "webp"],
+  },
+  photo: {
+    exactMimeTypes: [],
+    mimePrefixes: ["image/"],
+    extensions: ["avif", "gif", "heic", "jpeg", "jpg", "png", "webp"],
+  },
+  pdf: {
+    exactMimeTypes: ["application/pdf"],
+    mimePrefixes: [],
+    extensions: ["pdf"],
+  },
+  spreadsheet: {
+    exactMimeTypes: [
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+      "text/tab-separated-values",
+    ],
+    mimePrefixes: [],
+    extensions: ["csv", "tsv", "xls", "xlsx"],
+  },
+  video: {
+    exactMimeTypes: [],
+    mimePrefixes: ["video/"],
+    extensions: ["avi", "mov", "mp4", "mpeg", "webm"],
+  },
+  audio: {
+    exactMimeTypes: [],
+    mimePrefixes: ["audio/"],
+    extensions: ["aac", "flac", "m4a", "mp3", "ogg", "wav"],
+  },
+  archive: {
+    exactMimeTypes: [
+      "application/gzip",
+      "application/vnd.rar",
+      "application/x-7z-compressed",
+      "application/x-tar",
+      "application/zip",
+    ],
+    mimePrefixes: [],
+    extensions: ["7z", "gz", "rar", "tar", "zip"],
+  },
+  code: {
+    exactMimeTypes: ["application/json", "application/xml", "text/html", "text/css"],
+    mimePrefixes: [],
+    extensions: ["css", "html", "js", "json", "jsx", "md", "ts", "tsx", "xml"],
+  },
+};
+
+const EXTENSION_SEARCH_HINTS: Record<string, FileTypeSearchHints> = {
+  pdf: FILE_TYPE_SEARCH_ALIASES.pdf,
+  png: {
+    exactMimeTypes: ["image/png"],
+    mimePrefixes: [],
+    extensions: ["png"],
+  },
+  jpg: {
+    exactMimeTypes: ["image/jpeg"],
+    mimePrefixes: [],
+    extensions: ["jpg", "jpeg"],
+  },
+  jpeg: {
+    exactMimeTypes: ["image/jpeg"],
+    mimePrefixes: [],
+    extensions: ["jpg", "jpeg"],
+  },
+  gif: {
+    exactMimeTypes: ["image/gif"],
+    mimePrefixes: [],
+    extensions: ["gif"],
+  },
+  webp: {
+    exactMimeTypes: ["image/webp"],
+    mimePrefixes: [],
+    extensions: ["webp"],
+  },
+  svg: {
+    exactMimeTypes: ["image/svg+xml"],
+    mimePrefixes: [],
+    extensions: ["svg"],
+  },
+  csv: {
+    exactMimeTypes: ["text/csv"],
+    mimePrefixes: [],
+    extensions: ["csv"],
+  },
+  tsv: {
+    exactMimeTypes: ["text/tab-separated-values"],
+    mimePrefixes: [],
+    extensions: ["tsv"],
+  },
+  xls: {
+    exactMimeTypes: ["application/vnd.ms-excel"],
+    mimePrefixes: [],
+    extensions: ["xls"],
+  },
+  xlsx: {
+    exactMimeTypes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+    mimePrefixes: [],
+    extensions: ["xlsx"],
+  },
+  mp4: {
+    exactMimeTypes: ["video/mp4"],
+    mimePrefixes: [],
+    extensions: ["mp4"],
+  },
+  mp3: {
+    exactMimeTypes: ["audio/mpeg"],
+    mimePrefixes: [],
+    extensions: ["mp3"],
+  },
+  json: {
+    exactMimeTypes: ["application/json"],
+    mimePrefixes: [],
+    extensions: ["json"],
+  },
+  xml: {
+    exactMimeTypes: ["application/xml", "text/xml"],
+    mimePrefixes: [],
+    extensions: ["xml"],
+  },
+};
+
+function resolveFileTypeSearchHints(query: string): FileTypeSearchHints {
+  const hints: FileTypeSearchHints = {
+    exactMimeTypes: [],
+    mimePrefixes: [],
+    extensions: [],
+  };
+
+  for (const rawToken of normalizeSearchTokens(query)) {
+    const token = rawToken.replace(/^\.+/, "").replace(/\.+$/, "");
+    const singularToken =
+      token.endsWith("s") && token.length > 3 ? token.slice(0, -1) : token;
+    const candidates = [token, singularToken];
+
+    for (const candidate of candidates) {
+      const aliasHints = FILE_TYPE_SEARCH_ALIASES[candidate];
+      if (aliasHints) {
+        addFileTypeHints(hints, aliasHints);
+      }
+
+      const extensionHints = EXTENSION_SEARCH_HINTS[candidate];
+      if (extensionHints) {
+        addFileTypeHints(hints, extensionHints);
+      }
+    }
+  }
+
+  return {
+    exactMimeTypes: normalizeKeywords(hints.exactMimeTypes),
+    mimePrefixes: normalizeKeywords(hints.mimePrefixes),
+    extensions: normalizeKeywords(hints.extensions),
+  };
+}
+
+function addFileTypeHints(target: FileTypeSearchHints, source: FileTypeSearchHints) {
+  target.exactMimeTypes.push(...source.exactMimeTypes);
+  target.mimePrefixes.push(...source.mimePrefixes);
+  target.extensions.push(...source.extensions);
 }
 
 type DashboardAssistantJson = {
