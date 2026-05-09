@@ -424,7 +424,7 @@ function AddButton() {
 			<DropdownMenuTrigger asChild>
 				<SidebarMenuButton
 					tooltip="Add new"
-					className="w-full border border-dashed border-sidebar-border hover:border-sidebar-accent-foreground/30 text-muted-foreground hover:text-foreground hover:bg-zinc-200"
+					className="w-full border border-dashed border-sidebar-border border-zinc-400 text-muted-foreground hover:text-foreground hover:bg-zinc-200"
 					style={{ transition: "none" }}
 				>
 					<Plus className="shrink-0" />
