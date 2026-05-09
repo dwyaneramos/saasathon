@@ -173,6 +173,7 @@ export default function Graph() {
         label:
           document.originalFileName || document.fileName || document.filename,
         documentId: document.id,
+        fileSize: document.fileSize,
         summary: document.summary,
         mimeType: document.mimeType,
       }));
