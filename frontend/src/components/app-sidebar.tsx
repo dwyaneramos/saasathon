@@ -413,7 +413,11 @@ function FileTree({
 
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
-function AddButton() {
+type AddButtonProps = {
+	onNewCollection: () => void;
+};
+
+function AddButton({ onNewCollection }: AddButtonProps) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -432,7 +436,7 @@ function AddButton() {
 				<DropdownMenuItem className="gap-2">
 					<FileText className="size-4" /> New file
 				</DropdownMenuItem>
-				<DropdownMenuItem className="gap-2">
+				<DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
 					<FolderOpen className="size-4" /> New collection
 				</DropdownMenuItem>
 				<DropdownMenuItem className="gap-2">
@@ -460,6 +464,12 @@ export function AppSidebar({
 	const [isLoading, setIsLoading] = React.useState(true);
 	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
+	const [newCategoryName, setNewCategoryName] = React.useState("");
+	const [createCategoryError, setCreateCategoryError] = React.useState<string | null>(
+		null,
+	);
+	const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
 	const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
@@ -476,6 +486,39 @@ export function AppSidebar({
 
 	const activeSpace =
 		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
+
+	const validateCategoryName = React.useCallback(
+		(value: string) => {
+			const trimmed = value.trim();
+
+			if (!trimmed) return "Category name is required.";
+			if (trimmed.length < 2) return "Category name must be at least 2 characters.";
+			if (trimmed.length > 80) return "Category name must be 80 characters or fewer.";
+			if (
+				categories.some(
+					(category) => category.name.trim().toLowerCase() === trimmed.toLowerCase(),
+				)
+			) {
+				return "A category with this name already exists.";
+			}
+
+			return null;
+		},
+		[categories],
+	);
+
+	const openCreateCategoryModal = React.useCallback(() => {
+		setNewCategoryName("");
+		setCreateCategoryError(null);
+		setIsCreateCategoryOpen(true);
+	}, []);
+
+	const closeCreateCategoryModal = React.useCallback(() => {
+		if (isCreatingCategory) return;
+		setIsCreateCategoryOpen(false);
+		setNewCategoryName("");
+		setCreateCategoryError(null);
+	}, [isCreatingCategory]);
 
 	const clearNewFile = React.useCallback(
 		(categoryId: number, fileId: number) => {
@@ -755,50 +798,171 @@ export function AppSidebar({
 		};
 	}, [loadFileTree]);
 
+	const handleCreateCategory = async (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+
+		const trimmedName = newCategoryName.trim();
+		const validationError = validateCategoryName(trimmedName);
+		if (validationError) {
+			setCreateCategoryError(validationError);
+			return;
+		}
+
+		setIsCreatingCategory(true);
+		setCreateCategoryError(null);
+
+		try {
+			const response = await fetch(`${apiBaseUrl}/categories`, {
+				method: "POST",
+				headers: {
+					...authHeaders(),
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					name: trimmedName,
+					spaceId: activeSpaceId ?? null,
+				}),
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| { category?: { id?: number }; error?: string }
+				| null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not create category.");
+				}
+
+				await loadFileTree();
+
+				const createdCategoryId = payload?.category?.id;
+				if (typeof createdCategoryId === "number") {
+					setNewCategoryIds((currentIds) => {
+						const nextIds = new Set(currentIds);
+						nextIds.add(createdCategoryId);
+						return nextIds;
+					});
+				}
+
+			setIsCreateCategoryOpen(false);
+			setNewCategoryName("");
+			setCreateCategoryError(null);
+		} catch (err) {
+			setCreateCategoryError(
+				err instanceof Error ? err.message : "Could not create category.",
+			);
+		} finally {
+			setIsCreatingCategory(false);
+		}
+	};
+
 	return (
-		<Sidebar
-			overlay
-			collapsible="icon"
-			className="top-[var(--header-height)] h-[calc(100svh-var(--header-height))] border-r border-r-zinc-100"
-			{...props}
-		>
-			{/* Header: space switcher */}
-			<SidebarHeader>
-				<SidebarMenu>
-					<SidebarMenuItem>
-						<SpaceSwitcher
-							spaces={spaces}
-							activeSpace={activeSpace}
-							onSelect={(space) => onSpaceChange(space.id)}
-						/>
-					</SidebarMenuItem>
-				</SidebarMenu>
-			</SidebarHeader>
+		<>
+			<Sidebar
+				overlay
+				collapsible="icon"
+				className="top-[var(--header-height)] h-[calc(100svh-var(--header-height))] border-r border-r-zinc-100"
+				{...props}
+			>
+				{/* Header: space switcher */}
+				<SidebarHeader>
+					<SidebarMenu>
+						<SidebarMenuItem>
+							<SpaceSwitcher
+								spaces={spaces}
+								activeSpace={activeSpace}
+								onSelect={(space) => onSpaceChange(space.id)}
+							/>
+						</SidebarMenuItem>
+					</SidebarMenu>
+				</SidebarHeader>
 
-			{/* Content: file tree for active space */}
-			<SidebarContent>
-				<FileTree
-					categories={categories}
-					isLoading={isLoading}
-					error={error}
-					newCategoryIds={newCategoryIds}
-					newFileCategoryIds={newFileCategoryIds}
-					newFileIds={newFileIds}
-					onClearCategory={clearCategoryNotification}
-					onClearNewFile={clearNewFile}
-				/>
-			</SidebarContent>
+				{/* Content: file tree for active space */}
+				<SidebarContent>
+					<FileTree
+						categories={categories}
+						isLoading={isLoading}
+						error={error}
+						newCategoryIds={newCategoryIds}
+						newFileCategoryIds={newFileCategoryIds}
+						newFileIds={newFileIds}
+						onClearCategory={clearCategoryNotification}
+						onClearNewFile={clearNewFile}
+					/>
+				</SidebarContent>
 
-			{/* Footer: add button */}
-			<SidebarFooter>
-				<SidebarMenu>
-					<SidebarMenuItem>
-						<AddButton />
-					</SidebarMenuItem>
-				</SidebarMenu>
-			</SidebarFooter>
+				{/* Footer: add button */}
+				<SidebarFooter>
+					<SidebarMenu>
+						<SidebarMenuItem>
+							<AddButton onNewCollection={openCreateCategoryModal} />
+						</SidebarMenuItem>
+					</SidebarMenu>
+				</SidebarFooter>
 
-			<SidebarRail />
-		</Sidebar>
+				<SidebarRail />
+			</Sidebar>
+
+			{isCreateCategoryOpen && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
+						<h2 className="text-lg font-semibold text-zinc-950">
+							Create New Category
+						</h2>
+						<p className="mt-1 text-sm text-zinc-500">
+							Add a name for the new collection.
+						</p>
+
+						<form className="mt-5" onSubmit={handleCreateCategory}>
+							<label
+								htmlFor="new-category-name"
+								className="block text-sm font-medium text-zinc-800"
+							>
+								Category name
+							</label>
+							<input
+								id="new-category-name"
+								type="text"
+								value={newCategoryName}
+								onChange={(event) => {
+									setNewCategoryName(event.target.value);
+									if (createCategoryError) {
+										setCreateCategoryError(null);
+									}
+								}}
+								placeholder="e.g. Contracts"
+								maxLength={80}
+								autoFocus
+								className="mt-2 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-950 outline-none focus:border-zinc-500"
+							/>
+
+							{createCategoryError && (
+								<p className="mt-2 text-sm text-red-600">
+									{createCategoryError}
+								</p>
+							)}
+
+							<div className="mt-5 flex justify-end gap-3">
+								<button
+									type="button"
+									onClick={closeCreateCategoryModal}
+									disabled={isCreatingCategory}
+									className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									disabled={isCreatingCategory}
+									className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{isCreatingCategory
+										? "Creating..."
+										: "Create new category"}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+		</>
 	);
 }
