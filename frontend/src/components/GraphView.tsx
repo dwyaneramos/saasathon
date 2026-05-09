@@ -111,7 +111,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
   const handlePointerOut = () => {
     if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
-    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 180);
+    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 90);
   };
 
   useEffect(() => {
