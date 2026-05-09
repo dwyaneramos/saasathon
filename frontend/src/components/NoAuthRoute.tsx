@@ -7,7 +7,7 @@ export const NoAuthRoute = ({ children }: { children: React.ReactNode }) => {
 
 	if (isLoading) {
 		return (
-			<div className="min-h-screen bg-bg flex items-center justify-center">
+			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-white opacity-50">Loading...</div>
 			</div>
 		);
