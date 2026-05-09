@@ -2,7 +2,6 @@ import React, { Suspense, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
-import type Landing from "@/pages/Landing";
 
 const NODE_COUNT = 25;
 const NETWORK_SIZE = 2.8;
@@ -63,7 +62,7 @@ export const LandingAnimation = () => {
   return (
     <div className="w-full h-[900px]">
       <Canvas
-        camera={{ position: [0, 0, 6.5], fov: 42 }}
+        camera={{ position: [0, 0, 8], fov: 42 }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={1.2} />
@@ -78,7 +77,7 @@ export const LandingAnimation = () => {
               <Line
                 key={index}
                 points={[start, end]}
-                color="#1d202e"
+                color="#000000"
                 transparent
                 opacity={0.35}
                 lineWidth={1}
@@ -90,8 +89,8 @@ export const LandingAnimation = () => {
                 <mesh>
                   <sphereGeometry args={[0.035, 16, 16]} />
                   <meshStandardMaterial
-                    color="#242f40"
-                    emissive="#242f40"
+                    color="#000000"
+                    emissive="#000000"
                     emissiveIntensity={2}
                   />
                 </mesh>
@@ -99,8 +98,8 @@ export const LandingAnimation = () => {
                 <Billboard>
                   <Text
                     position={[0, 0.07, 0]}
-                    fontSize={0.034}
-                    color="#242f40"
+                    fontSize={0.06}
+                    color="rgb(0, 0, 0)"
                     anchorX="center"
                     anchorY="middle"
                   >
@@ -114,7 +113,7 @@ export const LandingAnimation = () => {
 
         <OrbitControls
           enableZoom={false}
-          enableRotate={false}
+          enableRotate={true}
           enablePan={false}
           autoRotate
           autoRotateSpeed={0.2}
