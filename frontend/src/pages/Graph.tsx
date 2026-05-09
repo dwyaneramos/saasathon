@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
+import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import type {
 	CategorySummary,
@@ -18,8 +19,6 @@ import type {
 type GraphMode = "categories" | "files";
 type CategoriesResponse = { categories?: CategorySummary[]; error?: string };
 type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
-
-const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
 	activeSpaceId: number | null;

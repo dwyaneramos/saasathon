@@ -54,10 +54,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UploadWorkspace } from "@/components/upload-workspace";
+import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 
-const apiBaseUrl = "http://localhost:3000/api/v1";
 export const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 export const openUploadModalEvent = "kibi:open-upload-modal";
 
@@ -968,6 +968,21 @@ export function AppSidebar({
 			);
 		};
 	}, [loadFileTree]);
+
+	React.useEffect(() => {
+		const handleOpenUploadModal = () => {
+			setIsUploadModalOpen(true);
+		};
+
+		window.addEventListener(openUploadModalEvent, handleOpenUploadModal);
+
+		return () => {
+			window.removeEventListener(
+				openUploadModalEvent,
+				handleOpenUploadModal,
+			);
+		};
+	}, []);
 
 	const handleCreateCategory = async (
 		event: React.FormEvent<HTMLFormElement>,

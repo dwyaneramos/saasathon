@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
+import { apiBaseUrl } from "@/lib/api";
 
 const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -59,7 +60,7 @@ export default function Login() {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/api/v1/users/login",
+        `${apiBaseUrl}/users/login`,
         {
           method: "POST",
           headers: {
