@@ -73,6 +73,7 @@ type UploadWorkspaceProps = {
   detailMode?: "full" | "compact";
   showHeading?: boolean;
   onBusyChange?: (isBusy: boolean) => void;
+  spaceId?: number | null;
 };
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
@@ -82,6 +83,7 @@ export function UploadWorkspace({
   detailMode = "full",
   showHeading = true,
   onBusyChange,
+  spaceId,
 }: UploadWorkspaceProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -140,6 +142,9 @@ export function UploadWorkspace({
     try {
       const body = new FormData();
       files.forEach((file) => body.append("files", file));
+      if (typeof spaceId === "number") {
+        body.append("spaceId", String(spaceId));
+      }
       const res = await fetch(`${apiBaseUrl}/upload/multiple`, {
         method: "POST",
         headers: authHeaders(),
@@ -229,18 +234,20 @@ export function UploadWorkspace({
       };
     }
 
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      if (uploadedFile?.documentId) {
-        body.append("documentId", String(uploadedFile.documentId));
-      }
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        if (uploadedFile?.documentId) {
+          body.append("documentId", String(uploadedFile.documentId));
+        }
 
-      const res = await fetch(`${apiBaseUrl}${endpoint}`, {
-        method: "POST",
-        headers: authHeaders(),
-        body,
-      });
+        // The analyze endpoints read spaceId from the query string, so append it if provided
+        const url = typeof spaceId === "number" ? `${apiBaseUrl}${endpoint}?spaceId=${spaceId}` : `${apiBaseUrl}${endpoint}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: authHeaders(),
+          body,
+        });
       const payload = (await res.json()) as AnalysisResponse;
 
       if (!res.ok && payload.error) {
@@ -317,7 +324,8 @@ export function UploadWorkspace({
     null;
 
   const loadKnownCategories = async () => {
-    const res = await fetch(`${apiBaseUrl}/categories`, {
+    const url = typeof spaceId === "number" ? `${apiBaseUrl}/categories?spaceId=${spaceId}` : `${apiBaseUrl}/categories`;
+    const res = await fetch(url, {
       headers: authHeaders(),
     });
     if (!res.ok) {
@@ -359,6 +367,7 @@ export function UploadWorkspace({
           keywords: [name],
         },
         documentId,
+        spaceId: typeof spaceId === "number" ? spaceId : null,
       }),
     });
     const payload = (await res.json().catch(() => null)) as CategoryUpsertResponse | null;
