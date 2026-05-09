@@ -8,7 +8,6 @@ import {
 	FileText,
 	Plus,
 	Layers,
-	LayoutGrid,
 	FolderClosed,
 } from "lucide-react";
 import {
@@ -39,60 +38,40 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 
-type KibiFile = { id: string; name: string };
-type Collection = { id: string; name: string; files: KibiFile[] };
-type Space = { id: string; name: string; collections: Collection[] };
+const apiBaseUrl = "http://localhost:3000/api/v1";
+const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
-const spaces: Space[] = [
-	{
-		id: "s1",
-		name: "Personal",
-		collections: [
-			{
-				id: "c1",
-				name: "Notes",
-				files: [
-					{ id: "f1", name: "Meeting notes" },
-					{ id: "f2", name: "Ideas" },
-				],
-			},
-			{
-				id: "c2",
-				name: "Research",
-				files: [{ id: "f3", name: "Paper summaries" }],
-			},
-		],
-	},
-	{
-		id: "s2",
-		name: "Work",
-		collections: [
-			{
-				id: "c3",
-				name: "Projects",
-				files: [
-					{ id: "f4", name: "Q1 Roadmap" },
-					{ id: "f5", name: "Sprint planning" },
-					{ id: "f6", name: "Retro notes" },
-				],
-			},
-		],
-	},
-	{
-		id: "s3",
-		name: "Learning",
-		collections: [
-			{
-				id: "c4",
-				name: "Courses",
-				files: [
-					{ id: "f7", name: "TypeScript handbook" },
-					{ id: "f8", name: "System design" },
-				],
-			},
-		],
-	},
-];
+type KibiFile = { id: number; name: string };
+type Category = { id: number; name: string; files: KibiFile[] };
+type Space = { id: number; name: string };
+
+type ApiSpace = {
+	id: number;
+	name: string;
+};
+
+type ApiCategory = {
+	id: number;
+	name: string;
+	spaceId: number | null;
+};
+
+type ApiDocument = {
+	id: number;
+	filename: string;
+	fileName: string;
+	originalFileName: string | null;
+	categoryId: number | null;
+};
+
+function authHeaders() {
+	const token = localStorage.getItem("token");
+	return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
+function fileDisplayName(file: ApiDocument) {
+	return file.originalFileName || file.fileName || file.filename;
+}
 
 // ── Space switcher (header) ───────────────────────────────────────────────────
 
@@ -102,20 +81,20 @@ function SpaceSwitcher({
 	onSelect,
 }: {
 	spaces: Space[];
-	activeSpace: Space;
+	activeSpace: Space | null;
 	onSelect: (space: Space) => void;
 }) {
-	const { isMobile, state } = useSidebar();
-	const collapsed = state === "collapsed";
+	const { isMobile } = useSidebar();
+	const activeSpaceName = activeSpace?.name ?? "No spaces";
 
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton tooltip={activeSpace.name}>
+				<SidebarMenuButton tooltip={activeSpaceName}>
 					<Layers />
 					<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
 						<span className="truncate font-semibold">
-							{activeSpace.name}
+							{activeSpaceName}
 						</span>
 						<span className="truncate text-xs text-muted-foreground">
 							Active space
@@ -129,33 +108,43 @@ function SpaceSwitcher({
 				align="start"
 				className="min-w-48 rounded-lg"
 			>
-				{spaces.map((space) => (
-					<DropdownMenuItem
-						key={space.id}
-						onSelect={() => onSelect(space)}
-						className="gap-2"
-					>
-						<div className="flex size-6 items-center justify-center rounded-md border bg-background">
-							<Layers className="size-3.5 shrink-0" />
-						</div>
-						{space.name}
-						{space.id === activeSpace.id && (
-							<span className="ml-auto text-xs text-muted-foreground">
-								Active
-							</span>
-						)}
-					</DropdownMenuItem>
-				))}
+				{spaces.length > 0 ? (
+					spaces.map((space) => (
+						<DropdownMenuItem
+							key={space.id}
+							onSelect={() => onSelect(space)}
+							className="gap-2"
+						>
+							<div className="flex size-6 items-center justify-center rounded-md border bg-background">
+								<Layers className="size-3.5 shrink-0" />
+							</div>
+							{space.name}
+							{space.id === activeSpace?.id && (
+								<span className="ml-auto text-xs text-muted-foreground">
+									Active
+								</span>
+							)}
+						</DropdownMenuItem>
+					))
+				) : (
+					<DropdownMenuItem disabled>No spaces found</DropdownMenuItem>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 }
 
-// ── File tree (collections → files) ──────────────────────────────────────────
+// ── File tree (categories → files) ───────────────────────────────────────────
 
-function CollectionItem({ collection }: { collection: Collection }) {
-	const [open, setOpen] = React.useState(false);
+function CategoryItem({ category }: { category: Category }) {
+	const [open, setOpen] = React.useState(category.files.length > 0);
 	const { state, setOpen: setSidebarOpen } = useSidebar();
+
+	React.useEffect(() => {
+		if (category.files.length > 0) {
+			setOpen(true);
+		}
+	}, [category.files.length]);
 
 	function handleOpenChange(nextOpen: boolean) {
 		setOpen(nextOpen);
@@ -172,14 +161,14 @@ function CollectionItem({ collection }: { collection: Collection }) {
 		>
 			<SidebarMenuItem>
 				<CollapsibleTrigger asChild>
-					<SidebarMenuButton tooltip={collection.name}>
+					<SidebarMenuButton tooltip={category.name}>
 						{open ? (
 							<FolderOpen className="shrink-0" />
 						) : (
 							<FolderClosed className="shrink-0" />
 						)}
 						<span className="group-data-[collapsible=icon]:hidden">
-							{collection.name}
+							{category.name}
 						</span>
 						<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
 					</SidebarMenuButton>
@@ -187,19 +176,27 @@ function CollectionItem({ collection }: { collection: Collection }) {
 
 				<CollapsibleContent>
 					<SidebarMenuSub>
-						{collection.files.map((file) => (
-							<SidebarMenuSubItem key={file.id}>
-								<SidebarMenuSubButton asChild>
-									<a
-										href={`/file/${file.id}`}
-										className="flex items-center gap-2"
-									>
-										<FileText className="size-3.5 shrink-0" />
-										<span>{file.name}</span>
-									</a>
-								</SidebarMenuSubButton>
+						{category.files.length > 0 ? (
+							category.files.map((file) => (
+								<SidebarMenuSubItem key={file.id}>
+									<SidebarMenuSubButton asChild>
+										<a
+											href={`/file/${file.id}`}
+											className="flex items-center gap-2"
+										>
+											<FileText className="size-3.5 shrink-0" />
+											<span>{file.name}</span>
+										</a>
+									</SidebarMenuSubButton>
+								</SidebarMenuSubItem>
+							))
+						) : (
+							<SidebarMenuSubItem>
+								<span className="block truncate px-2 py-1 text-xs text-muted-foreground">
+									No files
+								</span>
 							</SidebarMenuSubItem>
-						))}
+						)}
 					</SidebarMenuSub>
 				</CollapsibleContent>
 			</SidebarMenuItem>
@@ -207,19 +204,47 @@ function CollectionItem({ collection }: { collection: Collection }) {
 	);
 }
 
-function FileTree({ space }: { space: Space }) {
+function FileTree({
+	categories,
+	isLoading,
+	error,
+}: {
+	categories: Category[];
+	isLoading: boolean;
+	error: string | null;
+}) {
 	return (
 		<SidebarGroup>
 			<SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-				Collections
+				Categories
 			</SidebarGroupLabel>
 			<SidebarMenu>
-				{space.collections.map((collection) => (
-					<CollectionItem
-						key={collection.id}
-						collection={collection}
-					/>
-				))}
+				{isLoading && (
+					<SidebarMenuItem>
+						<span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+							Loading files...
+						</span>
+					</SidebarMenuItem>
+				)}
+				{!isLoading && error && (
+					<SidebarMenuItem>
+						<span className="block px-2 py-1 text-sm text-destructive group-data-[collapsible=icon]:hidden">
+							{error}
+						</span>
+					</SidebarMenuItem>
+				)}
+				{!isLoading && !error && categories.length === 0 && (
+					<SidebarMenuItem>
+						<span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+							No categories yet
+						</span>
+					</SidebarMenuItem>
+				)}
+				{!isLoading &&
+					!error &&
+					categories.map((category) => (
+						<CategoryItem key={category.id} category={category} />
+					))}
 			</SidebarMenu>
 		</SidebarGroup>
 	);
@@ -228,9 +253,6 @@ function FileTree({ space }: { space: Space }) {
 // ── Add button (footer) ───────────────────────────────────────────────────────
 
 function AddButton() {
-	const { state } = useSidebar();
-	const collapsed = state === "collapsed";
-
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -262,7 +284,122 @@ function AddButton() {
 // ── AppSidebar ────────────────────────────────────────────────────────────────
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-	const [activeSpace, setActiveSpace] = React.useState<Space>(spaces[0]);
+	const [spaces, setSpaces] = React.useState<Space[]>([]);
+	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(null);
+	const [categories, setCategories] = React.useState<Category[]>([]);
+	const [isLoading, setIsLoading] = React.useState(true);
+	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
+	const [error, setError] = React.useState<string | null>(null);
+
+	const activeSpace =
+		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
+
+	const loadFileTree = React.useCallback(async () => {
+		if (!spacesLoaded) return;
+
+		setIsLoading(true);
+		setError(null);
+
+		const query = activeSpaceId ? `?spaceId=${activeSpaceId}` : "";
+
+		try {
+			const [categoryResponse, documentResponse] = await Promise.all([
+				fetch(`${apiBaseUrl}/categories${query}`, {
+					headers: authHeaders(),
+				}),
+				fetch(`${apiBaseUrl}/documents${query}`, {
+					headers: authHeaders(),
+				}),
+			]);
+
+			if (!categoryResponse.ok || !documentResponse.ok) {
+				throw new Error("Unable to load files");
+			}
+
+			const [categoryPayload, documentPayload] = (await Promise.all([
+				categoryResponse.json(),
+				documentResponse.json(),
+			])) as [{ categories?: ApiCategory[] }, { documents?: ApiDocument[] }];
+
+			const documents = documentPayload.documents ?? [];
+			const nextCategories = (categoryPayload.categories ?? []).map(
+				(category) => ({
+					id: category.id,
+					name: category.name,
+					files: documents
+						.filter((document) => document.categoryId === category.id)
+						.map((document) => ({
+							id: document.id,
+							name: fileDisplayName(document),
+						})),
+				}),
+			);
+
+			setCategories(nextCategories);
+		} catch {
+			setCategories([]);
+			setError("Unable to load files");
+		} finally {
+			setIsLoading(false);
+		}
+	}, [activeSpaceId, spacesLoaded]);
+
+	React.useEffect(() => {
+		let ignore = false;
+
+		async function loadSpaces() {
+			try {
+				const response = await fetch(`${apiBaseUrl}/spaces`, {
+					headers: authHeaders(),
+				});
+
+				if (!response.ok) {
+					throw new Error("Unable to load spaces");
+				}
+
+				const payload = (await response.json()) as { spaces?: ApiSpace[] };
+				const nextSpaces = payload.spaces ?? [];
+				if (ignore) return;
+
+				setSpaces(nextSpaces);
+				setActiveSpaceId((currentSpaceId) => {
+					if (
+						currentSpaceId &&
+						nextSpaces.some((space) => space.id === currentSpaceId)
+					) {
+						return currentSpaceId;
+					}
+
+					return nextSpaces[0]?.id ?? null;
+				});
+				setSpacesLoaded(true);
+			} catch {
+				if (!ignore) {
+					setError("Unable to load spaces");
+					setIsLoading(false);
+					setSpacesLoaded(true);
+				}
+			}
+		}
+
+		loadSpaces();
+
+		return () => {
+			ignore = true;
+		};
+	}, []);
+
+	React.useEffect(() => {
+		loadFileTree();
+	}, [loadFileTree]);
+
+	React.useEffect(() => {
+		window.addEventListener(fileTreeUpdatedEvent, loadFileTree);
+
+		return () => {
+			window.removeEventListener(fileTreeUpdatedEvent, loadFileTree);
+		};
+	}, [loadFileTree]);
 
 	return (
 		<Sidebar
@@ -277,7 +414,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						<SpaceSwitcher
 							spaces={spaces}
 							activeSpace={activeSpace}
-							onSelect={setActiveSpace}
+							onSelect={(space) => setActiveSpaceId(space.id)}
 						/>
 					</SidebarMenuItem>
 				</SidebarMenu>
@@ -285,7 +422,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
 			{/* Content: file tree for active space */}
 			<SidebarContent>
-				<FileTree space={activeSpace} />
+				<FileTree
+					categories={categories}
+					isLoading={isLoading}
+					error={error}
+				/>
 			</SidebarContent>
 
 			{/* Footer: add button */}

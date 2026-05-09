@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,14 +26,14 @@ export default function Login() {
 	const [error, setError] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 
-	const handleChange = (e) => {
+	const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
 		setFormData({ ...formData, [e.target.name]: e.target.value });
 		if (error) setError(""); // Clear error when typing
 	};
 
 	const { login } = useAuth();
 
-	const handleSubmit = async (e) => {
+	const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		setIsLoading(true);
 
@@ -60,7 +60,7 @@ export default function Login() {
 			} else {
 				setError(data.error || data.message || "Invalid credentials");
 			}
-		} catch (err) {
+		} catch {
 			setError("Server connection failed");
 		} finally {
 			setIsLoading(false);

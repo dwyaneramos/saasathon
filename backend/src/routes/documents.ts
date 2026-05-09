@@ -8,7 +8,9 @@ import {
 	assignDocumentCategory,
 	createCategory,
 	listCategories,
+	listDocuments,
 	toPublicCategory,
+	toPublicDocument,
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
@@ -42,8 +44,25 @@ export const uploadImageMiddleware = multer({
 });
 
 router.get("/categories", async (req, res) => {
-	const categories = await listCategories();
+	const spaceId = getSpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const categories = await listCategories(spaceId);
 	res.json({ categories: categories.map(toPublicCategory) });
+});
+
+router.get("/documents", async (req, res) => {
+	const spaceId = getSpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const documents = await listDocuments(spaceId);
+	res.json({ documents: documents.map(toPublicDocument) });
 });
 
 router.post(
@@ -166,4 +185,13 @@ function getDocumentId(req: Request) {
 		documentId > 0
 		? documentId
 		: undefined;
+}
+
+function getSpaceId(req: Request) {
+	if (typeof req.query.spaceId !== "string" || req.query.spaceId.trim() === "") {
+		return null;
+	}
+
+	const spaceId = Number(req.query.spaceId);
+	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
 }

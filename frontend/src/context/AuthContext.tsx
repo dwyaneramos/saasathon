@@ -6,8 +6,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { toast } from "sonner";
-
 // Define exactly what a User looks like
 export interface User {
   id: number;

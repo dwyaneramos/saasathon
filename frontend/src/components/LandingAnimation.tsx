@@ -1,6 +1,6 @@
-import React, { Suspense, useMemo, useRef } from "react";
+import { Suspense, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
+import { Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 
 const NODE_COUNT = 25;
@@ -83,8 +83,11 @@ export const LandingAnimation = () => {
               />
             ))}
 
-            {nodes.map((node, index) => (
-              <group position={node.position}>
+            {nodes.map((node) => (
+              <group
+                key={`${node.label}-${node.position.toArray().join("-")}`}
+                position={node.position}
+              >
                 <mesh>
                   <sphereGeometry args={[0.035, 16, 16]} />
                   <meshStandardMaterial
