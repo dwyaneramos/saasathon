@@ -5,6 +5,8 @@ import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { HttpError } from "../utils/httpError.js";
+import { createZipArchive, type ZipArchiveFile } from "../utils/zip.js";
 import {
 	createCategorySchema,
 	updateCategorySchema,
@@ -18,11 +20,13 @@ import {
 	createCategory,
 	deleteCategory,
 	deleteDocument,
+	findDocumentsForDownloadCriteria,
 	getCategory,
 	getDocument,
 	listCategories,
 	listCategoryConnections,
 	listDocuments,
+	listDocumentsForCategory,
 	renameDocument,
 	searchDocuments,
 	toPublicCategory,
@@ -30,15 +34,47 @@ import {
 	toPublicDocument,
 	toPublicDocumentSearchResult,
 	updateCategory,
+	type DownloadableDocumentRow,
 } from "../services/documentAnalyzer.js";
-import { userCanAccessSpace } from "../services/spaceService.js";
-import { HttpError } from "../utils/httpError.js";
+import { userCanAccessSpace as userCanAccessUserSpace } from "../services/spaceService.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, "../../..");
 const uploadRoot = path.join(workspaceRoot, "backend/upload");
+const ARCHIVE_NAME_STOPWORDS = new Set([
+	"a",
+	"all",
+	"an",
+	"and",
+	"any",
+	"category",
+	"download",
+	"document",
+	"documents",
+	"done",
+	"export",
+	"file",
+	"files",
+	"for",
+	"from",
+	"give",
+	"in",
+	"matching",
+	"me",
+	"of",
+	"on",
+	"or",
+	"please",
+	"save",
+	"that",
+	"the",
+	"these",
+	"to",
+	"with",
+	"zip",
+]);
 export const uploadPdfMiddleware = multer({
 	storage: multer.memoryStorage(),
 	limits: {
@@ -130,7 +166,56 @@ router.get("/documents/search", async (req, res) => {
 	});
 });
 
-router.post("/assistant/dashboard", requireAuth, async (req, res) => {
+router.post(
+	"/documents/download-query",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const spaceId =
+			typeof req.body?.spaceId === "number"
+				? req.body.spaceId
+				: typeof req.body?.spaceId === "string"
+					? Number(req.body.spaceId)
+					: null;
+
+		if (spaceId !== null && (!Number.isInteger(spaceId) || spaceId < 1)) {
+			res.status(400).json({
+				error: "spaceId must be a positive integer",
+			});
+			return;
+		}
+
+		if (
+			spaceId !== null &&
+			!(await userCanAccessUserSpace(req.userId!, spaceId))
+		) {
+			res.status(404).json({ error: "Space not found" });
+			return;
+		}
+
+		const query =
+			typeof req.body?.query === "string" ? req.body.query.trim() : "";
+		if (!query) {
+			res.status(400).json({ error: "Tell Kibi what files to download." });
+			return;
+		}
+
+		const documents = await findDocumentsForDownloadCriteria({
+			query,
+			spaceId,
+			userId: req.userId,
+			limit: 100,
+		});
+
+		await sendDocumentsArchive(
+			res,
+			documents,
+			resolveCriteriaArchiveName(query, documents),
+			"No files matched that download request.",
+		);
+	},
+);
+
+router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) => {
 	const spaceId =
 		typeof req.body?.spaceId === "number"
 			? req.body.spaceId
@@ -158,14 +243,63 @@ router.post("/assistant/dashboard", requireAuth, async (req, res) => {
 	res.json(response);
 });
 
-router.get("/documents/:documentId", async (req, res) => {
-	const documentId = getDocumentIdFromParams(req);
-	if (!documentId) {
-		res.status(400).json({
-			error: "documentId must be a positive integer",
+router.get(
+	"/categories/:categoryId/download",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const categoryId = getCategoryIdFromParams(req);
+		if (!categoryId) {
+			res.status(400).json({
+				error: "categoryId must be a positive integer",
+			});
+			return;
+		}
+
+		const spaceId = getSpaceId(req);
+		if (spaceId === false) {
+			res.status(400).json({
+				error: "spaceId must be a positive integer",
+			});
+			return;
+		}
+
+		const category = await getCategory(categoryId);
+		if (
+			!category ||
+			typeof category.space_id !== "number" ||
+			!(await userCanAccessUserSpace(req.userId!, category.space_id)) ||
+			(typeof spaceId === "number" && category.space_id !== spaceId)
+		) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const documents = await listDocumentsForCategory({
+			categoryId,
+			spaceId: category.space_id,
+			userId: req.userId,
 		});
-		return;
-	}
+
+		await sendDocumentsArchive(
+			res,
+			documents,
+			`${category.name}.zip`,
+			"No files found in this category.",
+		);
+	},
+);
+
+router.get(
+	"/documents/:documentId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
 
 	const document = await getDocument(documentId);
 	if (!document) {
@@ -470,6 +604,161 @@ router.post(
 
 export default router;
 
+async function sendDocumentsArchive(
+	res: Response,
+	documents: DownloadableDocumentRow[],
+	archiveName: string,
+	emptyMessage: string,
+) {
+	const files = await readArchiveFiles(documents);
+
+	if (files.length === 0) {
+		res.status(404).json({ error: emptyMessage });
+		return;
+	}
+
+	const archive = createZipArchive(files);
+	const safeArchiveName = sanitizeHeaderFilename(
+		archiveName.endsWith(".zip") ? archiveName : `${archiveName}.zip`,
+	);
+
+	res.setHeader("Content-Type", "application/zip");
+	res.setHeader(
+		"Content-Disposition",
+		`attachment; filename="${safeArchiveName}"`,
+	);
+	res.setHeader("Content-Length", String(archive.length));
+	res.setHeader("X-File-Count", String(files.length));
+	res.setHeader(
+		"Access-Control-Expose-Headers",
+		"Content-Disposition, X-File-Count",
+	);
+	res.send(archive);
+}
+
+async function readArchiveFiles(documents: DownloadableDocumentRow[]) {
+	const files: ZipArchiveFile[] = [];
+	const usedNames = new Set<string>();
+
+	for (const document of documents) {
+		if (!document.filepath) {
+			continue;
+		}
+
+		const filePath = resolveStoredFilePath(document.filepath);
+		if (!filePath) {
+			continue;
+		}
+
+		try {
+			const data = await fs.promises.readFile(filePath);
+			files.push({
+				name: uniqueArchiveEntryName(
+					resolveArchiveEntryName(document),
+					usedNames,
+				),
+				data,
+				modifiedAt: document.created_at,
+			});
+		} catch (error) {
+			if (!isNotFoundError(error)) {
+				throw error;
+			}
+		}
+	}
+
+	return files;
+}
+
+function resolveArchiveEntryName(document: DownloadableDocumentRow) {
+	const displayName =
+		document.original_file_name ??
+		document.file_name ??
+		document.filename ??
+		`document-${document.id}`;
+	const filename = resolveDownloadFilename(displayName, [
+		document.original_file_name,
+		document.stored_file_name,
+		document.filename,
+		document.filepath,
+	]);
+	const basename = path.basename(filename).replace(/[\r\n]/g, "_").trim();
+
+	return basename || `document-${document.id}`;
+}
+
+function uniqueArchiveEntryName(filename: string, usedNames: Set<string>) {
+	const extension = path.extname(filename);
+	const stem = extension ? filename.slice(0, -extension.length) : filename;
+	let candidate = filename;
+	let index = 2;
+
+	while (usedNames.has(candidate.toLowerCase())) {
+		candidate = `${stem} (${index})${extension}`;
+		index += 1;
+	}
+
+	usedNames.add(candidate.toLowerCase());
+	return candidate;
+}
+
+function resolveCriteriaArchiveName(
+	query: string,
+	documents: DownloadableDocumentRow[],
+) {
+	const sharedCategoryName = getSharedCategoryName(documents);
+	const queryTokens = archiveNameTokens(query);
+
+	if (sharedCategoryName) {
+		const categoryTokens = new Set(archiveNameTokens(sharedCategoryName));
+		const remainingTokens = queryTokens
+			.filter((token) => !categoryTokens.has(token))
+			.slice(0, 3);
+
+		return `${archiveNameSlug([sharedCategoryName, ...remainingTokens])}.zip`;
+	}
+
+	return `${archiveNameSlug(queryTokens.length > 0 ? queryTokens : ["files"])}.zip`;
+}
+
+function getSharedCategoryName(documents: DownloadableDocumentRow[]) {
+	const categoryNames = documents
+		.map((document) => document.category_name?.trim())
+		.filter((name): name is string => Boolean(name));
+
+	if (categoryNames.length === 0) {
+		return null;
+	}
+
+	const normalizedNames = new Set(
+		categoryNames.map((name) => name.toLowerCase()),
+	);
+	return normalizedNames.size === 1 ? categoryNames[0] : null;
+}
+
+function archiveNameTokens(value: string) {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9\s-]/g, " ")
+		.split(/[\s-]+/)
+		.map((token) => token.trim())
+		.filter((token) => token.length >= 2)
+		.filter((token) => !ARCHIVE_NAME_STOPWORDS.has(token))
+		.slice(0, 6);
+}
+
+function archiveNameSlug(parts: string[]) {
+	const slug = parts
+		.join("-")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 72)
+		.replace(/-+$/g, "");
+
+	return slug || "files";
+}
+
 function getDocumentId(req: Request) {
 	const documentId =
 		typeof req.body?.documentId === "string"
@@ -551,7 +840,7 @@ async function getManageableCategory(req: AuthRequest, categoryId: number) {
 		return null;
 	}
 
-	return (await userCanAccessSpace(req.userId, category.space_id))
+	return (await userCanAccessUserSpace(req.userId, category.space_id))
 		? category
 		: null;
 }

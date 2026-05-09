@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 import { apiBaseUrl } from "@/lib/api";
+import { downloadResponseBlob } from "@/lib/download";
 import {
 	CreateCategoryModal,
 	CreateSpaceModal,
@@ -169,6 +170,8 @@ export function AppSidebar({
 	>(null);
 	const [isDeletingSpace, setIsDeletingSpace] = React.useState(false);
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+	const [downloadingCategoryId, setDownloadingCategoryId] =
+		React.useState<number | null>(null);
 	const [pendingUploadFiles, setPendingUploadFiles] = React.useState<File[]>(
 		[],
 	);
@@ -386,6 +389,59 @@ export function AppSidebar({
 				: new Set(expandableCategories.map((category) => category.id));
 		});
 	}, [categories]);
+
+	const handleDownloadCategory = React.useCallback(
+		async (category: Category) => {
+			if (!activeSpaceId) {
+				toast.error("Choose a space before downloading files.");
+				return;
+			}
+
+			if (category.files.length === 0) {
+				toast.error(`'${category.name}' has no files to download.`);
+				return;
+			}
+
+			setDownloadingCategoryId(category.id);
+
+			try {
+				const params = new URLSearchParams({
+					spaceId: String(activeSpaceId),
+				});
+				const response = await fetch(
+					`${apiBaseUrl}/categories/${category.id}/download?${params.toString()}`,
+					{
+						headers: authHeaders(),
+					},
+				);
+
+				if (!response.ok) {
+					const payload = (await response.json().catch(() => null)) as {
+						error?: string;
+					} | null;
+					throw new Error(
+						payload?.error ?? "Could not download this category.",
+					);
+				}
+
+				await downloadResponseBlob(response, `${category.name}.zip`);
+				const fileCount = Number(response.headers.get("X-File-Count"));
+				const countText = Number.isFinite(fileCount)
+					? `${fileCount} file${fileCount === 1 ? "" : "s"}`
+					: "files";
+				toast.success(`Downloading ${countText} from '${category.name}'`);
+			} catch (err) {
+				toast.error(
+					err instanceof Error
+						? err.message
+						: "Could not download this category.",
+				);
+			} finally {
+				setDownloadingCategoryId(null);
+			}
+		},
+		[activeSpaceId],
+	);
 
 	const handleSelectSpace = React.useCallback(
 		(space: Space) => {
@@ -1274,6 +1330,8 @@ export function AppSidebar({
 						onToggleAllCategories={toggleAllCategories}
 						onClearCategory={clearCategoryNotification}
 						onClearNewFile={clearNewFile}
+						onDownloadCategory={handleDownloadCategory}
+						downloadingCategoryId={downloadingCategoryId}
 					/>
 				</SidebarContent>
 

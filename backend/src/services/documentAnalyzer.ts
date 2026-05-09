@@ -8,6 +8,38 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
 const CATEGORY_SUMMARY_DOCUMENT_LIMIT = 24;
 const CATEGORY_SUMMARY_SOURCE_LIMIT = 280;
+const DOWNLOAD_CRITERIA_STOPWORDS = new Set([
+  "a",
+  "all",
+  "an",
+  "and",
+  "any",
+  "are",
+  "as",
+  "by",
+  "can",
+  "done",
+  "download",
+  "export",
+  "file",
+  "files",
+  "for",
+  "from",
+  "give",
+  "i",
+  "in",
+  "me",
+  "of",
+  "on",
+  "or",
+  "please",
+  "that",
+  "the",
+  "these",
+  "to",
+  "with",
+  "zip",
+]);
 const CATEGORY_CONNECTION_MIN_WEIGHT = 0.08;
 const CATEGORY_CONNECTION_REASON_LIMIT = 5;
 
@@ -139,6 +171,13 @@ type DocumentSearchRow = DocumentRow & {
   extracted_text: string;
   category_name: string | null;
   score: number;
+};
+
+export type DownloadableDocumentRow = DocumentRow & {
+  extracted_text: string;
+  category_name: string | null;
+  category_keywords: string[];
+  download_score?: number;
 };
 
 export type PublicDocumentSearchResult = PublicDocument & {
@@ -293,6 +332,100 @@ export async function listDocuments(spaceId?: number | null) {
     [spaceId ?? null],
   );
   return rows;
+}
+
+export async function listDocumentsForCategory(input: {
+  categoryId: number;
+  spaceId?: number | null;
+  userId?: number | null;
+}) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<DownloadableDocumentRow>(
+    `SELECT
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.extracted_text,
+        d.created_at,
+        c.name AS category_name,
+        COALESCE(c.keywords, '{}'::text[]) AS category_keywords
+     FROM documents d
+     LEFT JOIN spaces s ON s.id = d.space_id
+     LEFT JOIN document_categories c ON c.id = d.category_id
+     WHERE d.category_id = $1
+       AND ($2::integer IS NULL OR d.space_id = $2)
+       AND ($3::integer IS NULL OR s.created_by = $3)
+       AND d.filepath IS NOT NULL
+     ORDER BY d.created_at DESC`,
+    [input.categoryId, input.spaceId ?? null, input.userId ?? null],
+  );
+  return rows;
+}
+
+export async function findDocumentsForDownloadCriteria(input: {
+  query: string;
+  spaceId?: number | null;
+  userId?: number | null;
+  limit?: number;
+}) {
+  await ensureDocumentSchema();
+
+  const terms = normalizeCriteriaTokens(input.query);
+  if (terms.length === 0) {
+    return [];
+  }
+
+  const safeLimit = Math.min(Math.max(input.limit ?? 100, 1), 200);
+  const { rows } = await getDb().query<DownloadableDocumentRow>(
+    `SELECT
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.extracted_text,
+        d.created_at,
+        c.name AS category_name,
+        COALESCE(c.keywords, '{}'::text[]) AS category_keywords
+     FROM documents d
+     LEFT JOIN spaces s ON s.id = d.space_id
+     LEFT JOIN document_categories c ON c.id = d.category_id
+     WHERE ($1::integer IS NULL OR d.space_id = $1)
+       AND ($2::integer IS NULL OR s.created_by = $2)
+       AND d.filepath IS NOT NULL
+     ORDER BY d.created_at DESC
+     LIMIT 500`,
+    [input.spaceId ?? null, input.userId ?? null],
+  );
+
+  return rows
+    .map((row) => ({
+      ...row,
+      download_score: scoreCriteriaDownloadDocument(row, terms),
+    }))
+    .filter((row) => (row.download_score ?? 0) > 0)
+    .sort((left, right) => {
+      const scoreDelta = (right.download_score ?? 0) - (left.download_score ?? 0);
+      if (scoreDelta !== 0) return scoreDelta;
+      return right.created_at.getTime() - left.created_at.getTime();
+    })
+    .slice(0, safeLimit);
 }
 
 export async function getDocument(documentId: number) {
@@ -2407,6 +2540,65 @@ function buildDocumentKeywords(
 
 function displayDocumentName(document: Pick<DocumentRow, "original_file_name" | "file_name" | "filename">) {
   return document.original_file_name || document.file_name || document.filename;
+}
+
+function normalizeCriteriaTokens(query: string) {
+  return normalizeSearchTokens(query)
+    .filter((token) => !DOWNLOAD_CRITERIA_STOPWORDS.has(token))
+    .slice(0, 12);
+}
+
+function scoreCriteriaDownloadDocument(
+  row: DownloadableDocumentRow,
+  terms: string[],
+) {
+  const fields = [
+    { value: displayDocumentName(row), weight: 4 },
+    { value: row.category_name ?? "", weight: 5 },
+    { value: row.category_keywords.join(" "), weight: 5 },
+    { value: row.keywords.join(" "), weight: 4 },
+    { value: row.summary, weight: 3 },
+    { value: row.extracted_text, weight: 1 },
+  ].map((field) => ({
+    ...field,
+    value: field.value.toLowerCase(),
+  }));
+  let score = 0;
+  let matchedTerms = 0;
+
+  for (const term of terms) {
+    const bestFieldScore = fields.reduce((bestScore, field) => {
+      return matchesCriteriaTerm(field.value, term)
+        ? Math.max(bestScore, field.weight)
+        : bestScore;
+    }, 0);
+
+    if (bestFieldScore > 0) {
+      matchedTerms += 1;
+      score += bestFieldScore;
+    }
+  }
+
+  const requiredMatches = Math.max(1, Math.ceil(terms.length * 0.6));
+  return matchedTerms >= requiredMatches ? score : 0;
+}
+
+function matchesCriteriaTerm(value: string, term: string) {
+  return criteriaTermVariants(term).some((variant) => value.includes(variant));
+}
+
+function criteriaTermVariants(term: string) {
+  const variants = new Set([term]);
+
+  if (term.endsWith("ies") && term.length > 4) {
+    variants.add(`${term.slice(0, -3)}y`);
+  }
+
+  if (term.endsWith("s") && term.length > 3) {
+    variants.add(term.slice(0, -1));
+  }
+
+  return [...variants];
 }
 
 function containsSearchPhrase(text: string, values: string[]) {

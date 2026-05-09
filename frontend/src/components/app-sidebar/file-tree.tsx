@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import {
 	ChevronRight,
+	Download,
 	FolderClosed,
 	FolderOpen,
 	ListCollapse,
@@ -18,6 +19,7 @@ import {
 	SidebarGroup,
 	SidebarGroupLabel,
 	SidebarMenu,
+	SidebarMenuAction,
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarMenuSub,
@@ -36,8 +38,10 @@ type CategoryItemProps = {
 	searchQuery: string;
 	hasNewCategory: boolean;
 	hasNewFiles: boolean;
+	isDownloading: boolean;
 	newFileIds: Set<number>;
 	onOpenChange: (categoryId: number, open: boolean) => void;
+	onDownloadCategory: (category: Category) => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 };
@@ -48,8 +52,10 @@ function CategoryItemBase({
 	searchQuery,
 	hasNewCategory,
 	hasNewFiles,
+	isDownloading,
 	newFileIds,
 	onOpenChange,
+	onDownloadCategory,
 	onClearCategory,
 	onClearNewFile,
 }: CategoryItemProps) {
@@ -134,6 +140,27 @@ function CategoryItemBase({
 						/>
 					</SidebarMenuButton>
 				</CollapsibleTrigger>
+				{category.files.length > 0 && (
+					<SidebarMenuAction
+						type="button"
+						disabled={isDownloading}
+						aria-label={`Download files in ${category.name}`}
+						title={`Download files in ${category.name}`}
+						onClick={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							onDownloadCategory(category);
+						}}
+						className="text-muted-foreground opacity-100 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+					>
+						<Download
+							className={cn(
+								"size-3.5",
+								isDownloading && "animate-pulse",
+							)}
+						/>
+					</SidebarMenuAction>
+				)}
 
 				<CollapsibleContent>
 					<SidebarMenuSub>
@@ -222,7 +249,9 @@ const CategoryItem = React.memo(
 		previous.searchQuery === next.searchQuery &&
 		previous.hasNewCategory === next.hasNewCategory &&
 		previous.hasNewFiles === next.hasNewFiles &&
+		previous.isDownloading === next.isDownloading &&
 		previous.onOpenChange === next.onOpenChange &&
+		previous.onDownloadCategory === next.onDownloadCategory &&
 		previous.onClearCategory === next.onClearCategory &&
 		previous.onClearNewFile === next.onClearNewFile &&
 		hasSameNewFileMarkers(
@@ -248,6 +277,8 @@ export function FileTree({
 	onToggleAllCategories,
 	onClearCategory,
 	onClearNewFile,
+	onDownloadCategory,
+	downloadingCategoryId,
 }: {
 	categories: Category[];
 	isLoading: boolean;
@@ -264,6 +295,8 @@ export function FileTree({
 	onToggleAllCategories: () => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
+	onDownloadCategory: (category: Category) => void;
+	downloadingCategoryId: number | null;
 }) {
 	const hasCategories = categories.length > 0;
 	const allExpanded =
@@ -345,8 +378,10 @@ export function FileTree({
 							searchQuery={searchQuery}
 							hasNewCategory={newCategoryIds.has(category.id)}
 							hasNewFiles={newFileCategoryIds.has(category.id)}
+							isDownloading={downloadingCategoryId === category.id}
 							newFileIds={newFileIds}
 							onOpenChange={onCategoryOpenChange}
+							onDownloadCategory={onDownloadCategory}
 							onClearCategory={onClearCategory}
 							onClearNewFile={onClearNewFile}
 						/>
