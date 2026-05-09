@@ -78,6 +78,7 @@ type StoredUpload = {
 	size: number;
 	path: string;
 	metadata: Record<string, unknown>;
+	keywords: string[];
 };
 
 function uploadedFileResponse(file: StoredUpload) {
@@ -90,6 +91,7 @@ function uploadedFileResponse(file: StoredUpload) {
 		mimeType: file.mimeType,
 		size: file.size,
 		path: file.path,
+		keywords: file.keywords,
 		item: {
 			id: file.documentId,
 			filename: file.filename,
@@ -222,11 +224,13 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 	const spaceDir = path.join(uploadDir, `space-${space.id}`);
 	const absolutePath = path.join(spaceDir, filename);
 	const storagePath = `backend/upload/space-${space.id}/${filename}`;
+	const keywords = extractUploadKeywords(file.originalname);
 	const metadata = {
 		originalName: file.originalname,
 		mimeType: file.mimetype,
 		size: file.size,
 		spaceId: space.id,
+		keywords,
 	};
 
 	await fs.mkdir(spaceDir, { recursive: true });
@@ -238,6 +242,7 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 			filename,
 			filepath,
 			metadata,
+			keywords,
 			file_name,
 			original_file_name,
 			stored_file_name,
@@ -247,13 +252,14 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 			extracted_text,
 			summary
 		)
-		VALUES ($1, $2, $3, $4, $5, $5, $2, $3, $6, $7, '', '')
+		VALUES ($1, $2, $3, $4, $5, $6, $6, $2, $3, $7, $8, '', '')
 		RETURNING id`,
 		[
 			space.id,
 			filename,
 			storagePath,
 			metadata,
+			keywords,
 			file.originalname,
 			file.mimetype,
 			file.size,
@@ -270,8 +276,27 @@ async function storeUploadedFile(req: UploadRequest, file: Express.Multer.File) 
 		size: file.size,
 		path: storagePath,
 		metadata,
+		keywords,
 	};
 }
+
+function extractUploadKeywords(filename: string) {
+	const normalized = filename
+		.replace(/\.[^.]+$/, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim();
+
+	if (!normalized) {
+		return [];
+	}
+
+	return [...new Set(normalized.split(/\s+/).filter((token) => token.length >= 3))].slice(
+		0,
+		12,
+	);
+}
+
 router.delete("/:filename", async (req: Request, res: Response, next: NextFunction) => {
 	const filename =
 		typeof req.params.filename === "string" ? req.params.filename : null;
