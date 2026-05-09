@@ -31,7 +31,6 @@ export async function ensureSpaceSchema() {
 			page_count INTEGER NOT NULL DEFAULT 0,
 			extracted_text TEXT NOT NULL DEFAULT '',
 			summary TEXT NOT NULL DEFAULT '',
-			keywords TEXT[] NOT NULL DEFAULT '{}',
 			category_id INTEGER REFERENCES document_categories(id) ON DELETE SET NULL,
 			confidence NUMERIC(5, 4) NOT NULL DEFAULT 0,
 			needs_new_category BOOLEAN NOT NULL DEFAULT FALSE,
@@ -43,7 +42,6 @@ export async function ensureSpaceSchema() {
 			ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT 'unknown',
 			ADD COLUMN IF NOT EXISTS filepath TEXT,
 			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS keywords TEXT[] NOT NULL DEFAULT '{}',
 			ADD COLUMN IF NOT EXISTS original_file_name TEXT,
 			ADD COLUMN IF NOT EXISTS stored_file_name TEXT,
 			ADD COLUMN IF NOT EXISTS storage_path TEXT,
@@ -61,22 +59,6 @@ export async function ensureSpaceSchema() {
 		));
 
 		UPDATE documents
-		SET keywords = COALESCE((
-			SELECT ARRAY(
-				SELECT DISTINCT token
-				FROM unnest(
-					regexp_split_to_array(
-						regexp_replace(lower(COALESCE(original_file_name, file_name, filename, '')), '\.[^.]+$', ''),
-						'[^a-z0-9]+'
-					)
-				) AS token
-				WHERE length(token) >= 3
-				ORDER BY token
-			)
-		), '{}'::text[])
-		WHERE cardinality(COALESCE(keywords, '{}'::text[])) = 0;
-
-		UPDATE documents
 		SET
 			filename = COALESCE(NULLIF(filename, ''), stored_file_name, file_name, 'unknown'),
 			filepath = COALESCE(filepath, storage_path),
@@ -84,16 +66,11 @@ export async function ensureSpaceSchema() {
 				'originalName', original_file_name,
 				'mimeType', mime_type,
 				'size', file_size,
-				'spaceId', space_id,
-				'keywords', keywords
+				'spaceId', space_id
 			));
 
 		CREATE UNIQUE INDEX IF NOT EXISTS document_categories_space_name_unique_idx
 			ON document_categories (COALESCE(space_id, 0), lower(name));
-
-		CREATE INDEX IF NOT EXISTS documents_keywords_gin_idx
-			ON documents
-			USING GIN (keywords);
 	`);
 }
 
