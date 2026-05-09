@@ -13,6 +13,11 @@ import AppNavbar from "@/components/AppNavbar";
 import Footer from "./components/Footer";
 import { NoAuthRoute } from "./components/NoAuthRoute";
 import Dashboard from "./pages/Dashboard";
+import {
+	AboutPage,
+	ContactPage,
+	PrivacyPage,
+} from "./pages/FooterPages";
 
 import {
 	Outlet,
@@ -130,6 +135,9 @@ export function AppRoutes() {
 							</NoAuthRoute>
 						}
 					/>
+					<Route path="/about" element={<AboutPage />} />
+					<Route path="/privacy" element={<PrivacyPage />} />
+					<Route path="/contact" element={<ContactPage />} />
 				</Route>
 
 				<Route element={<AppLayout />}>
