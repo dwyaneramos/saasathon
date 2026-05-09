@@ -908,7 +908,7 @@ export function AppSidebar({
 							Create New Category
 						</h2>
 						<p className="mt-1 text-sm text-zinc-500">
-							Add a name for the new collection.
+							Add a name for the new category.
 						</p>
 
 						<form className="mt-5" onSubmit={handleCreateCategory}>
