@@ -9,9 +9,6 @@ export default function Graph() {
         <p>graph</p>
       </main>
 
-      <footer className="graph-footer">
-        <small>&copy; 2026 My App</small>
-      </footer>
     </div>
   );
 }
