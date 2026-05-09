@@ -171,8 +171,7 @@ function Sidebar({
 	collapsible?: "offcanvas" | "icon" | "none";
 	overlay?: boolean;
 }) {
-	const { isMobile, state, openMobile, setOpen, setOpenMobile } =
-		useSidebar();
+	const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 	const sidebarRef = React.useRef<HTMLDivElement | null>(null);
 
 	// React.useEffect(() => {

@@ -14,7 +14,6 @@ import {
 	FileVideo,
 	FileText,
 	Plus,
-	Layers,
 	FolderClosed,
 	Orbit,
 } from "lucide-react";
@@ -50,7 +49,7 @@ import { cn } from "@/lib/utils";
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
-type KibiFile = {
+export type KibiFile = {
 	id: number;
 	name: string;
 	filename: string;
@@ -98,7 +97,7 @@ function fileExtension(file: KibiFile) {
 	return extension && extension !== name ? extension.toLowerCase() : "";
 }
 
-function fileIconFor(file: KibiFile) {
+export function fileIconFor(file: KibiFile) {
 	const mimeType = file.mimeType.toLowerCase();
 	const extension = fileExtension(file);
 
@@ -179,7 +178,7 @@ function SpaceSwitcher({
 							onSelect={() => onSelect(space)}
 							className="gap-2"
 						>
-							<div className="flex size-6 items-center justify-center rounded-md border bg-background">
+							<div className="flex size-6 items-center justify-center rounded-md">
 								<Orbit className="size-3.5 shrink-0" />
 							</div>
 							{space.name}
@@ -222,15 +221,11 @@ function CategoryItem({
 	const { state, setOpen: setSidebarOpen } = useSidebar();
 
 	React.useEffect(() => {
-		if (category.files.length > 0) {
-			setOpen(true);
-		}
-	}, [category.files.length]);
-
-	React.useEffect(() => {
 		if (state !== "expanded") {
-			setAllowCategoryWrap(false);
-			return;
+			const timeout = window.setTimeout(() => {
+				setAllowCategoryWrap(false);
+			}, 0);
+			return () => window.clearTimeout(timeout);
 		}
 
 		const timeout = window.setTimeout(() => {
@@ -311,7 +306,7 @@ function CategoryItem({
 									>
 										<Link
 											to={`/file/${file.id}`}
-											className="flex items-start gap-2 text-muted-foreground"
+											className="flex items-center gap-2 text-muted-foreground"
 											onClick={() =>
 												onClearNewFile(
 													category.id,
@@ -732,8 +727,16 @@ export function AppSidebar({
 	}, []);
 
 	React.useEffect(() => {
-		loadFileTree();
-	}, [loadFileTree]);
+		if (!spacesLoaded) return;
+
+		async function run() {
+			await loadFileTree();
+		}
+
+		void run();
+
+		return () => {};
+	}, [spacesLoaded, activeSpaceId, loadFileTree]);
 
 	React.useEffect(() => {
 		const handleFileTreeUpdated = (event: Event) => {
