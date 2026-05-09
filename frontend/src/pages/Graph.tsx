@@ -26,11 +26,17 @@ export default function Graph() {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
   });
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const cursorPosRef = useRef({ x: 0, y: 0 });
+  const hoveredNodeIdRef = useRef<string | null>(null);
+  const tooltipHoveredRef = useRef(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -76,19 +82,76 @@ export default function Graph() {
     };
   }, [activeSpaceId]);
 
-  // Track mouse position relative to the container
+  // Track mouse position relative to the container without re-rendering.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const updateContainerSize = () => {
+      const rect = container.getBoundingClientRect();
+      setContainerSize({ width: rect.width, height: rect.height });
+    };
+    const resizeFrame = requestAnimationFrame(updateContainerSize);
+    const resizeObserver = new ResizeObserver(updateContainerSize);
     const handleMouseMove = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
-      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      cursorPosRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
     };
 
+    resizeObserver.observe(container);
     container.addEventListener("mousemove", handleMouseMove);
-    return () => container.removeEventListener("mousemove", handleMouseMove);
+    return () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeObserver.disconnect();
+      container.removeEventListener("mousemove", handleMouseMove);
+    };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleHide = () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      if (!tooltipHoveredRef.current) {
+        setTooltipVisible(false);
+        setHoveredNode(null);
+        hoveredNodeIdRef.current = null;
+      }
+    }, 200);
+  };
+
+  const cancelHide = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+
+  const handleNodeHover = (node: GraphNode | null) => {
+    if (node) {
+      cancelHide();
+
+      if (hoveredNodeIdRef.current !== node.id) {
+        hoveredNodeIdRef.current = node.id;
+        setTooltipAnchor(cursorPosRef.current);
+      }
+
+      setHoveredNode(node);
+      setTooltipVisible(true);
+      return;
+    }
+
+    scheduleHide();
+  };
 
   const categoryNodes = useMemo<GraphNode[]>(() => {
     return categories.map((category) => ({
@@ -123,7 +186,9 @@ export default function Graph() {
 
   const handleNodeClick = (node: GraphNode) => {
     if (mode === "categories" && node.categoryId) {
+      setTooltipVisible(false);
       setHoveredNode(null);
+      hoveredNodeIdRef.current = null;
       setActiveCategoryId(node.categoryId);
       setMode("files");
       return;
@@ -141,43 +206,43 @@ export default function Graph() {
   }, [hoveredNode, documents, mode]);
 
   const isDocumentTooltip = mode === "files" && hoveredNode?.documentId != null;
-  const isCategoryTooltip = mode === "categories" && hoveredNode?.categoryId != null;
-  const showTooltip = isCategoryTooltip || isDocumentTooltip;
+  const isCategoryTooltip =
+    mode === "categories" && hoveredNode?.categoryId != null;
+  const showTooltip =
+    tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
   const documentPreviewUrl = hoveredNode?.documentId
     ? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
     : "";
   const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
   const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
 
-  // Tooltip positioning: try to keep it on screen
+  // Tooltip positioning: anchor once per hovered node and keep it on screen.
   const TOOLTIP_WIDTH = 320;
   const TOOLTIP_OFFSET = 16;
+  const TOOLTIP_BRIDGE = 18;
   const tooltipStyle = useMemo(() => {
-    if (!containerRef.current)
-      return {
-        left: cursorPos.x + TOOLTIP_OFFSET,
-        top: cursorPos.y + TOOLTIP_OFFSET,
-      };
-    const containerWidth = containerRef.current.offsetWidth;
-    const containerHeight = containerRef.current.offsetHeight;
+    let x = tooltipAnchor.x + TOOLTIP_OFFSET;
+    let y = tooltipAnchor.y + TOOLTIP_OFFSET;
 
-    let x = cursorPos.x + TOOLTIP_OFFSET;
-    let y = cursorPos.y + TOOLTIP_OFFSET;
-
-    // Flip left if too close to right edge
-    if (x + TOOLTIP_WIDTH > containerWidth - 8) {
-      x = cursorPos.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
+    if (containerSize.width && x + TOOLTIP_WIDTH > containerSize.width - 8) {
+      x = tooltipAnchor.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
     }
 
     const estimatedHeight = isDocumentTooltip
       ? 420
       : Math.min(120 + hoveredCategoryFiles.length * 36, 360);
-    if (y + estimatedHeight > containerHeight - 8) {
-      y = containerHeight - estimatedHeight - 8;
+    if (containerSize.height && y + estimatedHeight > containerSize.height - 8) {
+      y = containerSize.height - estimatedHeight - 8;
     }
 
     return { left: x, top: y };
-  }, [cursorPos, hoveredCategoryFiles.length, isDocumentTooltip]);
+  }, [
+    containerSize.height,
+    containerSize.width,
+    hoveredCategoryFiles.length,
+    isDocumentTooltip,
+    tooltipAnchor,
+  ]);
 
   return (
     <div
@@ -195,7 +260,9 @@ export default function Graph() {
         {mode === "files" ? (
           <button
             onClick={() => {
+              setTooltipVisible(false);
               setHoveredNode(null);
+              hoveredNodeIdRef.current = null;
               setMode("categories");
               setActiveCategoryId(null);
             }}
@@ -206,13 +273,25 @@ export default function Graph() {
         ) : null}
       </div>
 
-      {/* Cursor-following tooltip */}
+      {/* Anchored tooltip with a hover bridge so the card can be entered. */}
       {showTooltip && (
         <div
-          className="pointer-events-none absolute z-30 w-[320px] overflow-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
-          style={{ left: tooltipStyle.left, top: tooltipStyle.top }}
+          className="absolute z-30 p-[18px]"
+          style={{
+            left: tooltipStyle.left - TOOLTIP_BRIDGE,
+            top: tooltipStyle.top - TOOLTIP_BRIDGE,
+          }}
+          onMouseEnter={() => {
+            tooltipHoveredRef.current = true;
+            cancelHide();
+          }}
+          onMouseLeave={() => {
+            tooltipHoveredRef.current = false;
+            scheduleHide();
+          }}
         >
-          {isCategoryTooltip ? (
+          <div className="w-[320px] overflow-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm">
+            {isCategoryTooltip ? (
             <>
               <div className="border-b border-stone-100 px-4 py-3">
                 <p className="text-sm font-semibold text-stone-900">
@@ -258,7 +337,9 @@ export default function Graph() {
               </ul>
 
               <div className="border-t border-stone-100 px-4 py-2">
-                <p className="text-[10px] text-stone-400">Click to explore files</p>
+                <p className="text-[10px] text-stone-400">
+                  Click to explore files
+                </p>
               </div>
             </>
           ) : (
@@ -295,10 +376,13 @@ export default function Graph() {
               </div>
 
               <div className="px-4 py-2">
-                <p className="text-[10px] text-stone-400">Click to open file page</p>
+                <p className="text-[10px] text-stone-400">
+                  Click to open file page
+                </p>
               </div>
             </>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -310,7 +394,7 @@ export default function Graph() {
             weightMatrix={currentMatrix}
             threshold={0.16}
             onNodeClick={handleNodeClick}
-            onNodeHover={setHoveredNode}
+            onNodeHover={handleNodeHover}
           />
         ) : null}
       </div>

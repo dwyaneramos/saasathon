@@ -96,7 +96,18 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 }) => {
   const nodesRef = useRef(nodes);
   const prevIs2DRef = useRef(is2D);
+  const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
+  const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, forceUpdate] = useState({});
+
+  const handlePointerOver = (index: number) => {
+    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+    onNodeHover?.(index);
+  };
+
+  const handlePointerOut = () => {
+    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 50);
+  };
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -108,20 +119,65 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         node.velocity.y = (Math.random() - 0.5) * 0.15;
       });
     }
-
     prevIs2DRef.current = is2D;
   }, [is2D]);
 
-  useFrame(() => {
+  // Track normalised cursor position in NDC space (-1..1)
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      cursorRef.current.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+    };
+    const onLeave = () => cursorRef.current.set(9999, 9999);
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    return () => {
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mouseleave", onLeave);
+    };
+  }, [gl]);
+
+  useFrame(({ clock }) => {
     const alpha = 0.05;
     const repulsionStrength = 0.06;
     const attractionStrength = 0.012;
     const centeringStrength = 0.0008;
-    const damping = 0.92;
+    const driftAmplitude = 0.0003;
+    const t = clock.getElapsedTime();
     const currentNodes = nodesRef.current;
 
-    currentNodes.forEach((node) => {
-      node.velocity.multiplyScalar(damping);
+    // Approximate cursor in world space (NDC scaled to ~3 unit graph bounds)
+    const cursorWorld = new THREE.Vector3(
+      cursorRef.current.x * 3,
+      cursorRef.current.y * 3,
+      0,
+    );
+    // Radius is sized to roughly match a node's visual footprint in world units
+    const CURSOR_RADIUS = 0.3;
+
+    currentNodes.forEach((node, i) => {
+      const distToCursor = cursorWorld.distanceTo(node.position);
+
+      if (distToCursor < CURSOR_RADIUS) {
+        // Hard freeze — zero velocity and skip all further updates for this node
+        node.velocity.set(0, 0, 0);
+        return;
+      }
+
+      node.velocity.multiplyScalar(0.92);
+
+      // Perpetual drift: unique phase per node so they don't all move in sync
+      const phase = i * 2.399; // golden-angle offset
+      node.velocity.x += Math.sin(t * 0.4 + phase) * driftAmplitude;
+      node.velocity.z += Math.cos(t * 0.31 + phase) * driftAmplitude;
+      if (!is2D) {
+        node.velocity.y += Math.sin(t * 0.27 + phase + 1) * driftAmplitude;
+      }
     });
 
     for (let i = 0; i < currentNodes.length; i++) {
@@ -189,14 +245,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       }
     });
 
-    const totalVelocity = currentNodes.reduce(
-      (sum, node) => sum + node.velocity.length(),
-      0,
-    );
-    if (totalVelocity < 0.001) {
-      return;
-    }
-
+    // Always re-render — drift keeps the graph moving perpetually
     forceUpdate({});
   });
 
@@ -236,8 +285,8 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
               <mesh
                 onClick={() => onNodeClick?.(index)}
-                onPointerOver={() => onNodeHover?.(index)}
-                onPointerOut={() => onNodeHover?.(null)}
+                onPointerOver={() => handlePointerOver(index)}
+                onPointerOut={() => handlePointerOut()}
               >
                 <sphereGeometry
                   args={[isSelected ? radius * 1.25 : radius, 16, 16]}
