@@ -37,7 +37,7 @@ export default function Login() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const email = formData.email.trim();
+    const email = formData.email.trim().toLowerCase();
     const password = formData.password;
 
     if (!email) {

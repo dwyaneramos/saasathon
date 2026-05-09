@@ -80,6 +80,7 @@ interface ForceSimulationProps {
   edges: Edge[];
   is2D: boolean;
   selectedNodeIndex: number | null;
+  nodeSizeScale: (fileCount: number) => number;
   onNodeClick?: (index: number) => void;
   onNodeHover?: (index: number | null) => void;
 }
@@ -89,12 +90,24 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
   edges,
   is2D,
   selectedNodeIndex,
+  nodeSizeScale,
   onNodeClick,
   onNodeHover,
 }) => {
   const nodesRef = useRef(nodes);
   const prevIs2DRef = useRef(is2D);
+  const cursorRef = useRef<THREE.Vector2>(new THREE.Vector2(9999, 9999));
+  const hoverOutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, forceUpdate] = useState({});
+
+  const handlePointerOver = (index: number) => {
+    if (hoverOutTimer.current) clearTimeout(hoverOutTimer.current);
+    onNodeHover?.(index);
+  };
+
+  const handlePointerOut = () => {
+    hoverOutTimer.current = setTimeout(() => onNodeHover?.(null), 50);
+  };
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -106,27 +119,75 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
         node.velocity.y = (Math.random() - 0.5) * 0.15;
       });
     }
-
     prevIs2DRef.current = is2D;
   }, [is2D]);
 
-  useFrame(() => {
+  // Track normalised cursor position in NDC space (-1..1)
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      cursorRef.current.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+    };
+    const onLeave = () => cursorRef.current.set(9999, 9999);
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    return () => {
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mouseleave", onLeave);
+    };
+  }, [gl]);
+
+  useFrame(({ clock }) => {
     const alpha = 0.05;
     const repulsionStrength = 0.06;
     const attractionStrength = 0.012;
     const centeringStrength = 0.0008;
-    const damping = 0.92;
+    const driftAmplitude = 0.0003;
+    const t = clock.getElapsedTime();
     const currentNodes = nodesRef.current;
 
-    currentNodes.forEach((node) => {
-      node.velocity.multiplyScalar(damping);
+    // Approximate cursor in world space (NDC scaled to ~3 unit graph bounds)
+    const cursorWorld = new THREE.Vector3(
+      cursorRef.current.x * 3,
+      cursorRef.current.y * 3,
+      0,
+    );
+    // Radius is sized to roughly match a node's visual footprint in world units
+    const CURSOR_RADIUS = 0.3;
+
+    currentNodes.forEach((node, i) => {
+      const distToCursor = cursorWorld.distanceTo(node.position);
+
+      if (distToCursor < CURSOR_RADIUS) {
+        // Hard freeze — zero velocity and skip all further updates for this node
+        node.velocity.set(0, 0, 0);
+        return;
+      }
+
+      node.velocity.multiplyScalar(0.92);
+
+      // Perpetual drift: unique phase per node so they don't all move in sync
+      const phase = i * 2.399; // golden-angle offset
+      node.velocity.x += Math.sin(t * 0.4 + phase) * driftAmplitude;
+      node.velocity.z += Math.cos(t * 0.31 + phase) * driftAmplitude;
+      if (!is2D) {
+        node.velocity.y += Math.sin(t * 0.27 + phase + 1) * driftAmplitude;
+      }
     });
 
     for (let i = 0; i < currentNodes.length; i++) {
       for (let j = i + 1; j < currentNodes.length; j++) {
         const nodeA = currentNodes[i];
         const nodeB = currentNodes[j];
-        const delta = new THREE.Vector3().subVectors(nodeA.position, nodeB.position);
+        const delta = new THREE.Vector3().subVectors(
+          nodeA.position,
+          nodeB.position,
+        );
         const distance = delta.length();
 
         if (distance > 0 && distance < 3) {
@@ -141,7 +202,10 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
     edges.forEach((edge) => {
       const nodeA = currentNodes[edge.source];
       const nodeB = currentNodes[edge.target];
-      const delta = new THREE.Vector3().subVectors(nodeB.position, nodeA.position);
+      const delta = new THREE.Vector3().subVectors(
+        nodeB.position,
+        nodeA.position,
+      );
       const distance = delta.length();
       const desiredDistance = 0.3 + (1.0 - edge.weight) * 0.5;
 
@@ -181,11 +245,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
       }
     });
 
-    const totalVelocity = currentNodes.reduce((sum, node) => sum + node.velocity.length(), 0);
-    if (totalVelocity < 0.001) {
-      return;
-    }
-
+    // Always re-render — drift keeps the graph moving perpetually
     forceUpdate({});
   });
 
@@ -218,16 +278,19 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
       {nodesRef.current.map((node, index) => {
         const isSelected = selectedNodeIndex === index;
+        const radius = nodeSizeScale(node.fileCount ?? 0);
 
         return (
           <group key={node.id} position={node.position.clone()}>
             <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
               <mesh
                 onClick={() => onNodeClick?.(index)}
-                onPointerOver={() => onNodeHover?.(index)}
-                onPointerOut={() => onNodeHover?.(null)}
+                onPointerOver={() => handlePointerOver(index)}
+                onPointerOut={() => handlePointerOut()}
               >
-                <sphereGeometry args={[isSelected ? 0.09 : 0.07, 16, 16]} />
+                <sphereGeometry
+                  args={[isSelected ? radius * 1.25 : radius, 16, 16]}
+                />
                 <meshStandardMaterial
                   color={isSelected ? "#2563eb" : "#111111"}
                   emissive={isSelected ? "#2563eb" : "#111111"}
@@ -238,7 +301,7 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
 
             <Billboard>
               <Text
-                position={[0, 0.17, 0]}
+                position={[0, radius + 0.1, 0]}
                 fontSize={0.09}
                 color="#111111"
                 anchorX="center"
@@ -273,10 +336,32 @@ const GraphView: React.FC<GraphViewProps> = ({
   onNodeHover,
 }) => {
   const nodes = useMemo(() => generateNodes(graphNodes), [graphNodes]);
-  const edges = useMemo(() => matrixToEdges(weightMatrix, threshold), [weightMatrix, threshold]);
-  const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(null);
+  const edges = useMemo(
+    () => matrixToEdges(weightMatrix, threshold),
+    [weightMatrix, threshold],
+  );
+  const [selectedNodeIndex, setSelectedNodeIndex] = useState<number | null>(
+    null,
+  );
   const controlsRef = useRef<any>(null);
-  const canvasKey = useMemo(() => graphNodes.map((node) => node.id).join("|"), [graphNodes]);
+  const canvasKey = useMemo(
+    () => graphNodes.map((node) => node.id).join("|"),
+    [graphNodes],
+  );
+
+  // Build a size scale based on fileCount range across all nodes
+  const nodeSizeScale = useMemo(() => {
+    const counts = graphNodes.map((n) => n.fileCount ?? 0);
+    const max = Math.max(...counts, 1);
+    const min = Math.min(...counts, 0);
+    const BASE = 0.07;
+    const MAX_R = 0.18;
+    return (fileCount: number) => {
+      if (max === min) return BASE + (MAX_R - BASE) * 0.5;
+      const t = (fileCount - min) / (max - min);
+      return BASE + (MAX_R - BASE) * t;
+    };
+  }, [graphNodes]);
 
   useEffect(() => {
     setSelectedNodeIndex(null);
@@ -292,7 +377,11 @@ const GraphView: React.FC<GraphViewProps> = ({
   };
 
   return (
-    <Canvas key={canvasKey} camera={{ position: [0, 0, 6.5], fov: 42 }} gl={{ antialias: true, alpha: true }}>
+    <Canvas
+      key={canvasKey}
+      camera={{ position: [0, 0, 6.5], fov: 42 }}
+      gl={{ antialias: true, alpha: true }}
+    >
       <CameraController is2D={is2D} controlsRef={controlsRef} />
       <ambientLight intensity={1.2} />
       <pointLight position={[0, 0, 5]} intensity={12} color="#ffffff" />
@@ -304,9 +393,10 @@ const GraphView: React.FC<GraphViewProps> = ({
           edges={edges}
           is2D={is2D}
           selectedNodeIndex={selectedNodeIndex}
+          nodeSizeScale={nodeSizeScale}
           onNodeClick={handleNodeClick}
           onNodeHover={(index) => {
-            onNodeHover?.(index === null ? null : graphNodes[index] ?? null);
+            onNodeHover?.(index === null ? null : (graphNodes[index] ?? null));
           }}
         />
       </Suspense>
