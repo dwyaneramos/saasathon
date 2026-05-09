@@ -127,7 +127,7 @@ export default function Graph() {
         setTooltipFrameSize({ width: 0, height: 0 });
         hoveredNodeIdRef.current = null;
       }
-    }, 200);
+    }, 110);
   }, []);
 
   const cancelHide = useCallback(() => {
