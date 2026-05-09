@@ -39,7 +39,6 @@ type DocumentResponse = {
 type ApiErrorPayload = {
 	error?: string;
 };
-
 function authHeaders() {
 	const token = localStorage.getItem("token");
 	return token

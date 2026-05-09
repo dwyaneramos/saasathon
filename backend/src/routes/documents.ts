@@ -52,7 +52,11 @@ export const uploadImageMiddleware = multer({
 		files: 1,
 	},
 	fileFilter: (req, file, cb) => {
-		if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.mimetype)) {
+		if (
+			!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+				file.mimetype,
+			)
+		) {
 			cb(new Error("Only PNG, JPEG, WebP, or GIF images are supported"));
 			return;
 		}
@@ -96,7 +100,9 @@ router.get("/documents/search", async (req, res) => {
 	}
 
 	const requestedLimit =
-		typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+		typeof req.query.limit === "string"
+			? Number(req.query.limit)
+			: undefined;
 	const documents = await searchDocuments(
 		query,
 		spaceId,
@@ -117,18 +123,16 @@ router.post("/assistant/dashboard", requireAuth, async (req, res) => {
 				? Number(req.body.spaceId)
 				: null;
 
-	if (
-		spaceId !== null &&
-		(!Number.isInteger(spaceId) || spaceId < 1)
-	) {
+	if (spaceId !== null && (!Number.isInteger(spaceId) || spaceId < 1)) {
 		res.status(400).json({ error: "spaceId must be a positive integer" });
 		return;
 	}
 
-	const prompt =
-		typeof req.body?.prompt === "string" ? req.body.prompt : "";
+	const prompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
 	const pathname =
-		typeof req.body?.pathname === "string" ? req.body.pathname : "/dashboard";
+		typeof req.body?.pathname === "string"
+			? req.body.pathname
+			: "/dashboard";
 
 	const response = await askDashboardAssistant({
 		prompt,
@@ -142,7 +146,9 @@ router.post("/assistant/dashboard", requireAuth, async (req, res) => {
 router.get("/documents/:documentId", async (req, res) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -162,7 +168,9 @@ router.patch(
 	async (req, res) => {
 		const documentId = getDocumentIdFromParams(req);
 		if (!documentId) {
-			res.status(400).json({ error: "documentId must be a positive integer" });
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
 			return;
 		}
 
@@ -179,7 +187,9 @@ router.patch(
 router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -208,7 +218,9 @@ router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 router.get("/documents/:documentId/file", async (req, res, next) => {
 	const documentId = getDocumentIdFromParams(req);
 	if (!documentId) {
-		res.status(400).json({ error: "documentId must be a positive integer" });
+		res.status(400).json({
+			error: "documentId must be a positive integer",
+		});
 		return;
 	}
 
@@ -272,24 +284,20 @@ router.get("/documents/:documentId/file", async (req, res, next) => {
 	});
 });
 
-router.post(
-	"/categories",
-	validate(createCategorySchema),
-	async (req, res) => {
-		const { documentId, ...categoryInput } = req.body;
-		const category = await createCategory({ ...categoryInput, documentId });
+router.post("/categories", validate(createCategorySchema), async (req, res) => {
+	const { documentId, ...categoryInput } = req.body;
+	const category = await createCategory({ ...categoryInput, documentId });
 
-		if (documentId) {
-			const assigned = await assignDocumentCategory(documentId, category.id);
-			if (!assigned) {
-				res.status(404).json({ error: "Document not found" });
-				return;
-			}
+	if (documentId) {
+		const assigned = await assignDocumentCategory(documentId, category.id);
+		if (!assigned) {
+			res.status(404).json({ error: "Document not found" });
+			return;
 		}
+	}
 
-		res.status(201).json({ category: toPublicCategory(category) });
-	},
-);
+	res.status(201).json({ category: toPublicCategory(category) });
+});
 
 export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	if (!req.file) {
@@ -324,7 +332,8 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
+		suggestedCategoryDescription:
+			analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -362,7 +371,8 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
-		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
+		suggestedCategoryDescription:
+			analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -395,7 +405,10 @@ function getDocumentId(req: Request) {
 }
 
 function getSpaceId(req: Request) {
-	if (typeof req.query.spaceId !== "string" || req.query.spaceId.trim() === "") {
+	if (
+		typeof req.query.spaceId !== "string" ||
+		req.query.spaceId.trim() === ""
+	) {
 		return null;
 	}
 

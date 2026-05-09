@@ -414,7 +414,6 @@ export async function askDashboardAssistant({
     searchResults: publicSearchResults,
   };
 }
-
 export async function renameDocument(documentId: number, name: string) {
   await ensureDocumentSchema();
   const trimmedName = name.trim();
@@ -436,6 +435,7 @@ export async function renameDocument(documentId: number, name: string) {
       file_size,
       category_id,
       summary,
+      keywords,
       created_at`,
     [documentId, trimmedName],
   );
@@ -459,6 +459,7 @@ export async function deleteDocument(documentId: number) {
       file_size,
       category_id,
       summary,
+      keywords,
       created_at`,
     [documentId],
   );
