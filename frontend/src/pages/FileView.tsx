@@ -545,7 +545,15 @@ export default function FileView() {
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
 									<BreadcrumbLink asChild>
-										<Link to="/graph">{categoryName}</Link>
+										<Link
+											to={
+												document.categoryId
+													? `/graph?categoryId=${document.categoryId}`
+													: "/graph"
+											}
+										>
+											{categoryName}
+										</Link>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 							</>
