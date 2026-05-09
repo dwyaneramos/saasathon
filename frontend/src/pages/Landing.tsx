@@ -5,8 +5,8 @@ export const Landing = () => {
 	return (
 		<>
 			{/* HERO */}
-			<main className="relative min-h-screen flex items-center px-6 py-24 overflow-hidden">
-				<div className="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-20 items-center">
+			<main className="relative min-h-screen flex items-center px-6 py-24 overflow-visible">
+				<div className="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-20 items-start">
 					{/* LEFT SIDE - CONTENT */}
 					<div className="text-center lg:text-left flex flex-col items-center lg:items-start">
 						<h1 className="max-w-4xl text-6xl md:text-8xl font-bold tracking-tighter bg-gradient-to-b from-zinc-900 to-zinc-500 bg-clip-text text-transparent leading-[0.9] pb-8">
@@ -29,9 +29,8 @@ export const Landing = () => {
 							</button>
 						</div>
 					</div>
-
-					<div className="relative flex items-center justify-center">
-						<LandingAnimation></LandingAnimation>
+					<div className="relative flex items-start justify-start overflow-visible position-absolute right-0 top-0">
+						<LandingAnimation />
 					</div>
 				</div>
 			</main>

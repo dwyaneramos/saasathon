@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import kibiLogo from "../assets/kibi-logo.png";
+import kibiLogo from "../assets/kibi.svg";
 import { SidebarTrigger } from "./ui/sidebar";
 import { NavbarContent } from "./Navbar";
 

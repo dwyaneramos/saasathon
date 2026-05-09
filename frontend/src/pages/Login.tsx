@@ -123,8 +123,9 @@ export default function Login() {
 
 								<Button
 									type="submit"
+									variant="accent"
 									disabled={isLoading}
-									className="flex-1 items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-zinc-800 transition-all transform active:scale-95 shadow-lg shadow-zinc-200"
+									className="flex-1 items-center gap-1.5 px-4 py-2 rounded-lg transition-all transform active:scale-95"
 								>
 									{isLoading ? "Loading..." : "Login"}
 								</Button>
@@ -143,7 +144,6 @@ export default function Login() {
 					</CardContent>
 				</Card>
 			</main>
-
 		</div>
 	);
 }

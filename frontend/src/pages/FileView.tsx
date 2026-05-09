@@ -10,6 +10,8 @@ import {
 	Plus,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
+import { fileIconFor, type KibiFile } from "@/components/app-sidebar";
+import React from "react";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
@@ -152,7 +154,7 @@ export default function FileView() {
 						</a>
 						<a
 							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800"
+							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-zinc-900 hover:bg-(--color-accent-hover)"
 						>
 							<Download className="size-4" />
 							Download
@@ -218,6 +220,16 @@ function FilePreview({
 	);
 }
 
+function documentToKibiFile(document: PublicDocument): KibiFile {
+	return {
+		id: document.id,
+		name:
+			document.originalFileName ?? document.fileName ?? document.filename,
+		filename: document.filename,
+		mimeType: document.mimeType,
+	};
+}
+
 function ZoomableFileViewer({
 	document: fileDocument,
 	fileUrl,
@@ -247,6 +259,8 @@ function ZoomableFileViewer({
 	const pdfHeight = isExpanded ? 780 : 720;
 	const imageWidth = isExpanded ? 1080 : 820;
 
+	const file = documentToKibiFile(fileDocument);
+
 	const viewer = (
 		<div
 			className={
@@ -258,7 +272,10 @@ function ZoomableFileViewer({
 			<div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-3">
 				<div className="flex min-w-0 items-center gap-2">
 					<div className="flex size-7 items-center justify-center rounded-md bg-zinc-100 text-zinc-600">
-						<FileText className="size-4" />
+						{React.createElement(fileIconFor(file), {
+							className:
+								"size-3.5 shrink-0 text-muted-foreground/80",
+						})}
 					</div>
 					<span className="truncate text-sm font-medium text-zinc-800">
 						{displayName}

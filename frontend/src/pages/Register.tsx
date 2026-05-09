@@ -93,30 +93,34 @@ export default function Register() {
 
 					<CardContent>
 						<form onSubmit={handleSubmit} className="space-y-4">
-							<div className="space-y-2">
-								<Label htmlFor="firstName">First Name</Label>
-								<Input
-									type="text"
-									id="firstName"
-									name="firstName"
-									placeholder="Enter your first name"
-									required
-									value={formData.firstName}
-									onChange={handleChange}
-								/>
-							</div>
+							<div className="flex flex-row gap-4">
+								<div className="space-y-2 flex-1">
+									<Label htmlFor="firstName">
+										First Name
+									</Label>
+									<Input
+										type="text"
+										id="firstName"
+										name="firstName"
+										placeholder="Enter your first name"
+										required
+										value={formData.firstName}
+										onChange={handleChange}
+									/>
+								</div>
 
-							<div className="space-y-2">
-								<Label htmlFor="lastName">Last Name</Label>
-								<Input
-									type="text"
-									id="lastName"
-									name="lastName"
-									placeholder="Enter your last name"
-									required
-									value={formData.lastName}
-									onChange={handleChange}
-								/>
+								<div className="space-y-2 flex-1">
+									<Label htmlFor="lastName">Last Name</Label>
+									<Input
+										type="text"
+										id="lastName"
+										name="lastName"
+										placeholder="Enter your last name"
+										required
+										value={formData.lastName}
+										onChange={handleChange}
+									/>
+								</div>
 							</div>
 
 							<div className="space-y-2">
@@ -172,8 +176,9 @@ export default function Register() {
 
 								<Button
 									type="submit"
+									variant="accent"
 									disabled={isLoading}
-									className="flex-1 items-center gap-1.5 bg-zinc-900 text-white px-4 py-2 rounded-lg hover:bg-zinc-800 transition-all transform active:scale-95 shadow-lg shadow-zinc-200"
+									className="flex-1 items-center gap-1.5 px-4 py-2 rounded-lg transition-all transform active:scale-95"
 								>
 									{isLoading ? "Loading..." : "Register"}
 								</Button>
@@ -182,7 +187,6 @@ export default function Register() {
 					</CardContent>
 				</Card>
 			</main>
-
 		</div>
 	);
 }
