@@ -110,7 +110,7 @@ export default function FileView() {
 				</div>
 				<Link
 					className="text-sm font-medium text-zinc-900 hover:underline"
-					to="/upload"
+					to="/graph?upload=1"
 				>
 					Back to uploads
 				</Link>

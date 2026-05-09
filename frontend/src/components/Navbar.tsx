@@ -38,7 +38,7 @@ export const NavbarContent = () => {
 							Graph
 						</NavLink>
 						<NavLink
-							to="/upload"
+							to="/graph?upload=1"
 							className={({ isActive }) =>
 								`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
 									isActive ? "text-zinc-900" : ""

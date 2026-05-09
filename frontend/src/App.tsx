@@ -3,6 +3,7 @@ import {
 	Route,
 	Routes,
 	BrowserRouter as Router,
+	useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -21,6 +22,9 @@ import { Toaster } from "./components/ui/sonner";
 import Footer from "./components/Footer";
 
 function AppLayout() {
+	const location = useLocation();
+	const isGraphRoute = location.pathname === "/graph";
+
 	return (
 		<div className="[--header-height:73px]">
 			<SidebarProvider
@@ -29,7 +33,13 @@ function AppLayout() {
 			>
 				<AppNavbar />
 				<AppSidebar />
-				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0">
+				<SidebarInset
+					className={
+						isGraphRoute
+							? "mt-[65px] w-full min-w-0 max-w-none px-0"
+							: "mx-auto mt-[65px] w-full min-w-0 max-w-full px-4 md:max-w-[min(70vw,calc(100vw-34rem))] md:px-0"
+					}
+				>
 					<Outlet />
 				</SidebarInset>
 			</SidebarProvider>

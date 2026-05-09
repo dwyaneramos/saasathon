@@ -407,8 +407,10 @@ function AddButton() {
 				</SidebarMenuButton>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent side="top" align="start" className="min-w-44">
-				<DropdownMenuItem className="gap-2">
-					<FileText className="size-4" /> New file
+				<DropdownMenuItem asChild className="gap-2">
+					<Link to="/graph?upload=1">
+						<FileText className="size-4" /> New file
+					</Link>
 				</DropdownMenuItem>
 				<DropdownMenuItem className="gap-2">
 					<FolderOpen className="size-4" /> New collection
