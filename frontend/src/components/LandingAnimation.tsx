@@ -97,7 +97,7 @@ export const LandingAnimation = () => {
                 <Billboard>
                   <Text
                     position={[0, 0.07, 0]}
-                    fontSize={0.034}
+                    fontSize={0.07}
                     color="#242f40"
                     anchorX="center"
                     anchorY="middle"
