@@ -27,9 +27,7 @@ export const loginSchema = z.object({
 		.regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, {
 			message: "Invalid email format",
 		}),
-	password: z
-		.string()
-		.min(8, { message: "Password must be at least 8 characters long" }),
+	password: z.string().min(1, { message: "Password is required" }),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
