@@ -5,7 +5,7 @@ export default function Graph() {
   const [is2D, setIs2D] = useState(false);
 
   return (
-    <div className="relative text-primary h-screen bg-bg flex flex-col justify-center overflow-hidden">
+    <div className="relative text-primary h-screen flex flex-col justify-center overflow-hidden">
       <button
         onClick={() => setIs2D(!is2D)}
         className="absolute top-5 left-10 z-20 px-4 py-2 bg-gray-900 text-white rounded hover:bg-gray-700 transition"
