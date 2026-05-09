@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GraphView from "@/components/GraphView";
 
 export default function Graph() {
-  const [is2D, setIs2D] = useState(false);
+  const [is2D, setIs2D] = useState(true);
+
+  useEffect(() => {
+    console.log(`Graph mode changed: ${is2D ? "2D" : "3D"}`);
+  }, [is2D]);
 
   return (
-    <div className="relative text-primary h-screen flex flex-col justify-center overflow-hidden">
+    <div className="graph-page p-4 relative w-full h-screen overflow-hidden">
       <button
         onClick={() => setIs2D(!is2D)}
         className="absolute top-5 left-10 z-20 px-4 py-2 bg-gray-900 text-white rounded hover:bg-gray-700 transition"

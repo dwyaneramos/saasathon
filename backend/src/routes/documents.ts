@@ -8,6 +8,7 @@ import {
 	assignDocumentCategory,
 	createCategory,
 	listCategories,
+	toPublicCategory,
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
@@ -42,7 +43,7 @@ export const uploadImageMiddleware = multer({
 
 router.get("/categories", async (req, res) => {
 	const categories = await listCategories();
-	res.json({ categories });
+	res.json({ categories: categories.map(toPublicCategory) });
 });
 
 router.post(
@@ -50,7 +51,7 @@ router.post(
 	validate(createCategorySchema),
 	async (req, res) => {
 		const { documentId, ...categoryInput } = req.body;
-		const category = await createCategory(categoryInput);
+		const category = await createCategory({ ...categoryInput, documentId });
 
 		if (documentId) {
 			const assigned = await assignDocumentCategory(documentId, category.id);
@@ -60,7 +61,7 @@ router.post(
 			}
 		}
 
-		res.status(201).json({ category });
+		res.status(201).json({ category: toPublicCategory(category) });
 	},
 );
 
@@ -77,6 +78,7 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzePdf(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
+		getDocumentId(req),
 	);
 
 	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
@@ -89,11 +91,14 @@ export async function analyzePdfUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category,
+		category: analysis.match.category
+			? toPublicCategory(analysis.match.category)
+			: null,
 		confidence: analysis.match.confidence,
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -111,6 +116,7 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 	const analysis = await analyzeImage(
 		req.file,
 		Number.isFinite(minConfidence) ? minConfidence : undefined,
+		getDocumentId(req),
 	);
 
 	res.status(analysis.match.needsNewCategory ? 202 : 200).json({
@@ -123,11 +129,14 @@ export async function analyzeImageUploadHandler(req: Request, res: Response) {
 			textPreview: analysis.textPreview,
 			model: analysis.model,
 		},
-		category: analysis.match.category,
+		category: analysis.match.category
+			? toPublicCategory(analysis.match.category)
+			: null,
 		confidence: analysis.match.confidence,
 		matchedKeywords: analysis.match.matchedKeywords,
 		needsNewCategory: analysis.match.needsNewCategory,
 		suggestedCategoryName: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: analysis.match.suggestedCategoryDescription,
 		prompt: analysis.match.prompt,
 	});
 }
@@ -145,3 +154,16 @@ router.post(
 );
 
 export default router;
+
+function getDocumentId(req: Request) {
+	const documentId =
+		typeof req.body?.documentId === "string"
+			? Number(req.body.documentId)
+			: undefined;
+
+	return typeof documentId === "number" &&
+		Number.isInteger(documentId) &&
+		documentId > 0
+		? documentId
+		: undefined;
+}

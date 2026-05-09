@@ -9,9 +9,6 @@ export default function Home() {
 				<p>Home</p>
 			</main>
 
-			<footer className="home-footer">
-				<small>&copy; 2026 My App</small>
-			</footer>
 		</div>
 	);
 }
