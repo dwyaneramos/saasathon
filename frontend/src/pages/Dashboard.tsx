@@ -3,6 +3,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type DragEvent,
 	type KeyboardEvent,
 } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
@@ -18,6 +19,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { openUploadModalEvent } from "@/components/app-sidebar";
 import { apiBaseUrl } from "@/lib/api";
+import { downloadResponseBlob } from "@/lib/download";
 import { fileIconFor } from "@/lib/file-icons";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
 
@@ -104,6 +106,26 @@ function authHeaders() {
 	return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
+function isDownloadRequest(text: string) {
+	return /\b(download|export|zip|save)\b/i.test(text);
+}
+
+function truncateFilenameForDisplay(filename: string, maxLength = 52) {
+	const trimmedFilename = filename.trim();
+	if (trimmedFilename.length <= maxLength) {
+		return trimmedFilename;
+	}
+
+	const extensionMatch = trimmedFilename.match(/(\.[a-z0-9]{1,8})$/i);
+	const extension = extensionMatch?.[1] ?? "";
+	const basename = extension
+		? trimmedFilename.slice(0, -extension.length)
+		: trimmedFilename;
+	const basenameLimit = Math.max(12, maxLength - extension.length - 3);
+
+	return `${basename.slice(0, basenameLimit)}...${extension}`;
+}
+
 function documentDisplayName(document: DocumentSummary) {
 	return document.originalFileName || document.fileName || document.filename;
 }
@@ -181,7 +203,7 @@ function InlineMarkdown({ text }: { text: string }) {
 					return (
 						<code
 							key={index}
-							className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.85em] text-zinc-800"
+							className="inline-block max-w-full truncate rounded bg-zinc-100 px-1 py-0.5 align-bottom font-mono text-[0.85em] text-zinc-800"
 						>
 							{part.slice(1, -1)}
 						</code>
@@ -202,7 +224,7 @@ function ChatContent({ content }: { content: string }) {
 	const lines = content.split("\n");
 
 	return (
-		<p className="whitespace-pre-wrap">
+		<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
 			{lines.map((line, index) => (
 				<span key={index}>
 					{index > 0 ? "\n" : null}
@@ -230,7 +252,7 @@ function ChatMessage({ message }: { message: Message }) {
 				</div>
 			)}
 			<div
-				className={`max-w-[78%] px-3 py-2 text-sm leading-relaxed ${
+				className={`min-w-0 max-w-[78%] overflow-hidden px-3 py-2 text-sm leading-relaxed ${
 					isUser
 						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-(--color-accent) text-black"
 						: "rounded-xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
@@ -293,7 +315,7 @@ function QuickActions({
 								className="inline-flex min-h-12 w-full min-w-0 flex-col items-start justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 sm:min-h-20 sm:rounded-2xl sm:px-4 sm:py-3"
 								title={suggestion.sub}
 							>
-								<span className="flex items-start gap-2">
+								<span className="flex w-full min-w-0 items-start gap-2">
 									{(() => {
 										const Icon =
 											quickActionIconForSuggestion(
@@ -303,11 +325,11 @@ function QuickActions({
 											<Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500 sm:size-4" />
 										);
 									})()}
-									<span className="line-clamp-2 text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
+									<span className="min-w-0 truncate text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
 										{suggestion.label}
 									</span>
 								</span>
-								<span className="mt-1 hidden line-clamp-2 text-xs leading-snug text-zinc-500 sm:block">
+								<span className="mt-1 hidden w-full min-w-0 truncate text-xs leading-snug text-zinc-500 sm:block">
 									{suggestion.sub}
 								</span>
 							</button>
@@ -329,14 +351,14 @@ function QuickActions({
 						<button
 							key={suggestion.prompt}
 							onClick={() => onSelect(suggestion.prompt)}
-							className={`group bg-white text-left transition-colors hover:bg-zinc-50 ${
+							className={`group min-w-0 bg-white text-left transition-colors hover:bg-zinc-50 ${
 								compact ? "p-3" : "p-4"
 							}`}
 						>
-							<p className="text-xs font-semibold leading-snug text-zinc-900">
+							<p className="truncate text-xs font-semibold leading-snug text-zinc-900">
 								{suggestion.label}
 							</p>
-							<p className="mt-1 line-clamp-2 text-[11px] text-zinc-400">
+							<p className="mt-1 truncate text-[11px] text-zinc-400">
 								{suggestion.sub}
 							</p>
 						</button>
@@ -360,9 +382,11 @@ export default function Dashboard() {
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
 	const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 	const [contextRefreshKey, setContextRefreshKey] = useState(0);
+	const [isDragUploadActive, setIsDragUploadActive] = useState(false);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const dragDepthRef = useRef(0);
 	const isEmpty = messages.length === 0;
 	const hasStartedConversation = messages.length > 0 || isLoading;
 	const userFirstName = user?.firstName ?? null;
@@ -551,6 +575,44 @@ export default function Dashboard() {
 		return `${counts}. Latest file: ${documentDisplayName(newestDocument)}.`;
 	}, [activeSpaceId, categories.length, documents, isContextLoading]);
 
+	const downloadMatchingFiles = async (query: string) => {
+		if (!activeSpaceId) {
+			throw new Error("Choose a space before downloading files.");
+		}
+
+		const response = await fetch(`${apiBaseUrl}/documents/download-query`, {
+			method: "POST",
+			headers: {
+				...authHeaders(),
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				query,
+				spaceId: activeSpaceId,
+			}),
+		});
+
+		if (!response.ok) {
+			const payload = (await response.json().catch(() => null)) as {
+				error?: string;
+			} | null;
+			throw new Error(
+				payload?.error ?? "No files matched that download request.",
+			);
+		}
+
+		const filename = await downloadResponseBlob(
+			response,
+			"kibi-download.zip",
+		);
+		const fileCount = Number(response.headers.get("X-File-Count"));
+		const countText = Number.isFinite(fileCount)
+			? `${fileCount} file${fileCount === 1 ? "" : "s"}`
+			: "the matching files";
+
+		return `Downloading ${countText} as \`${truncateFilenameForDisplay(filename)}\`.`;
+	};
+
 	const sendMessage = async (text: string) => {
 		const trimmedText = text.trim();
 		if (!trimmedText || isLoading) return;
@@ -580,6 +642,21 @@ export default function Dashboard() {
 		setIsLoading(true);
 
 		try {
+			if (isDownloadRequest(trimmedText)) {
+				const downloadReply = await downloadMatchingFiles(trimmedText);
+				await new Promise((resolve) => window.setTimeout(resolve, 220));
+				setMessages((currentMessages) => [
+					...currentMessages,
+					{
+						id: crypto.randomUUID(),
+						role: "assistant",
+						content: downloadReply,
+						timestamp: new Date(),
+					},
+				]);
+				return;
+			}
+
 			const response = await fetch(`${apiBaseUrl}/assistant/dashboard`, {
 				method: "POST",
 				headers: {
@@ -672,8 +749,66 @@ export default function Dashboard() {
 		setMessages([]);
 	};
 
+	const handleDashboardDragEnter = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current += 1;
+		setIsDragUploadActive(true);
+	};
+
+	const handleDashboardDragOver = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+		if (!isDragUploadActive) {
+			setIsDragUploadActive(true);
+		}
+	};
+
+	const handleDashboardDragLeave = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+		if (dragDepthRef.current === 0) {
+			setIsDragUploadActive(false);
+		}
+	};
+
+	const handleDashboardDrop = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.files.length) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = 0;
+		setIsDragUploadActive(false);
+		window.dispatchEvent(
+			new CustomEvent(openUploadModalEvent, {
+				detail: {
+					files: Array.from(event.dataTransfer.files),
+					categoryId: null,
+				},
+			}),
+		);
+	};
+
 	return (
-		<div className="relative flex h-[calc(100svh-var(--header-height)-1rem)] max-h-[calc(100svh-var(--header-height)-1rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+		<div
+			className="relative flex h-[calc(100svh-var(--header-height)-1rem)] max-h-[calc(100svh-var(--header-height)-1rem)] min-h-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
+			onDragEnter={handleDashboardDragEnter}
+			onDragOver={handleDashboardDragOver}
+			onDragLeave={handleDashboardDragLeave}
+			onDrop={handleDashboardDrop}
+		>
 			<div
 				ref={scrollContainerRef}
 				className="min-h-0 flex-1 overflow-y-auto px-4 pb-52 pt-6 sm:px-6 sm:pb-64 sm:pt-8"
@@ -755,7 +890,7 @@ export default function Dashboard() {
 									setInput(event.target.value)
 								}
 								onKeyDown={handleKeyDown}
-								placeholder={`Ask me to find a file, open an image, or search ${spaceLabel}`}
+								placeholder={`Ask me to find a file, download matching files, or search ${spaceLabel}`}
 								className={`flex-1 resize-none overflow-hidden bg-transparent py-2 leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 transition-all duration-700 ${
 									hasStartedConversation
 										? "text-base md:text-[1.05rem]"
@@ -795,6 +930,24 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</div>
+
+			{isDragUploadActive ? (
+				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
+					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+							<UploadCloud className="size-6" />
+						</span>
+						<div>
+							<p className="text-base font-semibold text-zinc-900">
+								Drag and drop to upload
+							</p>
+							<p className="mt-1 text-sm text-zinc-500">
+								Drop files anywhere to continue
+							</p>
+						</div>
+					</div>
+				</div>
+			) : null}
 		</div>
 	);
 }

@@ -5,6 +5,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type DragEvent,
 } from "react";
 import {
 	useNavigate,
@@ -19,11 +20,14 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { ArrowLeft, Box, SquareStack } from "lucide-react";
+import { ArrowLeft, Box, SquareStack, UploadCloud } from "lucide-react";
 import GraphView from "@/components/GraphView";
 import { Button } from "@/components/ui/button";
 import { fileIconFor } from "@/lib/file-icons";
-import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
+import {
+	fileTreeUpdatedEvent,
+	openUploadModalEvent,
+} from "@/components/app-sidebar";
 import type {
 	CategoryConnectionSummary,
 	CategorySummary,
@@ -85,6 +89,8 @@ export default function Graph() {
 	const [documentPreviewObjectUrl, setDocumentPreviewObjectUrl] = useState<
 		string | null
 	>(null);
+	const [isDragUploadActive, setIsDragUploadActive] = useState(false);
+	const dragDepthRef = useRef(0);
 	const requestedCategoryId = useMemo(() => {
 		const rawValue = searchParams.get("categoryId");
 		if (!rawValue) return null;
@@ -259,6 +265,61 @@ export default function Graph() {
 		},
 		[cancelHide, scheduleHide],
 	);
+
+	const handleGraphDragEnter = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current += 1;
+		setIsDragUploadActive(true);
+	};
+
+	const handleGraphDragOver = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "copy";
+		if (!isDragUploadActive) {
+			setIsDragUploadActive(true);
+		}
+	};
+
+	const handleGraphDragLeave = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.types.includes("Files")) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+		if (dragDepthRef.current === 0) {
+			setIsDragUploadActive(false);
+		}
+	};
+
+	const handleGraphDrop = (event: DragEvent<HTMLDivElement>) => {
+		if (!event.dataTransfer.files.length) {
+			return;
+		}
+
+		event.preventDefault();
+		dragDepthRef.current = 0;
+		setIsDragUploadActive(false);
+			window.dispatchEvent(
+				new CustomEvent(openUploadModalEvent, {
+					detail: {
+						files: Array.from(event.dataTransfer.files),
+						categoryId:
+							mode === "files" && typeof activeCategoryId === "number"
+								? activeCategoryId
+								: null,
+					},
+				}),
+			);
+		};
 
 	const categoryNodes = useMemo<GraphNode[]>(() => {
 		return categories.map((category) => ({
@@ -544,6 +605,10 @@ export default function Graph() {
 		<div
 			ref={containerRef}
 			className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
+			onDragEnter={handleGraphDragEnter}
+			onDragOver={handleGraphDragOver}
+			onDragLeave={handleGraphDragLeave}
+			onDrop={handleGraphDrop}
 		>
 			<div className="absolute top-5 left-5 z-20">
 				<Breadcrumb>
@@ -614,6 +679,24 @@ export default function Graph() {
 					{is2D ? "Switch to 3D" : "Switch to 2D"}
 				</Button>
 			</div>
+
+			{isDragUploadActive ? (
+				<div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-zinc-950/20 backdrop-blur-[2px]">
+					<div className="flex min-w-[18rem] max-w-md flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 px-6 py-7 text-center shadow-xl">
+						<span className="flex size-12 items-center justify-center rounded-2xl bg-(--color-accent) text-zinc-900">
+							<UploadCloud className="size-6" />
+						</span>
+						<div>
+							<p className="text-base font-semibold text-zinc-900">
+								Drag and drop to upload
+							</p>
+							<p className="mt-1 text-sm text-zinc-500">
+								Drop files anywhere to continue
+							</p>
+						</div>
+					</div>
+				</div>
+			) : null}
 
 			{/* Anchored tooltip with a hover bridge so the card can be entered. */}
 			{showTooltip && (
