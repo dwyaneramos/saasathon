@@ -22,6 +22,7 @@ export async function ensureSpaceSchema() {
 			space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
 			metadata JSONB NOT NULL DEFAULT '{}',
 			description TEXT,
+			summary TEXT NOT NULL DEFAULT '',
 			keywords TEXT[] NOT NULL DEFAULT '{}',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -52,7 +53,8 @@ export async function ensureSpaceSchema() {
 		ALTER TABLE document_categories
 			DROP CONSTRAINT IF EXISTS document_categories_name_key,
 			ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
-			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';
+			ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
 
 		UPDATE document_categories
 		SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object(

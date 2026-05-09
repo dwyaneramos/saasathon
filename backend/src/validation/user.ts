@@ -1,11 +1,15 @@
 import { z } from "zod";
 
+const emailSchema = z
+	.string()
+	.trim()
+	.toLowerCase()
+	.regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, {
+		message: "Invalid email format",
+	});
+
 export const registerSchema = z.object({
-	email: z
-		.string()
-		.regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, {
-			message: "Invalid email format",
-		}),
+	email: emailSchema,
 	firstName: z.string().min(3).max(32),
 	lastName: z.string().min(3).max(32),
 	password: z
@@ -22,14 +26,8 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-	email: z
-		.string()
-		.regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, {
-			message: "Invalid email format",
-		}),
-	password: z
-		.string()
-		.min(8, { message: "Password must be at least 8 characters long" }),
+	email: emailSchema,
+	password: z.string().min(1, { message: "Password is required" }),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

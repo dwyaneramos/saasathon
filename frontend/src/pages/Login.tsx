@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
 
+const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 export default function Login() {
   const navigate = useNavigate();
 
@@ -35,6 +37,24 @@ export default function Login() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const email = formData.email.trim().toLowerCase();
+    const password = formData.password;
+
+    if (!email) {
+      setError("Enter your email address.");
+      return;
+    }
+
+    if (!emailPattern.test(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -45,7 +65,10 @@ export default function Login() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            email,
+            password,
+          }),
         },
       );
 
@@ -58,7 +81,7 @@ export default function Login() {
         });
         navigate("/");
       } else {
-        setError(data.error || data.message || "Invalid credentials");
+        setError(data.error || data.message || "Login failed");
       }
     } catch {
       setError("Server connection failed");
@@ -84,7 +107,7 @@ export default function Login() {
           </CardHeader>
 
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -92,7 +115,6 @@ export default function Login() {
                   id="email"
                   name="email"
                   placeholder="Enter your email"
-                  required
                   value={formData.email}
                   onChange={handleChange}
                 />
@@ -105,7 +127,6 @@ export default function Login() {
                   id="password"
                   name="password"
                   placeholder="Enter your password"
-                  required
                   value={formData.password}
                   onChange={handleChange}
                 />

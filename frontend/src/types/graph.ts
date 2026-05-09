@@ -3,6 +3,7 @@ export interface CategorySummary {
   name: string;
   spaceId: number | null;
   description: string | null;
+  summary: string;
   keywords: string[];
   metadata: Record<string, unknown>;
 }
@@ -28,4 +29,6 @@ export interface GraphNode {
   categoryId?: number;
   documentId?: number;
   fileCount?: number;
+  summary?: string;
+  mimeType?: string;
 }

@@ -12,6 +12,8 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 
+const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 export default function Register() {
 	const navigate = useNavigate();
 
@@ -35,9 +37,45 @@ export default function Register() {
 
 	const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
+		const firstName = formData.firstName.trim();
+		const lastName = formData.lastName.trim();
+		const email = formData.email.trim().toLowerCase();
+		const password = formData.password;
+		const repeatPassword = formData.repeatPassword;
+
+		if (!firstName) {
+			setError("Enter your first name.");
+			return;
+		}
+
+		if (!lastName) {
+			setError("Enter your last name.");
+			return;
+		}
+
+		if (!email) {
+			setError("Enter your email address.");
+			return;
+		}
+
+		if (!emailPattern.test(email)) {
+			setError("Enter a valid email address.");
+			return;
+		}
+
+		if (!password) {
+			setError("Create a password.");
+			return;
+		}
+
+		if (!repeatPassword) {
+			setError("Repeat your password.");
+			return;
+		}
+
 		setIsLoading(true);
 
-		if (formData.password !== formData.repeatPassword) {
+		if (password !== repeatPassword) {
 			setError("Passwords do not match");
 			setIsLoading(false);
 			return;
@@ -52,10 +90,10 @@ export default function Register() {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({
-						firstName: formData.firstName,
-						lastName: formData.lastName,
-						email: formData.email,
-						password: formData.password,
+						firstName,
+						lastName,
+						email,
+						password,
 					}),
 				},
 			);
@@ -92,7 +130,7 @@ export default function Register() {
 					</CardHeader>
 
 					<CardContent>
-						<form onSubmit={handleSubmit} className="space-y-4">
+						<form onSubmit={handleSubmit} noValidate className="space-y-4">
 							<div className="flex flex-row gap-4">
 								<div className="space-y-2 flex-1">
 									<Label htmlFor="firstName">
@@ -103,7 +141,6 @@ export default function Register() {
 										id="firstName"
 										name="firstName"
 										placeholder="Enter your first name"
-										required
 										value={formData.firstName}
 										onChange={handleChange}
 									/>
@@ -116,7 +153,6 @@ export default function Register() {
 										id="lastName"
 										name="lastName"
 										placeholder="Enter your last name"
-										required
 										value={formData.lastName}
 										onChange={handleChange}
 									/>
@@ -130,7 +166,6 @@ export default function Register() {
 									id="email"
 									name="email"
 									placeholder="Enter your email"
-									required
 									value={formData.email}
 									onChange={handleChange}
 								/>
@@ -143,7 +178,6 @@ export default function Register() {
 									id="password"
 									name="password"
 									placeholder="Enter your password"
-									required
 									value={formData.password}
 									onChange={handleChange}
 								/>
@@ -158,7 +192,6 @@ export default function Register() {
 									id="repeatPassword"
 									name="repeatPassword"
 									placeholder="Confirm your password"
-									required
 									value={formData.repeatPassword}
 									onChange={handleChange}
 								/>

@@ -6,7 +6,7 @@ import { NavbarContent } from "./Navbar";
 const AppNavbar = () => {
 	return (
 		<nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 pl-4 py-4 w-full text-zinc-900 border-b border-zinc-100 bg-white/80 backdrop-blur-md">
-			<div className="flex items-center gap-2">
+			<div className="flex items-center gap-4">
 				<SidebarTrigger className="-ml-1" />
 				{/* LOGO SECTION */}
 				<Link

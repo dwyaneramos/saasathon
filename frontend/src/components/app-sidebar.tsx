@@ -92,6 +92,15 @@ type ApiDocument = {
 	categoryId: number | null;
 };
 
+type ApiSearchResult = {
+  id: number;
+  filename: string;
+  fileName: string;
+  originalFileName: string | null;
+  mimeType: string;
+  snippet: string | null;
+};
+
 type FileTreeUpdatedEvent = CustomEvent<{
 	documentIds?: number[];
 }>;
@@ -103,6 +112,57 @@ function authHeaders() {
 
 function fileDisplayName(file: ApiDocument) {
 	return file.originalFileName || file.fileName || file.filename;
+}
+
+function searchResultDisplayName(file: ApiSearchResult) {
+  return file.originalFileName || file.fileName || file.filename;
+}
+
+function dedupeSearchResults(results: ApiSearchResult[]) {
+  const uniqueResults = new Map<string, ApiSearchResult>();
+
+  for (const result of results) {
+    const documentKey = String(result.id);
+    if (!uniqueResults.has(documentKey)) {
+      uniqueResults.set(documentKey, result);
+    }
+  }
+
+  return [...uniqueResults.values()];
+}
+
+function highlightMatch(text: string, query: string) {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return text;
+  }
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let startIndex = 0;
+  let matchIndex = lowerText.indexOf(lowerQuery);
+
+  while (matchIndex >= 0) {
+    if (matchIndex > startIndex) {
+      parts.push(text.slice(startIndex, matchIndex));
+    }
+
+    const endIndex = matchIndex + trimmedQuery.length;
+    parts.push(
+      <mark key={`${matchIndex}-${endIndex}`} className="rounded bg-(--color-accent)/50 px-0.5 text-current">
+        {text.slice(matchIndex, endIndex)}
+      </mark>,
+    );
+    startIndex = endIndex;
+    matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+  }
+
+  if (startIndex < text.length) {
+    parts.push(text.slice(startIndex));
+  }
+
+  return parts;
 }
 
 function fileExtension(file: KibiFile) {
@@ -438,7 +498,130 @@ function FileTree({
 	);
 }
 
-// (AddButton removed - replaced with explicit footer buttons in AppSidebar)
+function SearchResults({
+  results,
+  query,
+  isSearching,
+  error,
+}: {
+  results: ApiSearchResult[];
+  query: string;
+  isSearching: boolean;
+  error: string | null;
+}) {
+  const dedupedResults = React.useMemo(
+    () => dedupeSearchResults(results),
+    [results],
+  );
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+        Search
+      </SidebarGroupLabel>
+      <SidebarMenu>
+        {isSearching && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              Searching...
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching && error && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-destructive group-data-[collapsible=icon]:hidden">
+              {error}
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching && !error && dedupedResults.length === 0 && (
+          <SidebarMenuItem>
+            <span className="block px-2 py-1 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              No matches for "{query}"
+            </span>
+          </SidebarMenuItem>
+        )}
+        {!isSearching &&
+          !error &&
+          dedupedResults.map((result) => (
+            <SidebarMenuItem key={result.id}>
+              <SidebarMenuButton asChild className="hover:bg-zinc-200 h-auto">
+                <Link to={`/file/${result.id}`} className="flex items-start gap-2 py-2">
+                  <span className="mt-0.5 shrink-0">
+                    {React.createElement(
+                      fileIconFor({
+                        id: result.id,
+                        name: searchResultDisplayName(result),
+                        filename: result.filename,
+                        mimeType: result.mimeType,
+                      }),
+                      { className: "size-4 text-muted-foreground/80" },
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                    <span className="block truncate text-sm text-foreground">
+                      {highlightMatch(searchResultDisplayName(result), query)}
+                    </span>
+                    {result.snippet ? (
+                      <span className="mt-1 block whitespace-normal break-words text-xs leading-relaxed text-muted-foreground">
+                        {highlightMatch(result.snippet, query)}
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+      </SidebarMenu>
+    </SidebarGroup>
+  );
+}
+
+// ── Add button (footer) ───────────────────────────────────────────────────────
+
+function AddButton({
+  onNewCollection,
+}: {
+  onNewCollection: () => void;
+}) {
+  const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton
+            tooltip="Add new"
+            className="w-full border border-dashed border-sidebar-border bg-sidebar text-muted-foreground shadow-sm transition-colors hover:border-sidebar-accent-foreground/30 hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Plus className="shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">
+              Add new
+            </span>
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-44">
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => setIsUploadModalOpen(true)}
+          >
+            <FileText className="size-4" /> New file
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2" onSelect={onNewCollection}>
+            <FolderOpen className="size-4" /> New category
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-2">
+            <Layers className="size-4" /> New space
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <UploadModal
+        open={isUploadModalOpen}
+        onOpenChange={setIsUploadModalOpen}
+      />
+    </>
+  );
+}
 
 function UploadModal({
 	open,

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
-  CategorySummary,
-  DocumentSummary,
-  GraphNode,
+	CategorySummary,
+	DocumentSummary,
+	GraphNode,
 } from "@/types/graph";
 
 type GraphMode = "categories" | "files";
@@ -14,10 +14,11 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
-  activeSpaceId: number | null;
+	activeSpaceId: number | null;
 };
 
 export default function Graph() {
+  const navigate = useNavigate();
   const { activeSpaceId } = useOutletContext<AppLayoutContext>();
   const [is2D, setIs2D] = useState(true);
   const [mode, setMode] = useState<GraphMode>("categories");
@@ -25,11 +26,17 @@ export default function Graph() {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({
+  const [tooltipAnchor, setTooltipAnchor] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
   });
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const cursorPosRef = useRef({ x: 0, y: 0 });
+  const hoveredNodeIdRef = useRef<string | null>(null);
+  const tooltipHoveredRef = useRef(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -75,19 +82,76 @@ export default function Graph() {
     };
   }, [activeSpaceId]);
 
-  // Track mouse position relative to the container
+  // Track mouse position relative to the container without re-rendering.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const updateContainerSize = () => {
+      const rect = container.getBoundingClientRect();
+      setContainerSize({ width: rect.width, height: rect.height });
+    };
+    const resizeFrame = requestAnimationFrame(updateContainerSize);
+    const resizeObserver = new ResizeObserver(updateContainerSize);
     const handleMouseMove = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
-      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      cursorPosRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
     };
 
+    resizeObserver.observe(container);
     container.addEventListener("mousemove", handleMouseMove);
-    return () => container.removeEventListener("mousemove", handleMouseMove);
+    return () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeObserver.disconnect();
+      container.removeEventListener("mousemove", handleMouseMove);
+    };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleHide = () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      if (!tooltipHoveredRef.current) {
+        setTooltipVisible(false);
+        setHoveredNode(null);
+        hoveredNodeIdRef.current = null;
+      }
+    }, 200);
+  };
+
+  const cancelHide = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+
+  const handleNodeHover = (node: GraphNode | null) => {
+    if (node) {
+      cancelHide();
+
+      if (hoveredNodeIdRef.current !== node.id) {
+        hoveredNodeIdRef.current = node.id;
+        setTooltipAnchor(cursorPosRef.current);
+      }
+
+      setHoveredNode(node);
+      setTooltipVisible(true);
+      return;
+    }
+
+    scheduleHide();
+  };
 
   const categoryNodes = useMemo<GraphNode[]>(() => {
     return categories.map((category) => ({
@@ -97,6 +161,7 @@ export default function Graph() {
       fileCount: documents.filter(
         (document) => document.categoryId === category.id,
       ).length,
+      summary: category.summary,
     }));
   }, [categories, documents]);
 
@@ -108,6 +173,8 @@ export default function Graph() {
         label:
           document.originalFileName || document.fileName || document.filename,
         documentId: document.id,
+        summary: document.summary,
+        mimeType: document.mimeType,
       }));
   }, [activeCategoryId, documents]);
 
@@ -119,9 +186,16 @@ export default function Graph() {
 
   const handleNodeClick = (node: GraphNode) => {
     if (mode === "categories" && node.categoryId) {
+      setTooltipVisible(false);
       setHoveredNode(null);
+      hoveredNodeIdRef.current = null;
       setActiveCategoryId(node.categoryId);
       setMode("files");
+      return;
+    }
+
+    if (mode === "files" && node.documentId) {
+      navigate(`/file/${node.documentId}`);
     }
   };
 
@@ -131,39 +205,44 @@ export default function Graph() {
     return documents.filter((doc) => doc.categoryId === hoveredNode.categoryId);
   }, [hoveredNode, documents, mode]);
 
-  // Tooltip positioning: try to keep it on screen
-  const TOOLTIP_WIDTH = 280;
+  const isDocumentTooltip = mode === "files" && hoveredNode?.documentId != null;
+  const isCategoryTooltip =
+    mode === "categories" && hoveredNode?.categoryId != null;
+  const showTooltip =
+    tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
+  const documentPreviewUrl = hoveredNode?.documentId
+    ? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
+    : "";
+  const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
+  const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
+
+  // Tooltip positioning: anchor once per hovered node and keep it on screen.
+  const TOOLTIP_WIDTH = 320;
   const TOOLTIP_OFFSET = 16;
+  const TOOLTIP_BRIDGE = 18;
   const tooltipStyle = useMemo(() => {
-    if (!containerRef.current)
-      return {
-        left: cursorPos.x + TOOLTIP_OFFSET,
-        top: cursorPos.y + TOOLTIP_OFFSET,
-      };
-    const containerWidth = containerRef.current.offsetWidth;
-    const containerHeight = containerRef.current.offsetHeight;
+    let x = tooltipAnchor.x + TOOLTIP_OFFSET;
+    let y = tooltipAnchor.y + TOOLTIP_OFFSET;
 
-    let x = cursorPos.x + TOOLTIP_OFFSET;
-    let y = cursorPos.y + TOOLTIP_OFFSET;
-
-    // Flip left if too close to right edge
-    if (x + TOOLTIP_WIDTH > containerWidth - 8) {
-      x = cursorPos.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
+    if (containerSize.width && x + TOOLTIP_WIDTH > containerSize.width - 8) {
+      x = tooltipAnchor.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
     }
 
-    // Clamp vertically (rough estimate: max tooltip height ~320px)
-    const estimatedHeight = Math.min(
-      48 + hoveredCategoryFiles.length * 36,
-      320,
-    );
-    if (y + estimatedHeight > containerHeight - 8) {
-      y = containerHeight - estimatedHeight - 8;
+    const estimatedHeight = isDocumentTooltip
+      ? 420
+      : Math.min(120 + hoveredCategoryFiles.length * 36, 360);
+    if (containerSize.height && y + estimatedHeight > containerSize.height - 8) {
+      y = containerSize.height - estimatedHeight - 8;
     }
 
     return { left: x, top: y };
-  }, [cursorPos, hoveredCategoryFiles.length]);
-
-  const showTooltip = mode === "categories" && hoveredNode?.categoryId != null;
+  }, [
+    containerSize.height,
+    containerSize.width,
+    hoveredCategoryFiles.length,
+    isDocumentTooltip,
+    tooltipAnchor,
+  ]);
 
   return (
     <div
@@ -181,7 +260,9 @@ export default function Graph() {
         {mode === "files" ? (
           <button
             onClick={() => {
+              setTooltipVisible(false);
               setHoveredNode(null);
+              hoveredNodeIdRef.current = null;
               setMode("categories");
               setActiveCategoryId(null);
             }}
@@ -192,58 +273,115 @@ export default function Graph() {
         ) : null}
       </div>
 
-      {/* Cursor-following tooltip with file list */}
+      {/* Anchored tooltip with a hover bridge so the card can be entered. */}
       {showTooltip && (
         <div
-          className="pointer-events-none absolute z-30 w-[280px] rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
-          style={{ left: tooltipStyle.left, top: tooltipStyle.top }}
+          className="absolute z-30 p-[18px]"
+          style={{
+            left: tooltipStyle.left - TOOLTIP_BRIDGE,
+            top: tooltipStyle.top - TOOLTIP_BRIDGE,
+          }}
+          onMouseEnter={() => {
+            tooltipHoveredRef.current = true;
+            cancelHide();
+          }}
+          onMouseLeave={() => {
+            tooltipHoveredRef.current = false;
+            scheduleHide();
+          }}
         >
-          {/* Header */}
-          <div className="border-b border-stone-100 px-4 py-3">
-            <p className="text-sm font-semibold text-stone-900">
-              {hoveredNode!.label}
-            </p>
-            <p className="text-xs text-stone-500">
-              {hoveredCategoryFiles.length} file
-              {hoveredCategoryFiles.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          <div className="w-[320px] overflow-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm">
+            {isCategoryTooltip ? (
+            <>
+              <div className="border-b border-stone-100 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-900">
+                  {hoveredNode!.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-stone-600">
+                  {hoveredNode!.summary || "No category summary yet."}
+                </p>
+                <p className="mt-2 text-xs text-stone-500">
+                  {hoveredCategoryFiles.length} file
+                  {hoveredCategoryFiles.length === 1 ? "" : "s"}
+                </p>
+              </div>
 
-          {/* File list */}
-          <ul className="max-h-[260px] overflow-y-auto py-1">
-            {hoveredCategoryFiles.length === 0 ? (
-              <li className="px-4 py-3 text-xs text-stone-400 italic">
-                No files in this category
-              </li>
-            ) : (
-              hoveredCategoryFiles.map((doc) => {
-                const name =
-                  doc.originalFileName || doc.fileName || doc.filename;
-                const ext = name.split(".").pop()?.toUpperCase() ?? "";
-                return (
-                  <li
-                    key={doc.id}
-                    className="flex items-center gap-3 px-4 py-2 hover:bg-stone-50"
-                  >
-                    {/* File type badge */}
-                    <span className="flex-shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-500">
-                      {ext || "—"}
-                    </span>
-                    <span
-                      className="truncate text-xs text-stone-700"
-                      title={name}
-                    >
-                      {name}
-                    </span>
+              <ul className="max-h-[260px] overflow-y-auto py-1">
+                {hoveredCategoryFiles.length === 0 ? (
+                  <li className="px-4 py-3 text-xs text-stone-400 italic">
+                    No files in this category
                   </li>
-                );
-              })
-            )}
-          </ul>
+                ) : (
+                  hoveredCategoryFiles.map((doc) => {
+                    const name =
+                      doc.originalFileName || doc.fileName || doc.filename;
+                    const ext = name.split(".").pop()?.toUpperCase() ?? "";
+                    return (
+                      <li
+                        key={doc.id}
+                        className="flex items-center gap-3 px-4 py-2 hover:bg-stone-50"
+                      >
+                        <span className="flex-shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-500">
+                          {ext || "—"}
+                        </span>
+                        <span
+                          className="truncate text-xs text-stone-700"
+                          title={name}
+                        >
+                          {name}
+                        </span>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
 
-          {/* Click hint */}
-          <div className="border-t border-stone-100 px-4 py-2">
-            <p className="text-[10px] text-stone-400">Click to explore files</p>
+              <div className="border-t border-stone-100 px-4 py-2">
+                <p className="text-[10px] text-stone-400">
+                  Click to explore files
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="border-b border-stone-100 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-900">
+                  {hoveredNode!.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-stone-600">
+                  {hoveredNode!.summary || "No document summary yet."}
+                </p>
+              </div>
+
+              <div className="border-b border-stone-100 bg-stone-100/70 p-3">
+                <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
+                  {isImagePreview ? (
+                    <img
+                      src={documentPreviewUrl}
+                      alt={`${hoveredNode!.label} preview`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : isPdfPreview ? (
+                    <iframe
+                      src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                      title={`${hoveredNode!.label} preview`}
+                      className="h-full w-full border-0"
+                    />
+                  ) : (
+                    <p className="px-4 text-center text-xs leading-5 text-stone-500">
+                      Preview unavailable for this file type.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="px-4 py-2">
+                <p className="text-[10px] text-stone-400">
+                  Click to open file page
+                </p>
+              </div>
+            </>
+            )}
           </div>
         </div>
       )}
@@ -256,7 +394,7 @@ export default function Graph() {
             weightMatrix={currentMatrix}
             threshold={0.16}
             onNodeClick={handleNodeClick}
-            onNodeHover={setHoveredNode}
+            onNodeHover={handleNodeHover}
           />
         ) : null}
       </div>
@@ -265,29 +403,29 @@ export default function Graph() {
 }
 
 function buildConnectedMatrix(nodeCount: number) {
-  const matrix: number[][] = Array.from({ length: nodeCount }, () =>
-    Array.from({ length: nodeCount }, () => 0),
-  );
+	const matrix: number[][] = Array.from({ length: nodeCount }, () =>
+		Array.from({ length: nodeCount }, () => 0),
+	);
 
-  for (let i = 0; i < nodeCount; i++) {
-    for (let j = i + 1; j < nodeCount; j++) {
-      let weight = 0.08;
+	for (let i = 0; i < nodeCount; i++) {
+		for (let j = i + 1; j < nodeCount; j++) {
+			let weight = 0.08;
 
-      if (Math.abs(i - j) === 1) {
-        weight = 0.42;
-      }
+			if (Math.abs(i - j) === 1) {
+				weight = 0.42;
+			}
 
-      if (
-        (i === 0 && j === nodeCount - 1) ||
-        (j === 0 && i === nodeCount - 1)
-      ) {
-        weight = Math.max(weight, 0.28);
-      }
+			if (
+				(i === 0 && j === nodeCount - 1) ||
+				(j === 0 && i === nodeCount - 1)
+			) {
+				weight = Math.max(weight, 0.28);
+			}
 
-      matrix[i][j] = weight;
-      matrix[j][i] = weight;
-    }
-  }
+			matrix[i][j] = weight;
+			matrix[j][i] = weight;
+		}
+	}
 
-  return matrix;
+	return matrix;
 }
