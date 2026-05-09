@@ -182,11 +182,17 @@ router.get("/documents/:documentId/file", async (req, res, next) => {
 		publicDocument.fileName ??
 		publicDocument.filename;
 	const disposition = req.query.download === "1" ? "attachment" : "inline";
+	const downloadName = resolveDownloadFilename(displayName, [
+		publicDocument.originalFileName,
+		publicDocument.storedFileName,
+		publicDocument.filename,
+		publicDocument.filepath,
+	]);
 
 	res.setHeader("Content-Type", publicDocument.mimeType);
 	res.setHeader(
 		"Content-Disposition",
-		`${disposition}; filename="${sanitizeHeaderFilename(displayName)}"`,
+		`${disposition}; filename="${sanitizeHeaderFilename(downloadName)}"`,
 	);
 
 	res.sendFile(filePath, (err) => {
@@ -375,4 +381,27 @@ function isNotFoundError(error: unknown) {
 		"code" in error &&
 		error.code === "ENOENT"
 	);
+}
+
+function resolveDownloadFilename(
+	displayName: string,
+	fallbackNames: Array<string | null | undefined>,
+) {
+	const trimmedDisplayName = displayName.trim();
+	if (path.extname(trimmedDisplayName)) {
+		return trimmedDisplayName;
+	}
+
+	for (const fallbackName of fallbackNames) {
+		if (!fallbackName) {
+			continue;
+		}
+
+		const extension = path.extname(path.basename(fallbackName.trim()));
+		if (extension) {
+			return `${trimmedDisplayName}${extension}`;
+		}
+	}
+
+	return trimmedDisplayName;
 }

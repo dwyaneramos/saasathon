@@ -106,6 +106,7 @@ export default function FileView() {
 	const [isEditingName, setIsEditingName] = useState(false);
 	const [isSavingName, setIsSavingName] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
 
 	const fileUrl = useMemo(() => {
@@ -275,13 +276,6 @@ export default function FileView() {
 			return;
 		}
 
-		const confirmed = window.confirm(
-			`Delete "${displayName}"? This action cannot be undone.`,
-		);
-		if (!confirmed) {
-			return;
-		}
-
 		setIsDeleting(true);
 		setActionError(null);
 
@@ -299,6 +293,7 @@ export default function FileView() {
 			}
 
 			notifyFileTreeUpdated();
+			setIsDeleteModalOpen(false);
 			navigate("/graph");
 		} catch (err) {
 			setActionError(
@@ -383,7 +378,10 @@ export default function FileView() {
 					<div className="flex shrink-0 gap-2">
 						<button
 							type="button"
-							onClick={handleDelete}
+							onClick={() => {
+								setActionError(null);
+								setIsDeleteModalOpen(true);
+							}}
 							disabled={isSavingName || isDeleting}
 							className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
 						>
@@ -430,6 +428,61 @@ export default function FileView() {
 					</div>
 				)}
 			</section>
+
+			{isDeleteModalOpen ? (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/30 px-4">
+					<div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl">
+						<div className="flex items-start justify-between gap-4">
+							<div>
+								<h2 className="text-base font-semibold text-zinc-950">
+									Delete file?
+								</h2>
+								<p className="mt-2 text-sm text-zinc-600">
+									Are you sure you want to delete{" "}
+									<span className="font-medium text-zinc-900">
+										{displayName}
+									</span>
+									? This action cannot be undone.
+								</p>
+							</div>
+							<button
+								type="button"
+								onClick={() => {
+									if (isDeleting) return;
+									setIsDeleteModalOpen(false);
+								}}
+								className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+								aria-label="Close delete modal"
+							>
+								<X className="size-4" />
+							</button>
+						</div>
+						{actionError ? (
+							<p className="mt-4 text-sm text-red-600">
+								{actionError}
+							</p>
+						) : null}
+						<div className="mt-6 flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setIsDeleteModalOpen(false)}
+								disabled={isDeleting}
+								className="inline-flex h-10 items-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={handleDelete}
+								disabled={isDeleting}
+								className="inline-flex h-10 items-center rounded-md bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{isDeleting ? "Deleting..." : "Delete item"}
+							</button>
+						</div>
+					</div>
+				</div>
+			) : null}
 		</main>
 	);
 }
