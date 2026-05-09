@@ -12,9 +12,9 @@ export async function ensureSpaceSchema() {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		CREATE UNIQUE INDEX IF NOT EXISTS spaces_created_by_unique_idx
-			ON spaces(created_by)
-			WHERE created_by IS NOT NULL;
+		-- Older versions enforced a single space per user with a unique index.
+		-- Remove that index so users can create multiple spaces.
+		DROP INDEX IF EXISTS spaces_created_by_unique_idx;
 
 		CREATE TABLE IF NOT EXISTS document_categories (
 			id SERIAL PRIMARY KEY,

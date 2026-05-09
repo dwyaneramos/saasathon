@@ -31,14 +31,27 @@ type AppLayoutContext = {
 };
 
 function AppLayout() {
-	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(
-		null,
-	);
+    const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(() => {
+        const stored = localStorage.getItem('activeSpaceId');
+        if (stored) {
+            const n = Number(stored);
+            return Number.isInteger(n) ? n : null;
+        }
+        return null;
+    });
 	const [spaces, setSpaces] = React.useState<Space[]>([]);
 
 	const activeSpace = spaces.find((s) => s.id === activeSpaceId) ?? null;
 
-	usePageTitle(activeSpace ? `${activeSpace.name} | Kibi` : "Kibi");
+    usePageTitle(activeSpace ? `${activeSpace.name} | Kibi` : "Kibi");
+
+    React.useEffect(() => {
+        if (activeSpaceId === null || activeSpaceId === undefined) {
+            localStorage.removeItem('activeSpaceId');
+            return;
+        }
+        localStorage.setItem('activeSpaceId', String(activeSpaceId));
+    }, [activeSpaceId]);
 
 	return (
 		<div className="[--header-height:73px]">
