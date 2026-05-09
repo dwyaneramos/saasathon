@@ -5,10 +5,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 export const Navbar = () => {
   const { user, logout } = useAuth(); // Access user state
 
+  const navigate = useNavigate();
+  const handleLogout = () => {
+
+    toast.success("Logout successful!", { position: "bottom-center" });
+    navigate("/");
+    logout()
+
+  }
   console.log(user);
 
   return (
@@ -66,7 +76,7 @@ export const Navbar = () => {
                   </p>
                 </div>
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="w-full text-left text-sm text-red-500 hover:underline pt-2 border-t"
                 >
                   Log out

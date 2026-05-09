@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner"
 import {
   Card,
   CardContent,
@@ -52,6 +53,7 @@ export default function Login() {
 
       if (response.ok) {
         login(data.user, data.token);
+        toast.success("Login successful!", { position: "bottom-center" })
         navigate("/");
       } else {
         setError(data.error || data.message || "Invalid credentials");
