@@ -286,28 +286,23 @@ router.get("/documents/:documentId/file", async (req, res, next) => {
 	});
 });
 
-router.post(
-	"/categories",
-	validate(createCategorySchema),
-	async (req, res) => {
-		const { documentId, ...categoryInput } = req.body;
-		const category = await createCategory({ ...categoryInput, documentId });
-		let responseCategory = category;
+router.post("/categories", validate(createCategorySchema), async (req, res) => {
+	const { documentId, ...categoryInput } = req.body;
+	const category = await createCategory({ ...categoryInput, documentId });
+	let responseCategory = category;
 
-		if (documentId) {
-			const assigned = await assignDocumentCategory(documentId, category.id);
-			if (!assigned) {
-				res.status(404).json({ error: "Document not found" });
-				return;
-			}
-
-			responseCategory = (await getCategory(category.id)) ?? category;
+	if (documentId) {
+		const assigned = await assignDocumentCategory(documentId, category.id);
+		if (!assigned) {
+			res.status(404).json({ error: "Document not found" });
+			return;
 		}
+
+		responseCategory = (await getCategory(category.id)) ?? category;
 	}
 
-		res.status(201).json({ category: toPublicCategory(responseCategory) });
-	},
-);
+	res.status(201).json({ category: toPublicCategory(responseCategory) });
+});
 
 export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	if (!req.file) {
