@@ -19,6 +19,7 @@ import {
 	listCategories,
 	listDocuments,
 	renameDocument,
+	searchDocuments,
 	toPublicCategory,
 	toPublicDocument,
 } from "../services/documentAnalyzer.js";
@@ -77,6 +78,26 @@ router.get("/documents", async (req, res) => {
 
 	const documents = await listDocuments(spaceId);
 	res.json({ documents: documents.map(toPublicDocument) });
+});
+
+router.get("/documents/search", async (req, res) => {
+	const spaceId = getSpaceId(req);
+	if (spaceId === false) {
+		res.status(400).json({ error: "spaceId must be a positive integer" });
+		return;
+	}
+
+	const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+	if (!query) {
+		res.json({ results: [] });
+		return;
+	}
+
+	const results = await searchDocuments({
+		query,
+		spaceId,
+	});
+	res.json({ results });
 });
 
 router.get("/documents/:documentId", async (req, res) => {

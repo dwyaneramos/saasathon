@@ -62,6 +62,25 @@ export type PublicDocument = {
   createdAt: Date;
 };
 
+type SearchDocumentRow = {
+  id: number;
+  filename: string;
+  file_name: string;
+  original_file_name: string | null;
+  mime_type: string;
+  summary: string;
+  extracted_text: string;
+};
+
+export type DocumentSearchResult = {
+  id: number;
+  filename: string;
+  fileName: string;
+  originalFileName: string | null;
+  mimeType: string;
+  snippet: string | null;
+};
+
 export type CategoryInput = {
   name: string;
   spaceId?: number | null;
@@ -162,6 +181,62 @@ export async function listDocuments(spaceId?: number | null) {
     [spaceId ?? null],
   );
   return rows;
+}
+
+export async function searchDocuments(input: {
+  query: string;
+  spaceId?: number | null;
+  limit?: number;
+}) {
+  await ensureDocumentSchema();
+
+  const query = input.query.trim();
+  if (!query) {
+    return [] as DocumentSearchResult[];
+  }
+
+  const likeQuery = `%${escapeLikePattern(query)}%`;
+  const { rows } = await getDb().query<SearchDocumentRow>(
+    `SELECT
+        id,
+        filename,
+        file_name,
+        original_file_name,
+        mime_type,
+        summary,
+        extracted_text
+     FROM documents
+     WHERE ($1::integer IS NULL OR space_id = $1)
+       AND (
+         COALESCE(original_file_name, file_name, filename) ILIKE $2
+         OR summary ILIKE $2
+         OR extracted_text ILIKE $2
+       )
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [input.spaceId ?? null, likeQuery, input.limit ?? 20],
+  );
+
+  const uniqueResults = new Map<string, DocumentSearchResult>();
+
+  for (const row of rows) {
+    const documentKey = String(row.id);
+
+    if (uniqueResults.has(documentKey)) {
+      continue;
+    }
+
+    uniqueResults.set(documentKey, {
+      id: row.id,
+      filename: row.filename,
+      fileName: row.file_name,
+      originalFileName: row.original_file_name,
+      mimeType: row.mime_type,
+      snippet: buildSearchSnippet(row, query),
+    });
+  }
+
+  return [...uniqueResults.values()];
 }
 
 export async function getDocument(documentId: number) {
@@ -1016,6 +1091,29 @@ function normalizeKeywords(keywords: string[]) {
   return [...new Set(keywords.map((keyword) => keyword.trim()).filter(Boolean))];
 }
 
+function buildSearchSnippet(row: SearchDocumentRow, query: string) {
+  const sources = [row.summary, row.extracted_text].filter(Boolean);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  for (const source of sources) {
+    const text = normalizeWhitespace(source);
+    const index = text.toLowerCase().indexOf(normalizedQuery);
+    if (index >= 0) {
+      const start = Math.max(index - 60, 0);
+      const end = Math.min(index + normalizedQuery.length + 90, text.length);
+      const prefix = start > 0 ? "..." : "";
+      const suffix = end < text.length ? "..." : "";
+      return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+    }
+  }
+
+  return row.summary ? normalizeWhitespace(row.summary).slice(0, 140) : null;
+}
+
 function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
