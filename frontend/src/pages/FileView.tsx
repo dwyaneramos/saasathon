@@ -71,7 +71,6 @@ function validateDocumentName(name: string) {
 
 	if (/[\u0000-\u001F]/.test(trimmed)) {
 		return "That file name contains characters that aren't allowed.";
-		return "That file name contains characters that aren't allowed.";
 	}
 
 	return null;
@@ -86,78 +85,16 @@ function notifyFileTreeUpdated(documentIds: number[] = []) {
 }
 
 async function readApiError(response: Response) {
-	async function readApiError(response: Response) {
-		const rawText = await response.text().catch(() => "");
+	const rawText = await response.text().catch(() => "");
 
-		if (!rawText.trim()) {
-			return "";
-			return "";
-		}
-
-		try {
-			const payload = JSON.parse(rawText) as ApiErrorPayload;
-			return payload?.error?.trim() ?? "";
-			const payload = JSON.parse(rawText) as ApiErrorPayload;
-			return payload?.error?.trim() ?? "";
-		} catch {
-			return rawText.trim();
-		}
+	if (!rawText.trim()) {
+		return "";
 	}
 
-	function toFriendlyDocumentError(
-		action: "load" | "rename" | "delete",
-		status?: number,
-		apiError?: string,
-	) {
-		const normalizedError = apiError?.trim().toLowerCase() ?? "";
-
-		if (status === 401) {
-			return "Your session has expired. Please sign in again and try once more.";
-		}
-
-		if (status === 404) {
-			if (action === "load") {
-				return "This file could not be found. It may have been moved or deleted.";
-			}
-
-			if (action === "rename") {
-				return "We couldn't rename this file because it no longer exists.";
-			}
-
-			return "This file was already removed.";
-		}
-
-		if (status === 400) {
-			if (
-				normalizedError.includes("slash") ||
-				normalizedError.includes("invalid characters")
-			) {
-				return "Please use a file name without slashes or unsupported characters.";
-			}
-
-			if (normalizedError.includes("180 characters")) {
-				return "File names can be up to 180 characters.";
-			}
-
-			if (
-				normalizedError.includes("required") ||
-				normalizedError.includes("invalid")
-			) {
-				return action === "load"
-					? "This file link is invalid."
-					: "Please enter a valid file name.";
-			}
-		}
-
-		if (action === "load") {
-			return "We couldn't load this file right now. Please try again.";
-		}
-
-		if (action === "rename") {
-			return "We couldn't save the new file name. Please try again.";
-		}
-
-		return "We couldn't delete this file right now. Please try again.";
+	try {
+		const payload = JSON.parse(rawText) as ApiErrorPayload;
+		return payload?.error?.trim() ?? "";
+	} catch {
 		return rawText.trim();
 	}
 }
@@ -253,16 +190,6 @@ export default function FileView() {
 				const response = await fetch(
 					`${apiBaseUrl}/documents/${documentId}`,
 				);
-
-				if (!response.ok) {
-					throw new Error(
-						toFriendlyDocumentError(
-							"load",
-							response.status,
-							await readApiError(response),
-						),
-					);
-				}
 
 				if (!response.ok) {
 					throw new Error(
@@ -382,33 +309,25 @@ export default function FileView() {
 				},
 			);
 
-			if (!response.ok) {
-				throw new Error(
-					toFriendlyDocumentError(
-						"rename",
-						response.status,
-						await readApiError(response),
-					),
-					toFriendlyDocumentError(
-						"rename",
-						response.status,
-						await readApiError(response),
-					),
-				);
-			}
+				if (!response.ok) {
+					throw new Error(
+						toFriendlyDocumentError(
+							"rename",
+							response.status,
+							await readApiError(response),
+						),
+					);
+				}
 
 			const payload = (await response
 				.json()
 				.catch(() => null)) as DocumentResponse | null;
 
-			if (!payload?.document) {
-				throw new Error(
-					"The file name was saved, but the page could not refresh. Please reload and check again.",
-				);
-				throw new Error(
-					"The file name was saved, but the page could not refresh. Please reload and check again.",
-				);
-			}
+				if (!payload?.document) {
+					throw new Error(
+						"The file name was saved, but the page could not refresh. Please reload and check again.",
+					);
+				}
 
 			setDocument(payload.document);
 			setEditableName(
@@ -444,22 +363,15 @@ export default function FileView() {
 				},
 			);
 
-			if (!response.ok) {
-				throw new Error(
-					toFriendlyDocumentError(
-						"delete",
-						response.status,
-						await readApiError(response),
-					),
-				);
-				throw new Error(
-					toFriendlyDocumentError(
-						"delete",
-						response.status,
-						await readApiError(response),
-					),
-				);
-			}
+				if (!response.ok) {
+					throw new Error(
+						toFriendlyDocumentError(
+							"delete",
+							response.status,
+							await readApiError(response),
+						),
+					);
+				}
 
 			notifyFileTreeUpdated();
 			setIsDeleteModalOpen(false);
