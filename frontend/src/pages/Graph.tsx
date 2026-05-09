@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
-import { fileIconFor } from "@/components/app-sidebar";
+import { fileIconFor } from "@/lib/file-icons";
 import type {
 	CategorySummary,
 	DocumentSummary,
@@ -471,7 +471,6 @@ export default function Graph() {
 												doc.fileName ||
 												doc.filename;
 											const FileIcon = fileIconFor({
-												id: doc.id,
 												name,
 												filename: name,
 												mimeType: doc.mimeType,
