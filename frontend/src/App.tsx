@@ -59,7 +59,14 @@ function App() {
 						</Route>
 
 						<Route element={<AppLayout />}>
-							<Route path="/upload" element={<Upload />} />
+							<Route
+								path="/upload"
+								element={
+									<ProtectedRoute>
+										<Upload />
+									</ProtectedRoute>
+								}
+							/>
 							<Route
 								path="/graph"
 								element={
