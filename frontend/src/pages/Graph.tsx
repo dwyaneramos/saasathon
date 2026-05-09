@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
-  CategorySummary,
-  DocumentSummary,
-  GraphNode,
+	CategorySummary,
+	DocumentSummary,
+	GraphNode,
 } from "@/types/graph";
 
 type GraphMode = "categories" | "files";
@@ -14,7 +14,7 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
-  activeSpaceId: number | null;
+	activeSpaceId: number | null;
 };
 
 export default function Graph() {
@@ -403,29 +403,29 @@ export default function Graph() {
 }
 
 function buildConnectedMatrix(nodeCount: number) {
-  const matrix: number[][] = Array.from({ length: nodeCount }, () =>
-    Array.from({ length: nodeCount }, () => 0),
-  );
+	const matrix: number[][] = Array.from({ length: nodeCount }, () =>
+		Array.from({ length: nodeCount }, () => 0),
+	);
 
-  for (let i = 0; i < nodeCount; i++) {
-    for (let j = i + 1; j < nodeCount; j++) {
-      let weight = 0.08;
+	for (let i = 0; i < nodeCount; i++) {
+		for (let j = i + 1; j < nodeCount; j++) {
+			let weight = 0.08;
 
-      if (Math.abs(i - j) === 1) {
-        weight = 0.42;
-      }
+			if (Math.abs(i - j) === 1) {
+				weight = 0.42;
+			}
 
-      if (
-        (i === 0 && j === nodeCount - 1) ||
-        (j === 0 && i === nodeCount - 1)
-      ) {
-        weight = Math.max(weight, 0.28);
-      }
+			if (
+				(i === 0 && j === nodeCount - 1) ||
+				(j === 0 && i === nodeCount - 1)
+			) {
+				weight = Math.max(weight, 0.28);
+			}
 
-      matrix[i][j] = weight;
-      matrix[j][i] = weight;
-    }
-  }
+			matrix[i][j] = weight;
+			matrix[j][i] = weight;
+		}
+	}
 
-  return matrix;
+	return matrix;
 }

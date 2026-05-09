@@ -1,5 +1,11 @@
 import { Link, NavLink } from "react-router-dom";
-import { Share2, LogIn, UserPlus, LogOut } from "lucide-react";
+import {
+	Share2,
+	LogIn,
+	UserPlus,
+	LogOut,
+	Sparkles,
+} from "lucide-react";
 import kibiLogo from "../assets/kibi.svg";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -26,6 +32,17 @@ export const NavbarContent = () => {
 			<div className="flex items-center gap-8 text-sm font-medium">
 				{user ? (
 					<div className="hidden md:flex gap-6 text-zinc-500">
+						<NavLink
+							to="/dashboard"
+							className={({ isActive }) =>
+								`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
+									isActive ? "text-zinc-900" : ""
+								}`
+							}
+						>
+							<Sparkles size={16} strokeWidth={2.25} />
+							Dashboard
+						</NavLink>
 						<NavLink
 							to="/graph"
 							className={({ isActive }) =>
