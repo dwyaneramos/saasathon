@@ -1,5 +1,9 @@
 import { UploadWorkspace } from "@/components/upload-workspace";
+import { useOutletContext } from "react-router-dom";
+
+type OutletContext = { activeSpaceId: number | null };
 
 export default function Upload() {
-  return <UploadWorkspace detailMode="full" showHeading />;
+  const { activeSpaceId } = useOutletContext<OutletContext>();
+  return <UploadWorkspace detailMode="full" showHeading spaceId={activeSpaceId} />;
 }
