@@ -303,7 +303,6 @@ router.post(
 
 			responseCategory = (await getCategory(category.id)) ?? category;
 		}
-	}
 
 		res.status(201).json({ category: toPublicCategory(responseCategory) });
 	},
