@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
 	CheckCircle2,
+	ChevronDown,
 	Hourglass,
 	LoaderCircle,
 	UploadCloud,
@@ -86,6 +89,8 @@ type UploadWorkspaceProps = {
 };
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
+const textareaClassName =
+	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";
 
 function formatFileSize(bytes: number) {
 	if (bytes < 1024 * 1024) {
@@ -113,6 +118,9 @@ export function UploadWorkspace({
 	const [knownCategoryOptions, setKnownCategoryOptions] = useState<
 		CreatedCategory[]
 	>([]);
+	const [openCategoryCombobox, setOpenCategoryCombobox] = useState<
+		string | null
+	>(null);
 	const [isAnalyzing, setIsAnalyzing] = useState(false);
 	const [isBusy, setIsBusy] = useState(false);
 	const [pendingCompletion, setPendingCompletion] = useState<{
@@ -140,6 +148,21 @@ export function UploadWorkspace({
 		setCompactAnalysisStatus(null);
 		setAnalysisResults([]);
 		setPendingCompletion(null);
+	};
+
+	const notifyFileTreeUpdated = (
+		documentIds: Array<number | undefined> = [],
+	) => {
+		window.dispatchEvent(
+			new CustomEvent(fileTreeUpdatedEvent, {
+				detail: {
+					documentIds: documentIds.filter(
+						(documentId): documentId is number =>
+							typeof documentId === "number",
+					),
+				},
+			}),
+		);
 	};
 
 	const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -195,6 +218,7 @@ export function UploadWorkspace({
 
 			const payload = (await res.json()) as MultipleUploadResponse;
 			setUploadedFiles(payload.files);
+			notifyFileTreeUpdated(payload.files.map((file) => file.documentId));
 			setSummary(
 				`${payload.message} Total size: ${(payload.totalSize / 1024 / 1024).toFixed(2)} MB`,
 			);
@@ -481,21 +505,6 @@ export function UploadWorkspace({
 	const authHeaders = (): Record<string, string> => {
 		const token = localStorage.getItem("token");
 		return token ? { Authorization: `Bearer ${token}` } : {};
-	};
-
-	const notifyFileTreeUpdated = (
-		documentIds: Array<number | undefined> = [],
-	) => {
-		window.dispatchEvent(
-			new CustomEvent(fileTreeUpdatedEvent, {
-				detail: {
-					documentIds: documentIds.filter(
-						(documentId): documentId is number =>
-							typeof documentId === "number",
-					),
-				},
-			}),
-		);
 	};
 
 	const confirmCategory = async (result: FileAnalysisResult) => {
@@ -1051,7 +1060,28 @@ export function UploadWorkspace({
 							{displayedAnalysisResults.map((result, index) => {
 								const isActivePrompt =
 									activeCategoryPrompt === result;
-
+								const isCategoryComboboxOpen =
+									openCategoryCombobox === result.fileName;
+								const categoryQuery = result.categoryInput
+									.trim()
+									.toLowerCase();
+								const filteredCategoryOptions =
+									categoryQuery.length > 0
+										? knownCategoryOptions.filter(
+												(category) =>
+													category.name
+														.toLowerCase()
+														.includes(
+															categoryQuery,
+														),
+											)
+										: knownCategoryOptions;
+								const hasExactCategoryMatch =
+									knownCategoryOptions.some(
+										(category) =>
+											categoryKey(category.name) ===
+											categoryKey(result.categoryInput),
+									);
 								return (
 									<article
 										ref={
@@ -1072,7 +1102,7 @@ export function UploadWorkspace({
 										</div>
 
 										{result.error ? (
-											<p className="mt-3 text-sm text-red-600">
+											<p className="mt-3 text-sm text-destructive">
 												{result.error}
 											</p>
 										) : (
@@ -1080,66 +1110,186 @@ export function UploadWorkspace({
 												{result.needsNewCategory &&
 													result.prompt &&
 													isActivePrompt && (
-														<div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3">
-															<p className="text-sm font-medium text-gray-900">
+														<div className="mt-4 border-l-2 border-(--color-accent) pl-4">
+															<p className="text-sm font-medium text-foreground">
 																Confirm the
 																suggested
 																category
 															</p>
-															<p className="text-sm text-gray-800">
+															<p className="mt-1 text-sm text-muted-foreground">
 																{result.prompt}
 															</p>
-															<div className="mt-3 flex flex-col gap-2 sm:flex-row">
-																<label
-																	className="sr-only"
+															<div className="mt-3 space-y-2">
+																<Label
 																	htmlFor={`category-name-${index}`}
 																>
 																	Category
-																	name
-																</label>
-																<input
-																	id={`category-name-${index}`}
-																	value={
-																		result.categoryInput
-																	}
-																	onChange={(
-																		e,
-																	) =>
-																		updateCategoryInput(
-																			result.fileName,
-																			e
-																				.target
-																				.value,
-																		)
-																	}
-																	placeholder="Category name"
-																	className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500"
-																/>
-																<Button
-																	type="button"
-																	variant="ghost"
-																	onClick={() =>
-																		confirmCategory(
-																			result,
-																		)
-																	}
-																	disabled={
-																		result.isCreatingCategory ||
-																		!result.categoryInput.trim()
-																	}
-																	className="!bg-(--color-accent) !text-black hover:!bg-(--color-accent-hover)"
-																>
-																	{result.isCreatingCategory
-																		? "Creating..."
-																		: "Confirm"}
-																</Button>
+																</Label>
+																<div className="flex flex-col gap-2 sm:flex-row">
+																	<div
+																		className="relative flex-1"
+																		onBlur={(
+																			event,
+																		) => {
+																			if (
+																				!event.currentTarget.contains(
+																					event.relatedTarget,
+																				)
+																			) {
+																				setOpenCategoryCombobox(
+																					null,
+																				);
+																			}
+																		}}
+																	>
+																		<Input
+																			id={`category-name-${index}`}
+																			value={
+																				result.categoryInput
+																			}
+																			onFocus={() =>
+																				setOpenCategoryCombobox(
+																					result.fileName,
+																				)
+																			}
+																			onChange={(
+																				e,
+																			) => {
+																				updateCategoryInput(
+																					result.fileName,
+																					e
+																						.target
+																						.value,
+																				);
+																				setOpenCategoryCombobox(
+																					result.fileName,
+																				);
+																			}}
+																			placeholder={
+																				knownCategoryOptions.length >
+																				0
+																					? "Search or type a new category"
+																					: "Type a new category"
+																			}
+																			className="pr-9"
+																			autoComplete="off"
+																		/>
+																		{knownCategoryOptions.length >
+																			0 && (
+																			<button
+																				type="button"
+																				className="absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+																				onMouseDown={(
+																					event,
+																				) =>
+																					event.preventDefault()
+																				}
+																				onClick={() =>
+																					setOpenCategoryCombobox(
+																						isCategoryComboboxOpen
+																							? null
+																							: result.fileName,
+																					)
+																				}
+																				aria-label="Toggle category suggestions"
+																			>
+																				<ChevronDown
+																					className={
+																						isCategoryComboboxOpen
+																							? "size-4 rotate-180 transition-transform"
+																							: "size-4 transition-transform"
+																					}
+																				/>
+																			</button>
+																		)}
+																		{isCategoryComboboxOpen &&
+																			knownCategoryOptions.length >
+																				0 && (
+																				<div className="absolute z-30 mt-2 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-background p-1 text-sm">
+																					{filteredCategoryOptions.length >
+																					0 ? (
+																						filteredCategoryOptions.map(
+																							(
+																								category,
+																							) => (
+																								<button
+																									key={`${category.id ?? category.name}-${category.name}`}
+																									type="button"
+																									className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-foreground hover:bg-muted/50"
+																									onMouseDown={(
+																										event,
+																									) =>
+																										event.preventDefault()
+																									}
+																									onClick={() => {
+																										updateCategoryInput(
+																											result.fileName,
+																											category.name,
+																										);
+																										setOpenCategoryCombobox(
+																											null,
+																										);
+																									}}
+																								>
+																									<span className="min-w-0 truncate">
+																										{
+																											category.name
+																										}
+																									</span>
+																									<span className="shrink-0 text-xs text-muted-foreground">
+																										Existing
+																									</span>
+																								</button>
+																							),
+																						)
+																					) : (
+																						<div className="px-2.5 py-2 text-muted-foreground">
+																							No
+																							matching
+																							categories
+																						</div>
+																					)}
+																					{result.categoryInput.trim() &&
+																						!hasExactCategoryMatch && (
+																							<div className="border-t border-border px-2.5 py-2 text-xs text-muted-foreground">
+																								Press
+																								Confirm
+																								to
+																								create
+																								"
+																								{result.categoryInput.trim()}
+
+																								"
+																							</div>
+																						)}
+																				</div>
+																			)}
+																	</div>
+																	<Button
+																		type="button"
+																		variant="accent"
+																		onClick={() =>
+																			confirmCategory(
+																				result,
+																			)
+																		}
+																		disabled={
+																			result.isCreatingCategory ||
+																			!result.categoryInput.trim()
+																		}
+																	>
+																		{result.isCreatingCategory
+																			? "Creating..."
+																			: "Confirm"}
+																	</Button>
+																</div>
 															</div>
-															<label
+															<Label
 																htmlFor={`category-description-${index}`}
-																className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500"
+																className="mt-3"
 															>
 																Description
-															</label>
+															</Label>
 															<textarea
 																id={`category-description-${index}`}
 																value={
@@ -1171,24 +1321,24 @@ export function UploadWorkspace({
 																}
 																rows={2}
 																placeholder="Describe what belongs in this category"
-																className="mt-2 w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500"
+																className={`mt-2 ${textareaClassName}`}
 															/>
 														</div>
 													)}
 												{result.needsNewCategory &&
 													!isActivePrompt && (
-														<p className="mt-3 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-600">
+														<p className="mt-3 text-sm text-muted-foreground">
 															Waiting for the
 															previous category
 															decision.
 														</p>
 													)}
 												{result.categoryStatus && (
-													<p className="mt-3 text-sm text-gray-600">
+													<p className="mt-3 text-sm text-muted-foreground">
 														{result.categoryStatus}
 													</p>
 												)}
-												<p className="mt-3 text-sm leading-6 text-gray-700">
+												<p className="mt-3 text-sm leading-6 text-foreground">
 													{result.summary}
 												</p>
 											</>
