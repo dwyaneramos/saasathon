@@ -10,6 +10,7 @@ import {
 	Bot,
 	MessageSquareQuote,
 	CircuitBoard,
+	Sparkles,
 } from "lucide-react";
 import kibiLogo from "../assets/kibi.svg";
 import { useAuth } from "@/context/AuthContext";
@@ -45,7 +46,7 @@ export const NavbarContent = () => {
 								}`
 							}
 						>
-							<CircuitBoard size={16} strokeWidth={2.25} />
+							<Sparkles size={16} strokeWidth={2.25} />
 							Dashboard
 						</NavLink>
 						<NavLink
