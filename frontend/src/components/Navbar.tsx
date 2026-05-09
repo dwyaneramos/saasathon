@@ -24,42 +24,34 @@ export const NavbarContent = () => {
 		<>
 			{/* NAV LINKS */}
 			<div className="flex items-center gap-8 text-sm font-medium">
-				<div className="hidden md:flex gap-6 text-zinc-500">
-					<NavLink
-						to="/features"
-						className={({ isActive }) =>
-							`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
-								isActive ? "text-zinc-900" : ""
-							}`
-						}
-					>
-						<Sparkles size={16} strokeWidth={2.25} />
-						Features
-					</NavLink>
-					<NavLink
-						to="/graph"
-						className={({ isActive }) =>
-							`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
-								isActive ? "text-zinc-900" : ""
-							}`
-						}
-					>
-						<Share2 size={16} strokeWidth={2.25} />
-						Graph
-					</NavLink>
-					<NavLink
-						to="/upload"
-						className={({ isActive }) =>
-							`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
-								isActive ? "text-zinc-900" : ""
-							}`
-						}
-					>
-						<UploadCloud size={16} strokeWidth={2.25} />
-						Upload
-					</NavLink>
-				</div>
-
+				{user ? (
+					<div className="hidden md:flex gap-6 text-zinc-500">
+						<NavLink
+							to="/graph"
+							className={({ isActive }) =>
+								`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
+									isActive ? "text-zinc-900" : ""
+								}`
+							}
+						>
+							<Share2 size={16} strokeWidth={2.25} />
+							Graph
+						</NavLink>
+						<NavLink
+							to="/upload"
+							className={({ isActive }) =>
+								`flex items-center gap-1.5 hover:text-zinc-900 transition-colors ${
+									isActive ? "text-zinc-900" : ""
+								}`
+							}
+						>
+							<UploadCloud size={16} strokeWidth={2.25} />
+							Upload
+						</NavLink>
+					</div>
+				) : (
+					<></>
+				)}
 				{/* AUTH ACTIONS */}
 
 				{!user ? (

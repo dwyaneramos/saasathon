@@ -36,19 +36,6 @@ const Footer = () => {
 								Product
 							</span>
 							<NavLink
-								to="/features"
-								className={({ isActive }) =>
-									`flex items-center gap-1.5 transition-colors ${
-										isActive
-											? "text-zinc-900"
-											: "text-zinc-500 hover:text-zinc-900"
-									}`
-								}
-							>
-								<Sparkles size={14} strokeWidth={2.25} />
-								Features
-							</NavLink>
-							<NavLink
 								to="/graph"
 								className={({ isActive }) =>
 									`flex items-center gap-1.5 transition-colors ${
