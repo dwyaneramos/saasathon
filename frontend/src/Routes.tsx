@@ -68,14 +68,16 @@ function AppLayout() {
 					onSpacesLoaded={setSpaces}
 				/>
 				<SidebarInset className="mx-auto mt-[65px] w-full min-w-0 max-w-full p-2">
-					<Outlet
-						context={
-							{
-								activeSpaceId,
-								activeSpaceName: activeSpace?.name ?? null,
-							} satisfies AppLayoutContext
-						}
-					/>
+					<div className="min-h-[calc(100vh-var(--header-height))]">
+						<Outlet
+							context={
+								{
+									activeSpaceId,
+									activeSpaceName: activeSpace?.name ?? null,
+								} satisfies AppLayoutContext
+							}
+						/>
+					</div>
 				</SidebarInset>
 			</SidebarProvider>
 		</div>
@@ -84,11 +86,13 @@ function AppLayout() {
 
 function PublicLayout() {
 	return (
-		<>
+		<div className="[--header-height:73px]">
 			<Navbar />
-			<Outlet />
+			<div className="min-h-[calc(100vh-var(--header-height))]">
+				<Outlet />
+			</div>
 			<Footer />
-		</>
+		</div>
 	);
 }
 
@@ -134,6 +138,7 @@ export function AppRoutes() {
 						element={
 							<ProtectedRoute>
 								<Dashboard />
+								<Footer />
 							</ProtectedRoute>
 						}
 					/>

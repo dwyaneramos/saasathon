@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
-import { fileIconFor, fileTreeUpdatedEvent } from "@/components/app-sidebar";
+import { fileIconFor } from "@/lib/file-icons";
+import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
 import type {
-	CategorySummary,
-	DocumentSummary,
-	GraphNode,
+  CategorySummary,
+  DocumentSummary,
+  GraphNode,
 } from "@/types/graph";
 
 type GraphMode = "categories" | "files";
@@ -15,7 +23,7 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
-	activeSpaceId: number | null;
+  activeSpaceId: number | null;
 };
 
 export default function Graph() {
@@ -114,7 +122,10 @@ export default function Graph() {
     if (!container) return;
 
     const updateViewportSize = () => {
-      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
     };
     const resizeFrame = requestAnimationFrame(updateViewportSize);
     const handleMouseMove = (e: MouseEvent) => {
@@ -203,7 +214,8 @@ export default function Graph() {
 
   const currentNodes = mode === "categories" ? categoryNodes : fileNodes;
   const activeCategory = useMemo(
-    () => categories.find((category) => category.id === activeCategoryId) ?? null,
+    () =>
+      categories.find((category) => category.id === activeCategoryId) ?? null,
     [activeCategoryId, categories],
   );
 
@@ -215,6 +227,7 @@ export default function Graph() {
     setActiveCategoryId(null);
     setMode("categories");
   }, [activeCategoryId, categories, hideTooltip]);
+
   const currentMatrix = useMemo(
     () => buildConnectedMatrix(currentNodes.length),
     [currentNodes.length],
@@ -270,7 +283,10 @@ export default function Graph() {
       ? Math.max(0, Math.min(TOOLTIP_WIDTH, availableCardWidth))
       : TOOLTIP_WIDTH;
     const maxCardHeight = viewportSize.height
-      ? Math.max(0, viewportSize.height - TOOLTIP_EDGE_GAP * 2 - TOOLTIP_BRIDGE * 2)
+      ? Math.max(
+          0,
+          viewportSize.height - TOOLTIP_EDGE_GAP * 2 - TOOLTIP_BRIDGE * 2,
+        )
       : undefined;
     const summaryLength = hoveredNode?.summary?.length ?? 0;
     const estimatedSummaryLines = Math.max(1, Math.ceil(summaryLength / 52));
@@ -285,7 +301,8 @@ export default function Graph() {
     const measuredFrameWidth = tooltipFrameSize.width || 0;
     const measuredFrameHeight = tooltipFrameSize.height || 0;
     const frameWidth = measuredFrameWidth || width + TOOLTIP_BRIDGE * 2;
-    const frameHeight = measuredFrameHeight || estimatedCardHeight + TOOLTIP_BRIDGE * 2;
+    const frameHeight =
+      measuredFrameHeight || estimatedCardHeight + TOOLTIP_BRIDGE * 2;
     const cardHeight = measuredFrameHeight
       ? Math.max(0, measuredFrameHeight - TOOLTIP_BRIDGE * 2)
       : estimatedCardHeight;
@@ -302,7 +319,8 @@ export default function Graph() {
 
     if (
       viewportSize.height &&
-      cardY + cardHeight + TOOLTIP_BRIDGE > viewportSize.height - TOOLTIP_EDGE_GAP
+      cardY + cardHeight + TOOLTIP_BRIDGE >
+        viewportSize.height - TOOLTIP_EDGE_GAP
     ) {
       cardY = tooltipAnchor.y - cardHeight - TOOLTIP_OFFSET;
     }
@@ -311,14 +329,20 @@ export default function Graph() {
       ? clamp(
           cardX - TOOLTIP_BRIDGE,
           TOOLTIP_EDGE_GAP,
-          Math.max(TOOLTIP_EDGE_GAP, viewportSize.width - frameWidth - TOOLTIP_EDGE_GAP),
+          Math.max(
+            TOOLTIP_EDGE_GAP,
+            viewportSize.width - frameWidth - TOOLTIP_EDGE_GAP,
+          ),
         )
       : cardX - TOOLTIP_BRIDGE;
     const frameY = viewportSize.height
       ? clamp(
           cardY - TOOLTIP_BRIDGE,
           TOOLTIP_EDGE_GAP,
-          Math.max(TOOLTIP_EDGE_GAP, viewportSize.height - frameHeight - TOOLTIP_EDGE_GAP),
+          Math.max(
+            TOOLTIP_EDGE_GAP,
+            viewportSize.height - frameHeight - TOOLTIP_EDGE_GAP,
+          ),
         )
       : cardY - TOOLTIP_BRIDGE;
 
@@ -358,17 +382,22 @@ export default function Graph() {
     const resizeObserver = new ResizeObserver(updateTooltipFrameSize);
     resizeObserver.observe(tooltipFrame);
     return () => resizeObserver.disconnect();
-  }, [showTooltip, hoveredNode?.id, tooltipStyle.maxHeight, tooltipStyle.width]);
+  }, [
+    showTooltip,
+    hoveredNode?.id,
+    tooltipStyle.maxHeight,
+    tooltipStyle.width,
+  ]);
 
   return (
     <div
       ref={containerRef}
-      className="graph-page relative flex-1 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
+      className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
     >
-      <div className="absolute left-5 top-5 z-20 flex gap-3">
+      <div className="absolute right-5 bottom-5 z-20 flex gap-3">
         <button
           onClick={() => setIs2D((current) => !current)}
-          className="rounded bg-gray-900 px-4 py-2 text-white transition hover:bg-gray-700"
+          className="rounded bg-accent px-4 py-2 text-black transition hover:bg-gray-700"
         >
           {is2D ? "Switch to 3D" : "Switch to 2D"}
         </button>
@@ -413,109 +442,108 @@ export default function Graph() {
             }}
           >
             {isCategoryTooltip ? (
-            <>
-              <div className="border-b border-stone-100 px-4 py-3">
-                <p className="text-sm font-semibold text-stone-900">
-                  {hoveredNode!.label}
-                </p>
-                <p className="mt-1 break-words text-xs leading-5 text-stone-600">
-                  {hoveredNode!.summary || "No category summary yet."}
-                </p>
-                <p className="mt-2 text-xs text-stone-500">
-                  {hoveredCategoryFiles.length} file
-                  {hoveredCategoryFiles.length === 1 ? "" : "s"}
-                </p>
-              </div>
-
-              <ul className="max-h-[260px] overflow-y-auto py-1">
-                {hoveredCategoryFiles.length === 0 ? (
-                  <li className="px-4 py-3 text-xs text-stone-400 italic">
-                    No files in this category
-                  </li>
-                ) : (
-                  hoveredCategoryFiles.map((doc) => {
-                    const name =
-                      doc.originalFileName || doc.fileName || doc.filename;
-                    const FileIcon = fileIconFor({
-                      id: doc.id,
-                      name,
-                      filename: name,
-                      mimeType: doc.mimeType,
-                    });
-                    return (
-                      <li key={doc.id}>
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/file/${doc.id}`)}
-                          className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-stone-50"
-                          title={name}
-                        >
-                          <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
-                            <FileIcon className="size-3.5" />
-                          </span>
-                          <span className="truncate text-xs text-stone-700">
-                            {name}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })
-                )}
-              </ul>
-
-              <div className="border-t border-stone-100 px-4 py-2">
-                <button
-                  type="button"
-                  onClick={handleTooltipAction}
-                  className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
-                >
-                  Explore files
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="border-b border-stone-100 px-4 py-3">
-                <p className="text-sm font-semibold text-stone-900">
-                  {hoveredNode!.label}
-                </p>
-                <p className="mt-1 break-words text-xs leading-5 text-stone-600">
-                  {hoveredNode!.summary || "No document summary yet."}
-                </p>
-              </div>
-
-              <div className="border-b border-stone-100 bg-stone-100/70 p-3">
-                <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
-                  {isImagePreview ? (
-                    <img
-                      src={documentPreviewUrl}
-                      alt={`${hoveredNode!.label} preview`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : isPdfPreview ? (
-                    <iframe
-                      src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
-                      title={`${hoveredNode!.label} preview`}
-                      className="h-full w-full border-0"
-                    />
-                  ) : (
-                    <p className="px-4 text-center text-xs leading-5 text-stone-500">
-                      Preview unavailable for this file type.
-                    </p>
-                  )}
+              <>
+                <div className="border-b border-stone-100 px-4 py-3">
+                  <p className="text-sm font-semibold text-stone-900">
+                    {hoveredNode!.label}
+                  </p>
+                  <p className="mt-1 break-words text-xs leading-5 text-stone-600">
+                    {hoveredNode!.summary || "No category summary yet."}
+                  </p>
+                  <p className="mt-2 text-xs text-stone-500">
+                    {hoveredCategoryFiles.length} file
+                    {hoveredCategoryFiles.length === 1 ? "" : "s"}
+                  </p>
                 </div>
-              </div>
 
-              <div className="px-4 py-2">
-                <button
-                  type="button"
-                  onClick={handleTooltipAction}
-                  className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
-                >
-                  Open file page
-                </button>
-              </div>
-            </>
+                <ul className="max-h-[260px] overflow-y-auto py-1">
+                  {hoveredCategoryFiles.length === 0 ? (
+                    <li className="px-4 py-3 text-xs text-stone-400 italic">
+                      No files in this category
+                    </li>
+                  ) : (
+                    hoveredCategoryFiles.map((doc) => {
+                      const name =
+                        doc.originalFileName || doc.fileName || doc.filename;
+                      const FileIcon = fileIconFor({
+                        name,
+                        filename: name,
+                        mimeType: doc.mimeType,
+                      });
+                      return (
+                        <li key={doc.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/file/${doc.id}`)}
+                            className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-stone-50"
+                            title={name}
+                          >
+                            <span className="flex size-6 flex-shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500">
+                              <FileIcon className="size-3.5" />
+                            </span>
+                            <span className="truncate text-xs text-stone-700">
+                              {name}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+
+                <div className="border-t border-stone-100 px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={handleTooltipAction}
+                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                  >
+                    Explore files
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="border-b border-stone-100 px-4 py-3">
+                  <p className="text-sm font-semibold text-stone-900">
+                    {hoveredNode!.label}
+                  </p>
+                  <p className="mt-1 break-words text-xs leading-5 text-stone-600">
+                    {hoveredNode!.summary || "No document summary yet."}
+                  </p>
+                </div>
+
+                <div className="border-b border-stone-100 bg-stone-100/70 p-3">
+                  <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
+                    {isImagePreview ? (
+                      <img
+                        src={documentPreviewUrl}
+                        alt={`${hoveredNode!.label} preview`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : isPdfPreview ? (
+                      <iframe
+                        src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
+                        title={`${hoveredNode!.label} preview`}
+                        className="h-full w-full border-0"
+                      />
+                    ) : (
+                      <p className="px-4 text-center text-xs leading-5 text-stone-500">
+                        Preview unavailable for this file type.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={handleTooltipAction}
+                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                  >
+                    Open file page
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -549,29 +577,29 @@ export default function Graph() {
 }
 
 function buildConnectedMatrix(nodeCount: number) {
-	const matrix: number[][] = Array.from({ length: nodeCount }, () =>
-		Array.from({ length: nodeCount }, () => 0),
-	);
+  const matrix: number[][] = Array.from({ length: nodeCount }, () =>
+    Array.from({ length: nodeCount }, () => 0),
+  );
 
-	for (let i = 0; i < nodeCount; i++) {
-		for (let j = i + 1; j < nodeCount; j++) {
-			let weight = 0.08;
+  for (let i = 0; i < nodeCount; i++) {
+    for (let j = i + 1; j < nodeCount; j++) {
+      let weight = 0.08;
 
-			if (Math.abs(i - j) === 1) {
-				weight = 0.42;
-			}
+      if (Math.abs(i - j) === 1) {
+        weight = 0.42;
+      }
 
-			if (
-				(i === 0 && j === nodeCount - 1) ||
-				(j === 0 && i === nodeCount - 1)
-			) {
-				weight = Math.max(weight, 0.28);
-			}
+      if (
+        (i === 0 && j === nodeCount - 1) ||
+        (j === 0 && i === nodeCount - 1)
+      ) {
+        weight = Math.max(weight, 0.28);
+      }
 
-			matrix[i][j] = weight;
-			matrix[j][i] = weight;
-		}
-	}
+      matrix[i][j] = weight;
+      matrix[j][i] = weight;
+    }
+  }
 
-	return matrix;
+  return matrix;
 }

@@ -224,6 +224,7 @@ export default function Dashboard() {
 	const [documents, setDocuments] = useState<DocumentSummary[]>([]);
 	const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 	const [contextRefreshKey, setContextRefreshKey] = useState(0);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const isEmpty = messages.length === 0;
@@ -232,7 +233,13 @@ export default function Dashboard() {
 	const spaceLabel = activeSpaceName ?? "this workspace";
 
 	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+		const container = scrollContainerRef.current;
+		if (!container || messages.length === 0) return;
+
+		container.scrollTo({
+			top: container.scrollHeight,
+			behavior: "smooth",
+		});
 	}, [messages, isLoading]);
 
 	useEffect(() => {
@@ -440,7 +447,14 @@ export default function Dashboard() {
 			await new Promise((resolve) => window.setTimeout(resolve, 220));
 
 			if (assistantReply.navigateTo === "/upload") {
-				window.dispatchEvent(new Event(openUploadModalEvent));
+				if (location.pathname !== "/graph") {
+					navigate("/graph");
+					window.setTimeout(() => {
+						window.dispatchEvent(new Event(openUploadModalEvent));
+					}, 120);
+				} else {
+					window.dispatchEvent(new Event(openUploadModalEvent));
+				}
 			} else if (
 				assistantReply.navigateTo &&
 				assistantReply.navigateTo !== location.pathname
@@ -488,8 +502,11 @@ export default function Dashboard() {
 	};
 
 	return (
-		<div className="relative flex-1 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
-			<div className="flex-1 overflow-y-auto px-6 pb-64 pt-8">
+		<div className="relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
+			<div
+				ref={scrollContainerRef}
+				className="flex-1 overflow-y-auto px-6 pb-64 pt-8"
+			>
 				<div className="mx-auto max-w-3xl">
 					{isEmpty ? (
 						<div className="pointer-events-none flex min-h-[50vh] flex-col items-center justify-start gap-6 pt-10 text-center">

@@ -2,11 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	CheckCircle2,
-	ChevronDown,
 	Hourglass,
 	LoaderCircle,
 	UploadCloud,
@@ -89,9 +86,6 @@ type UploadWorkspaceProps = {
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
-const textareaClassName =
-	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";
-
 function formatFileSize(bytes: number) {
 	if (bytes < 1024 * 1024) {
 		return `${(bytes / 1024).toFixed(1)} KB`;
@@ -118,9 +112,6 @@ export function UploadWorkspace({
 	const [knownCategoryOptions, setKnownCategoryOptions] = useState<
 		CreatedCategory[]
 	>([]);
-	const [openCategoryCombobox, setOpenCategoryCombobox] = useState<
-		string | null
-	>(null);
 	const [isAnalyzing, setIsAnalyzing] = useState(false);
 	const [isBusy, setIsBusy] = useState(false);
 	const [pendingCompletion, setPendingCompletion] = useState<{
@@ -1057,29 +1048,6 @@ export function UploadWorkspace({
 							{displayedAnalysisResults.map((result, index) => {
 								const isActivePrompt =
 									activeCategoryPrompt === result;
-								const isCategoryComboboxOpen =
-									openCategoryCombobox === result.fileName;
-								const categoryQuery = result.categoryInput
-									.trim()
-									.toLowerCase();
-								const filteredCategoryOptions =
-									categoryQuery.length > 0
-										? knownCategoryOptions.filter(
-												(category) =>
-													category.name
-														.toLowerCase()
-														.includes(
-															categoryQuery,
-														),
-											)
-										: knownCategoryOptions;
-								const hasExactCategoryMatch =
-									knownCategoryOptions.some(
-										(category) =>
-											categoryKey(category.name) ===
-											categoryKey(result.categoryInput),
-									);
-
 								return (
 									<article
 										ref={
