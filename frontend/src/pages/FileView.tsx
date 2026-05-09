@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
 	Download,
+	Edit3,
 	ExternalLink,
 	FileText,
 	Maximize2,
 	Minimize2,
 	Minus,
 	Plus,
+	Save,
+	Trash2,
+	X,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { fileIconFor, type KibiFile } from "@/components/app-sidebar";
 import React from "react";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
+const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 
 type PublicDocument = {
 	id: number;
@@ -31,11 +36,77 @@ type DocumentResponse = {
 	error?: string;
 };
 
+function authHeaders() {
+	const token = localStorage.getItem("token");
+	return token
+		? ({ Authorization: `Bearer ${token}` } as Record<string, string>)
+		: ({} as Record<string, string>);
+}
+
+function validateDocumentName(name: string) {
+	const trimmed = name.trim();
+
+	if (!trimmed) {
+		return "File name is required.";
+	}
+
+	if (trimmed.length > 180) {
+		return "File name must be 180 characters or fewer.";
+	}
+
+	if (trimmed === "." || trimmed === "..") {
+		return "File name is invalid.";
+	}
+
+	if (/[\\/]/.test(trimmed)) {
+		return "File name cannot contain slashes.";
+	}
+
+	if (/[\u0000-\u001F]/.test(trimmed)) {
+		return "File name contains invalid characters.";
+	}
+
+	return null;
+}
+
+function notifyFileTreeUpdated(documentIds: number[] = []) {
+	window.dispatchEvent(
+		new CustomEvent(fileTreeUpdatedEvent, {
+			detail: { documentIds },
+		}),
+	);
+}
+
+async function parseApiError(response: Response, fallbackMessage: string) {
+	const rawText = await response.text().catch(() => "");
+
+	if (!rawText.trim()) {
+		return `${response.status} ${response.statusText || fallbackMessage}`;
+	}
+
+	try {
+		const payload = JSON.parse(rawText) as { error?: string };
+		if (payload?.error) {
+			return `${response.status} ${payload.error}`;
+		}
+	} catch {
+		// Fall through to expose the raw response body temporarily.
+	}
+
+	return `${response.status} ${rawText}`;
+}
+
 export default function FileView() {
 	const { documentId } = useParams();
+	const navigate = useNavigate();
 	const [document, setDocument] = useState<PublicDocument | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const [editableName, setEditableName] = useState("");
+	const [isEditingName, setIsEditingName] = useState(false);
+	const [isSavingName, setIsSavingName] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [actionError, setActionError] = useState<string | null>(null);
 
 	const fileUrl = useMemo(() => {
 		return documentId ? `${apiBaseUrl}/documents/${documentId}/file` : "";
@@ -68,7 +139,15 @@ export default function FileView() {
 				}
 
 				if (!ignore) {
-					setDocument(payload?.document ?? null);
+					const nextDocument = payload?.document ?? null;
+					setDocument(nextDocument);
+					setEditableName(
+						nextDocument
+							? nextDocument.originalFileName ||
+									nextDocument.fileName ||
+									nextDocument.filename
+							: "",
+					);
 				}
 			} catch (err) {
 				if (!ignore) {
@@ -129,20 +208,188 @@ export default function FileView() {
 		document.mimeType.includes("json") ||
 		document.mimeType.includes("xml");
 
+	async function handleSaveName() {
+		if (!documentId || !document) {
+			return;
+		}
+
+		const validationError = validateDocumentName(editableName);
+		if (validationError) {
+			setActionError(validationError);
+			return;
+		}
+
+		const trimmedName = editableName.trim();
+		if (trimmedName === displayName) {
+			setIsEditingName(false);
+			setActionError(null);
+			return;
+		}
+
+		setIsSavingName(true);
+		setActionError(null);
+
+		try {
+			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
+				method: "PATCH",
+				headers: {
+					"Content-Type": "application/json",
+					...authHeaders(),
+				},
+				body: JSON.stringify({ name: trimmedName }),
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					await parseApiError(response, "Could not rename file."),
+				);
+			}
+
+			const payload = (await response
+				.json()
+				.catch(() => null)) as DocumentResponse | null;
+
+			if (!payload?.document) {
+				throw new Error("Rename succeeded but no document was returned.");
+			}
+
+			setDocument(payload.document);
+			setEditableName(
+				payload.document.originalFileName ||
+					payload.document.fileName ||
+					payload.document.filename,
+			);
+			notifyFileTreeUpdated();
+			setIsEditingName(false);
+		} catch (err) {
+			setActionError(
+				err instanceof Error ? err.message : "Could not rename file.",
+			);
+		} finally {
+			setIsSavingName(false);
+		}
+	}
+
+	async function handleDelete() {
+		if (!documentId || !document) {
+			return;
+		}
+
+		const confirmed = window.confirm(
+			`Delete "${displayName}"? This action cannot be undone.`,
+		);
+		if (!confirmed) {
+			return;
+		}
+
+		setIsDeleting(true);
+		setActionError(null);
+
+		try {
+			const response = await fetch(`${apiBaseUrl}/documents/${documentId}`, {
+				method: "DELETE",
+				headers: authHeaders(),
+			});
+			const payload = (await response
+				.json()
+				.catch(() => null)) as { error?: string } | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not delete file.");
+			}
+
+			notifyFileTreeUpdated();
+			navigate("/graph");
+		} catch (err) {
+			setActionError(
+				err instanceof Error ? err.message : "Could not delete file.",
+			);
+			setIsDeleting(false);
+		}
+	}
+
 	return (
 		<main className="min-h-[calc(100svh-var(--header-height))] bg-zinc-50/60">
 			<header className="border-b border-zinc-100 bg-white px-6 py-4">
 				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
-						<h1 className="truncate text-lg font-semibold text-zinc-950">
-							{displayName}
-						</h1>
+						<div className="flex min-w-0 items-center gap-2">
+							{isEditingName ? (
+								<>
+									<input
+										value={editableName}
+										onChange={(event) =>
+											setEditableName(event.target.value)
+										}
+										className="h-9 min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 text-lg font-semibold text-zinc-950 outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400"
+										maxLength={180}
+										disabled={isSavingName || isDeleting}
+										aria-label="File name"
+									/>
+									<button
+										type="button"
+										onClick={handleSaveName}
+										disabled={isSavingName || isDeleting}
+										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+										aria-label="Save file name"
+									>
+										<Save className="size-4" />
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											setEditableName(displayName);
+											setIsEditingName(false);
+											setActionError(null);
+										}}
+										disabled={isSavingName || isDeleting}
+										className="inline-flex size-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+										aria-label="Cancel file name edit"
+									>
+										<X className="size-4" />
+									</button>
+								</>
+							) : (
+								<>
+									<h1 className="truncate text-lg font-semibold text-zinc-950">
+										{displayName}
+									</h1>
+									<button
+										type="button"
+										onClick={() => {
+											setEditableName(displayName);
+											setIsEditingName(true);
+											setActionError(null);
+										}}
+										disabled={isDeleting}
+										className="inline-flex size-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+										aria-label="Edit file name"
+									>
+										<Edit3 className="size-4" />
+									</button>
+								</>
+							)}
+						</div>
 						<p className="mt-1 text-xs text-muted-foreground">
 							{document.mimeType} ·{" "}
 							{formatFileSize(document.fileSize)}
 						</p>
+						{actionError ? (
+							<p className="mt-2 text-xs text-red-600">
+								{actionError}
+							</p>
+						) : null}
 					</div>
 					<div className="flex shrink-0 gap-2">
+						<button
+							type="button"
+							onClick={handleDelete}
+							disabled={isSavingName || isDeleting}
+							className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<Trash2 className="size-4" />
+							{isDeleting ? "Deleting..." : "Delete"}
+						</button>
 						<a
 							href={fileUrl}
 							target="_blank"

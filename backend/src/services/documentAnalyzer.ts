@@ -281,6 +281,56 @@ export async function getDocument(documentId: number) {
   return rows[0] ?? null;
 }
 
+export async function renameDocument(documentId: number, name: string) {
+  await ensureDocumentSchema();
+  const trimmedName = name.trim();
+  const { rows } = await getDb().query<DocumentRow>(
+    `UPDATE documents
+     SET
+      file_name = $2,
+      original_file_name = $2
+     WHERE id = $1
+     RETURNING
+      id,
+      space_id,
+      filename,
+      filepath,
+      file_name,
+      original_file_name,
+      stored_file_name,
+      mime_type,
+      file_size,
+      category_id,
+      summary,
+      created_at`,
+    [documentId, trimmedName],
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteDocument(documentId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<DocumentRow>(
+    `DELETE FROM documents
+     WHERE id = $1
+     RETURNING
+      id,
+      space_id,
+      filename,
+      filepath,
+      file_name,
+      original_file_name,
+      stored_file_name,
+      mime_type,
+      file_size,
+      category_id,
+      summary,
+      created_at`,
+    [documentId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function createCategory(input: CategoryInput) {
   await ensureDocumentSchema();
   const keywords = normalizeKeywords(input.keywords?.length ? input.keywords : [input.name]);
