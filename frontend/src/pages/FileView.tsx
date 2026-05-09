@@ -597,55 +597,55 @@ export default function FileView() {
 			</section>
 
 			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<div className="flex items-start justify-between gap-4">
-							<div>
-								<h2 className="text-base font-semibold text-foreground">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-red-600 ring-1 ring-red-200">
+								<Trash2 className="size-5" />
+							</span>
+							<div className="min-w-0">
+								<h2 className="text-lg font-semibold text-foreground">
 									Delete file?
 								</h2>
-								<p className="mt-2 text-sm text-muted-foreground">
-									Are you sure you want to delete{" "}
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									This deletes{" "}
 									<span className="font-medium text-foreground">
 										{displayName}
-									</span>
-									? This action cannot be undone.
+									</span>{" "}
+									from this space. This action cannot be
+									undone.
 								</p>
 							</div>
-							<button
-								type="button"
-								onClick={() => {
-									if (isDeleting) return;
-									setIsDeleteModalOpen(false);
-								}}
-								className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-								aria-label="Close delete modal"
-							>
-								<X className="size-4" />
-							</button>
 						</div>
-						{actionError ? (
-							<p className="mt-4 text-sm text-destructive">
-								{actionError}
-							</p>
-						) : null}
-						<div className="mt-6 flex justify-end gap-2">
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => setIsDeleteModalOpen(false)}
-								disabled={isDeleting}
-							>
-								Cancel
-							</Button>
-							<Button
-								type="button"
-								variant="destructive"
-								onClick={handleDelete}
-								disabled={isDeleting}
-							>
-								{isDeleting ? "Deleting..." : "Delete item"}
-							</Button>
+
+						<div className="px-6 py-5">
+							{actionError ? (
+								<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+									{actionError}
+								</p>
+							) : null}
+							<div className="flex justify-end gap-2 border-t border-border pt-4">
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									className="min-w-24"
+									onClick={() => setIsDeleteModalOpen(false)}
+									disabled={isDeleting}
+								>
+									Cancel
+								</Button>
+								<Button
+									type="button"
+									variant="destructive"
+									size="lg"
+									className="min-w-32"
+									onClick={handleDelete}
+									disabled={isDeleting}
+								>
+									{isDeleting ? "Deleting..." : "Delete"}
+								</Button>
+							</div>
 						</div>
 					</div>
 				</div>
