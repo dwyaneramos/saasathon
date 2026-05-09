@@ -20,6 +20,7 @@ CREATE TABLE document_categories (
   space_id    INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
   metadata    JSONB NOT NULL DEFAULT '{}',
   description TEXT,
+  summary     TEXT NOT NULL DEFAULT '',
   keywords    TEXT[] NOT NULL DEFAULT '{}',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

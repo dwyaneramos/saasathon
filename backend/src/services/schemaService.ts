@@ -29,6 +29,7 @@ export async function ensureCoreSchema() {
                     space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
                     metadata JSONB NOT NULL DEFAULT '{}',
                     description TEXT,
+                    summary TEXT NOT NULL DEFAULT '',
                     keywords TEXT[] NOT NULL DEFAULT '{}',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
@@ -64,7 +65,8 @@ export async function ensureCoreSchema() {
                     ADD COLUMN IF NOT EXISTS space_id INTEGER REFERENCES spaces(id) ON DELETE CASCADE,
                     ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}',
                     ADD COLUMN IF NOT EXISTS keywords TEXT[] NOT NULL DEFAULT '{}',
-                    ADD COLUMN IF NOT EXISTS description TEXT;
+                    ADD COLUMN IF NOT EXISTS description TEXT,
+                    ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
 
                 -- UPDATEs after all columns exist
                 UPDATE document_categories
