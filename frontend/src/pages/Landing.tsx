@@ -4,11 +4,8 @@ import { CloudSync, Database, Zap } from "lucide-react";
 export const Landing = () => {
 	return (
 		<>
-			{/* HERO */}
-			<main className="relative min-h-screen flex items-center px-6 py-24 overflow-hidden">
-				<div className="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-20 items-center">
-					
-					{/* LEFT SIDE - CONTENT */}
+			<main className="relative min-h-screen flex items-start px-6 pt-12 pb-24 overflow-hidden">
+				<div className="max-w-[1600px] mx-auto w-full grid lg:grid-cols-[1.1fr_1.6fr] gap-24 items-center">
 					<div className="text-center lg:text-left flex flex-col items-center lg:items-start">
 						<h1 className="max-w-4xl text-6xl md:text-8xl font-bold tracking-tighter bg-gradient-to-b from-zinc-900 to-zinc-500 bg-clip-text text-transparent leading-[0.9] pb-8">
 							Document digitisation <br /> for the next generation.
@@ -30,7 +27,7 @@ export const Landing = () => {
 						</div>
 					</div>
 
-					<div className="relative flex items-center justify-center">
+					<div className="relative flex items-center justify-end -mr-32 min-h-[100px]">
 						<LandingAnimation></LandingAnimation>
 					</div>
 				</div>
