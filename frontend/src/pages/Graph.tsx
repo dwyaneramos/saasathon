@@ -30,7 +30,7 @@ export default function Graph() {
     x: 0,
     y: 0,
   });
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const cursorPosRef = useRef({ x: 0, y: 0 });
   const hoveredNodeIdRef = useRef<string | null>(null);
@@ -82,30 +82,24 @@ export default function Graph() {
     };
   }, [activeSpaceId]);
 
-  // Track mouse position relative to the container without re-rendering.
+  // Track viewport mouse position without re-rendering.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const updateContainerSize = () => {
-      const rect = container.getBoundingClientRect();
-      setContainerSize({ width: rect.width, height: rect.height });
+    const updateViewportSize = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
     };
-    const resizeFrame = requestAnimationFrame(updateContainerSize);
-    const resizeObserver = new ResizeObserver(updateContainerSize);
+    const resizeFrame = requestAnimationFrame(updateViewportSize);
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      cursorPosRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
+      cursorPosRef.current = { x: e.clientX, y: e.clientY };
     };
 
-    resizeObserver.observe(container);
+    window.addEventListener("resize", updateViewportSize);
     container.addEventListener("mousemove", handleMouseMove);
     return () => {
       cancelAnimationFrame(resizeFrame);
-      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateViewportSize);
       container.removeEventListener("mousemove", handleMouseMove);
     };
   }, []);
@@ -180,6 +174,10 @@ export default function Graph() {
   }, [activeCategoryId, documents]);
 
   const currentNodes = mode === "categories" ? categoryNodes : fileNodes;
+  const activeCategory = useMemo(
+    () => categories.find((category) => category.id === activeCategoryId) ?? null,
+    [activeCategoryId, categories],
+  );
   const currentMatrix = useMemo(
     () => buildConnectedMatrix(currentNodes.length),
     [currentNodes.length],
@@ -217,33 +215,60 @@ export default function Graph() {
   const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
   const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
 
-  // Tooltip positioning: anchor once per hovered node and keep it on screen.
+  // Tooltip positioning: anchor once per hovered node and keep the whole hover frame in the viewport.
   const TOOLTIP_WIDTH = 320;
   const TOOLTIP_OFFSET = 16;
   const TOOLTIP_BRIDGE = 18;
+  const TOOLTIP_EDGE_GAP = 8;
   const tooltipStyle = useMemo(() => {
-    let x = tooltipAnchor.x + TOOLTIP_OFFSET;
-    let y = tooltipAnchor.y + TOOLTIP_OFFSET;
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(Math.max(value, min), max);
+    const availableCardWidth = viewportSize.width
+      ? viewportSize.width - TOOLTIP_EDGE_GAP * 2 - TOOLTIP_BRIDGE * 2
+      : TOOLTIP_WIDTH;
+    const width = viewportSize.width
+      ? Math.max(0, Math.min(TOOLTIP_WIDTH, availableCardWidth))
+      : TOOLTIP_WIDTH;
+    const maxCardHeight = viewportSize.height
+      ? Math.max(0, viewportSize.height - TOOLTIP_EDGE_GAP * 2 - TOOLTIP_BRIDGE * 2)
+      : undefined;
+    const frameWidth = width + TOOLTIP_BRIDGE * 2;
+    const frameHeight = (maxCardHeight ?? 420) + TOOLTIP_BRIDGE * 2;
 
-    if (containerSize.width && x + TOOLTIP_WIDTH > containerSize.width - 8) {
-      x = tooltipAnchor.x - TOOLTIP_WIDTH - TOOLTIP_OFFSET;
+    let cardX = tooltipAnchor.x + TOOLTIP_OFFSET;
+    let cardY = tooltipAnchor.y + TOOLTIP_OFFSET;
+
+    if (
+      viewportSize.width &&
+      cardX + width + TOOLTIP_BRIDGE > viewportSize.width - TOOLTIP_EDGE_GAP
+    ) {
+      cardX = tooltipAnchor.x - width - TOOLTIP_OFFSET;
     }
 
-    const estimatedHeight = isDocumentTooltip
-      ? 420
-      : Math.min(120 + hoveredCategoryFiles.length * 36, 360);
-    if (containerSize.height && y + estimatedHeight > containerSize.height - 8) {
-      y = containerSize.height - estimatedHeight - 8;
+    if (
+      viewportSize.height &&
+      cardY + (maxCardHeight ?? 420) + TOOLTIP_BRIDGE > viewportSize.height - TOOLTIP_EDGE_GAP
+    ) {
+      cardY = tooltipAnchor.y - (maxCardHeight ?? 420) - TOOLTIP_OFFSET;
     }
 
-    return { left: x, top: y };
-  }, [
-    containerSize.height,
-    containerSize.width,
-    hoveredCategoryFiles.length,
-    isDocumentTooltip,
-    tooltipAnchor,
-  ]);
+    const frameX = viewportSize.width
+      ? clamp(
+          cardX - TOOLTIP_BRIDGE,
+          TOOLTIP_EDGE_GAP,
+          Math.max(TOOLTIP_EDGE_GAP, viewportSize.width - frameWidth - TOOLTIP_EDGE_GAP),
+        )
+      : cardX - TOOLTIP_BRIDGE;
+    const frameY = viewportSize.height
+      ? clamp(
+          cardY - TOOLTIP_BRIDGE,
+          TOOLTIP_EDGE_GAP,
+          Math.max(TOOLTIP_EDGE_GAP, viewportSize.height - frameHeight - TOOLTIP_EDGE_GAP),
+        )
+      : cardY - TOOLTIP_BRIDGE;
+
+    return { left: frameX, top: frameY, width, maxHeight: maxCardHeight };
+  }, [tooltipAnchor, viewportSize.height, viewportSize.width]);
 
   return (
     <div
@@ -277,10 +302,10 @@ export default function Graph() {
       {/* Anchored tooltip with a hover bridge so the card can be entered. */}
       {showTooltip && (
         <div
-          className="absolute z-30 p-[18px]"
+          className="fixed z-50 p-[18px]"
           style={{
-            left: tooltipStyle.left - TOOLTIP_BRIDGE,
-            top: tooltipStyle.top - TOOLTIP_BRIDGE,
+            left: tooltipStyle.left,
+            top: tooltipStyle.top,
           }}
           onMouseEnter={() => {
             tooltipHoveredRef.current = true;
@@ -291,14 +316,20 @@ export default function Graph() {
             scheduleHide();
           }}
         >
-          <div className="w-[320px] overflow-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm">
+          <div
+            className="overflow-y-auto overflow-x-hidden rounded-xl border border-stone-200 bg-white/95 shadow-xl backdrop-blur-sm"
+            style={{
+              width: tooltipStyle.width,
+              maxHeight: tooltipStyle.maxHeight,
+            }}
+          >
             {isCategoryTooltip ? (
             <>
               <div className="border-b border-stone-100 px-4 py-3">
                 <p className="text-sm font-semibold text-stone-900">
                   {hoveredNode!.label}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-stone-600">
+                <p className="mt-1 break-words text-xs leading-5 text-stone-600">
                   {hoveredNode!.summary || "No category summary yet."}
                 </p>
                 <p className="mt-2 text-xs text-stone-500">
@@ -349,7 +380,7 @@ export default function Graph() {
                 <p className="text-sm font-semibold text-stone-900">
                   {hoveredNode!.label}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-stone-600">
+                <p className="mt-1 break-words text-xs leading-5 text-stone-600">
                   {hoveredNode!.summary || "No document summary yet."}
                 </p>
               </div>
@@ -397,6 +428,17 @@ export default function Graph() {
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
           />
+        ) : mode === "files" ? (
+          <div className="flex h-full items-center justify-center px-6 text-center">
+            <div className="max-w-sm">
+              <p className="text-sm font-semibold text-stone-900">
+                No documents in {activeCategory?.name ?? "this category"}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-stone-500">
+                Add documents to this category to build its file graph.
+              </p>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>
