@@ -117,6 +117,26 @@ function sortDocumentsByNewest(documents: DocumentSummary[]) {
 	});
 }
 
+const productivityPromptTemplates = [
+	"How can I help inside {spaceLabel}?",
+	"What should we get moving inside {spaceLabel}?",
+	"What would you like to clear first in {spaceLabel}?",
+	"What can I help organise in {spaceLabel}?",
+	"What should we make easier in {spaceLabel} today?",
+	"Where should we focus inside {spaceLabel}?",
+	"What do you want to get done in {spaceLabel}?",
+	"Want to find, file, or tidy something in {spaceLabel}?",
+];
+
+function productivityPromptForSpace(spaceLabel: string, seed: number) {
+	const template =
+		productivityPromptTemplates[
+			seed % productivityPromptTemplates.length
+		];
+
+	return template.replace("{spaceLabel}", spaceLabel);
+}
+
 function TypingIndicator() {
 	return (
 		<div className="mb-3 flex items-end gap-2">
@@ -346,7 +366,20 @@ export default function Dashboard() {
 	const isEmpty = messages.length === 0;
 	const hasStartedConversation = messages.length > 0 || isLoading;
 	const userFirstName = user?.firstName ?? null;
-	const spaceLabel = activeSpaceName ?? "this workspace";
+	const spaceLabel = activeSpaceName ?? "your space";
+	const [productivityPromptSeed, setProductivityPromptSeed] = useState(() =>
+		Math.floor(Math.random() * productivityPromptTemplates.length),
+	);
+	const productivityPrompt = useMemo(
+		() => productivityPromptForSpace(spaceLabel, productivityPromptSeed),
+		[productivityPromptSeed, spaceLabel],
+	);
+
+	useEffect(() => {
+		setProductivityPromptSeed(
+			Math.floor(Math.random() * productivityPromptTemplates.length),
+		);
+	}, [activeSpaceId]);
 
 	useEffect(() => {
 		const container = scrollContainerRef.current;
@@ -657,7 +690,7 @@ export default function Dashboard() {
 									,
 								</h1>
 								<p className="text-base text-zinc-500 sm:text-lg">
-									How can I help inside {spaceLabel}?
+									{productivityPrompt}
 								</p>
 								<p className="mx-auto mt-2 max-w-xl text-xs text-zinc-400 sm:mt-3 sm:text-sm">
 									{contextSummary}

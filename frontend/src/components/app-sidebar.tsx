@@ -52,6 +52,95 @@ function fileDisplayName(file: ApiDocument) {
 	return file.originalFileName || file.fileName || file.filename;
 }
 
+const imageSearchTerms = new Set([
+	"image",
+	"img",
+	"photo",
+	"photograph",
+	"picture",
+	"pic",
+	"screenshot",
+]);
+
+const imageFileExtensions = new Set([
+	"apng",
+	"avif",
+	"bmp",
+	"gif",
+	"heic",
+	"heif",
+	"ico",
+	"jfif",
+	"jpeg",
+	"jpg",
+	"pjp",
+	"pjpeg",
+	"png",
+	"svg",
+	"tif",
+	"tiff",
+	"webp",
+]);
+
+type SearchFileType = "image" | "pdf";
+
+function searchTokens(query: string) {
+	return query
+		.toLowerCase()
+		.replace(/[^\w\s.-]/g, " ")
+		.split(/\s+/)
+		.map((token) => token.trim().replace(/^\.+|\.+$/g, ""))
+		.filter(Boolean);
+}
+
+function resolveSearchFileTypes(query: string) {
+	const fileTypes = new Set<SearchFileType>();
+
+	for (const token of searchTokens(query)) {
+		const singularToken =
+			token.endsWith("s") && token.length > 3
+				? token.slice(0, -1)
+				: token;
+
+		if (imageSearchTerms.has(token) || imageSearchTerms.has(singularToken)) {
+			fileTypes.add("image");
+		}
+
+		if (token === "pdf" || singularToken === "pdf") {
+			fileTypes.add("pdf");
+		}
+	}
+
+	return fileTypes;
+}
+
+function fileExtension(file: Category["files"][number]) {
+	const name = file.filename || file.name;
+	const extension = name.split(".").pop();
+	return extension && extension !== name ? extension.toLowerCase() : "";
+}
+
+function fileMatchesSearchFileTypes(
+	file: Category["files"][number],
+	fileTypes: Set<SearchFileType>,
+) {
+	if (fileTypes.size === 0) {
+		return true;
+	}
+
+	const mimeType = file.mimeType.toLowerCase();
+	const extension = fileExtension(file);
+	const isPdf = mimeType === "application/pdf" || extension === "pdf";
+	const isImage =
+		!isPdf &&
+		(mimeType.startsWith("image/") || imageFileExtensions.has(extension));
+
+	return (
+		(fileTypes.has("image") && isImage) ||
+		(fileTypes.has("pdf") && isPdf)
+	);
+}
+
 function reconcileFiles(
 	currentFiles: Category["files"],
 	nextFiles: Category["files"],
@@ -228,10 +317,16 @@ export function AppSidebar({
 			new Map(contentSearchResults.map((result) => [result.id, result])),
 		[contentSearchResults],
 	);
+	const searchFileTypes = React.useMemo(
+		() => resolveSearchFileTypes(trimmedSearchQuery),
+		[trimmedSearchQuery],
+	);
 	const visibleCategories = React.useMemo<Category[]>(() => {
 		if (!trimmedSearchQuery) {
 			return categories;
 		}
+
+		const hasFileTypeSearch = searchFileTypes.size > 0;
 
 		return categories
 			.map((category): Category | null => {
@@ -241,13 +336,18 @@ export function AppSidebar({
 				const matchingFiles = category.files
 					.filter(
 						(file) =>
-							file.name
+							fileMatchesSearchFileTypes(
+								file,
+								searchFileTypes,
+							) &&
+							(file.name
 								.toLowerCase()
 								.includes(trimmedSearchQuery) ||
-							file.filename
-								.toLowerCase()
-								.includes(trimmedSearchQuery) ||
-							contentSearchFileIds.has(file.id),
+								file.filename
+									.toLowerCase()
+									.includes(trimmedSearchQuery) ||
+								contentSearchFileIds.has(file.id) ||
+								hasFileTypeSearch),
 					)
 					.map((file) => ({
 						...file,
@@ -257,14 +357,20 @@ export function AppSidebar({
 					}));
 
 				if (categoryMatches) {
+					if (hasFileTypeSearch && matchingFiles.length === 0) {
+						return null;
+					}
+
 					return {
 						...category,
-						files: category.files.map((file) => ({
-							...file,
-							searchSnippet:
-								contentSearchResultsById.get(file.id)
-									?.snippet ?? undefined,
-						})),
+						files: hasFileTypeSearch
+							? matchingFiles
+							: category.files.map((file) => ({
+									...file,
+									searchSnippet:
+										contentSearchResultsById.get(file.id)
+											?.snippet ?? undefined,
+								})),
 					};
 				}
 
@@ -282,6 +388,7 @@ export function AppSidebar({
 		categories,
 		contentSearchFileIds,
 		contentSearchResultsById,
+		searchFileTypes,
 		trimmedSearchQuery,
 	]);
 	const validateCategoryName = React.useCallback(
