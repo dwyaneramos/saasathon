@@ -638,6 +638,62 @@ export async function createCategory(input: CategoryInput) {
   return rows[0];
 }
 
+export async function updateCategory(categoryId: number, input: { name: string }) {
+  await ensureDocumentSchema();
+  const existing = await getCategory(categoryId);
+  if (!existing) {
+    return null;
+  }
+
+  const name = input.name.trim();
+  const duplicate = await getDb().query<{ id: number }>(
+    `SELECT id
+     FROM document_categories
+     WHERE id <> $1
+       AND lower(name) = lower($2::text)
+       AND space_id IS NOT DISTINCT FROM $3::integer
+     LIMIT 1`,
+    [categoryId, name, existing.space_id],
+  );
+
+  if (duplicate.rows[0]) {
+    throw new HttpError(409, "A category with this name already exists.");
+  }
+
+  const keywords = normalizeKeywords([name]);
+  const { rows } = await getDb().query<CategoryRow>(
+    `UPDATE document_categories
+     SET name = $2::text,
+       keywords = $3::text[],
+       metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('keywords', $3::text[])
+     WHERE id = $1
+     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
+    [categoryId, name, keywords],
+  );
+
+  if (rows[0]) {
+    await refreshCategoryConnections(rows[0].space_id);
+  }
+
+  return rows[0] ?? null;
+}
+
+export async function deleteCategory(categoryId: number) {
+  await ensureDocumentSchema();
+  const { rows } = await getDb().query<CategoryRow>(
+    `DELETE FROM document_categories
+     WHERE id = $1
+     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
+    [categoryId],
+  );
+
+  if (rows[0]) {
+    await refreshCategoryConnections(rows[0].space_id);
+  }
+
+  return rows[0] ?? null;
+}
+
 export function toPublicCategory(category: CategoryRow): PublicCategory {
   const metadata = normalizeCategoryMetadata(category);
   return {

@@ -3,10 +3,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import {
 	createCategorySchema,
+	updateCategorySchema,
 	updateDocumentSchema,
 } from "../validation/documents.js";
 import {
@@ -15,6 +16,7 @@ import {
 	analyzePdf,
 	assignDocumentCategory,
 	createCategory,
+	deleteCategory,
 	deleteDocument,
 	getCategory,
 	getDocument,
@@ -27,7 +29,9 @@ import {
 	toPublicCategoryConnection,
 	toPublicDocument,
 	toPublicDocumentSearchResult,
+	updateCategory,
 } from "../services/documentAnalyzer.js";
+import { userCanAccessSpace } from "../services/spaceService.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -312,6 +316,61 @@ router.post("/categories", validate(createCategorySchema), async (req, res) => {
 	res.status(201).json({ category: toPublicCategory(responseCategory) });
 });
 
+router.patch(
+	"/categories/:categoryId",
+	requireAuth,
+	validate(updateCategorySchema),
+	async (req: AuthRequest, res) => {
+		const categoryId = getCategoryIdFromParams(req);
+		if (!categoryId) {
+			res.status(400).json({ error: "categoryId must be a positive integer" });
+			return;
+		}
+
+		const category = await getManageableCategory(req, categoryId);
+		if (!category) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const updatedCategory = await updateCategory(categoryId, {
+			name: req.body.name,
+		});
+		if (!updatedCategory) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		res.json({ category: toPublicCategory(updatedCategory) });
+	},
+);
+
+router.delete(
+	"/categories/:categoryId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const categoryId = getCategoryIdFromParams(req);
+		if (!categoryId) {
+			res.status(400).json({ error: "categoryId must be a positive integer" });
+			return;
+		}
+
+		const category = await getManageableCategory(req, categoryId);
+		if (!category) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const deletedCategory = await deleteCategory(categoryId);
+		if (!deletedCategory) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		res.json({ success: true, category: toPublicCategory(deletedCategory) });
+	},
+);
+
 export async function analyzePdfUploadHandler(req: Request, res: Response) {
 	if (!req.file) {
 		res.status(400).json({ error: "PDF file is required" });
@@ -427,6 +486,22 @@ function getSpaceId(req: Request) {
 
 	const spaceId = Number(req.query.spaceId);
 	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
+}
+
+function getCategoryIdFromParams(req: Request) {
+	const categoryId = Number(req.params.categoryId);
+	return Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null;
+}
+
+async function getManageableCategory(req: AuthRequest, categoryId: number) {
+	const category = await getCategory(categoryId);
+	if (!category || typeof category.space_id !== "number" || !req.userId) {
+		return null;
+	}
+
+	return (await userCanAccessSpace(req.userId, category.space_id))
+		? category
+		: null;
 }
 
 function getDocumentIdFromParams(req: Request) {

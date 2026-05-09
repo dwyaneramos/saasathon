@@ -1,5 +1,12 @@
 import type * as React from "react";
-import { Edit3, FolderPlus, LayersPlus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import {
+	Edit3,
+	FolderPlus,
+	LayersPlus,
+	SlidersHorizontal,
+	Trash2,
+	X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,14 +56,17 @@ export function CreateCategoryModal({
 							id="new-category-name"
 							type="text"
 							value={newCategoryName}
-							onChange={(event) => onNameChange(event.target.value)}
+							onChange={(event) =>
+								onNameChange(event.target.value)
+							}
 							placeholder="e.g. Contracts"
 							maxLength={80}
 							autoFocus
 							className="h-10 bg-background px-3"
 						/>
 						<p className="text-xs text-muted-foreground">
-							Use a short label that will scan well in the sidebar.
+							Use a short label that will scan well in the
+							sidebar.
 						</p>
 					</div>
 
@@ -122,7 +132,8 @@ export function CreateSpaceModal({
 							Create new space
 						</h2>
 						<p className="mt-1 text-sm leading-6 text-muted-foreground">
-							Keep files, categories, and graph connections separated by workspace.
+							Keep files, categories, and graph connections
+							separated by workspace.
 						</p>
 					</div>
 				</div>
@@ -134,14 +145,17 @@ export function CreateSpaceModal({
 							id="new-space-name"
 							type="text"
 							value={newSpaceName}
-							onChange={(event) => onNameChange(event.target.value)}
+							onChange={(event) =>
+								onNameChange(event.target.value)
+							}
 							placeholder="e.g. Acme Corp"
 							maxLength={80}
 							autoFocus
 							className="h-10 bg-background px-3"
 						/>
 						<p className="text-xs text-muted-foreground">
-							Spaces are private containers for a focused set of documents.
+							Spaces are private containers for a focused set of
+							documents.
 						</p>
 					</div>
 
@@ -169,7 +183,9 @@ export function CreateSpaceModal({
 							className="min-w-36"
 							disabled={isCreatingSpace}
 						>
-							{isCreatingSpace ? "Creating..." : "Create new space"}
+							{isCreatingSpace
+								? "Creating..."
+								: "Create new space"}
 						</Button>
 					</div>
 				</form>
@@ -252,9 +268,12 @@ export function ManageCategoriesModal({
 					{categories.length > 0 ? (
 						<div className="space-y-2">
 							{categories.map((category) => {
-								const isEditing = editingCategoryId === category.id;
-								const isUpdating = updatingCategoryId === category.id;
-								const isDeleting = deletingCategoryId === category.id;
+								const isEditing =
+									editingCategoryId === category.id;
+								const isUpdating =
+									updatingCategoryId === category.id;
+								const isDeleting =
+									deletingCategoryId === category.id;
 								const isConfirmingDelete =
 									confirmDeleteCategoryId === category.id;
 
@@ -268,7 +287,9 @@ export function ManageCategoriesModal({
 												<Input
 													value={editingCategoryName}
 													onChange={(event) =>
-														onEditingNameChange(event.target.value)
+														onEditingNameChange(
+															event.target.value,
+														)
 													}
 													maxLength={80}
 													className="h-9 bg-background px-3"
@@ -279,7 +300,9 @@ export function ManageCategoriesModal({
 														type="button"
 														variant="outline"
 														size="sm"
-														onClick={onCancelEditing}
+														onClick={
+															onCancelEditing
+														}
 														disabled={isUpdating}
 													>
 														Cancel
@@ -288,10 +311,16 @@ export function ManageCategoriesModal({
 														type="button"
 														variant="accent"
 														size="sm"
-														onClick={() => onUpdateCategory(category)}
+														onClick={() =>
+															onUpdateCategory(
+																category,
+															)
+														}
 														disabled={isUpdating}
 													>
-														{isUpdating ? "Saving..." : "Save"}
+														{isUpdating
+															? "Saving..."
+															: "Save"}
 													</Button>
 												</div>
 											</div>
@@ -303,7 +332,8 @@ export function ManageCategoriesModal({
 													</p>
 													<p className="mt-0.5 text-xs text-muted-foreground">
 														{category.files.length}{" "}
-														{category.files.length === 1
+														{category.files
+															.length === 1
 															? "file"
 															: "files"}
 													</p>
@@ -312,7 +342,9 @@ export function ManageCategoriesModal({
 													type="button"
 													variant="outline"
 													size="sm"
-													onClick={() => onStartEditing(category)}
+													onClick={() =>
+														onStartEditing(category)
+													}
 													disabled={isDeleting}
 												>
 													<Edit3 className="size-3.5" />
@@ -322,7 +354,11 @@ export function ManageCategoriesModal({
 													type="button"
 													variant="destructive"
 													size="sm"
-													onClick={() => onDeleteCategory(category)}
+													onClick={() =>
+														onDeleteCategory(
+															category,
+														)
+													}
 													disabled={isDeleting}
 												>
 													<Trash2 className="size-3.5" />
@@ -344,14 +380,20 @@ export function ManageCategoriesModal({
 								No categories yet
 							</p>
 							<p className="mt-1 text-sm text-muted-foreground">
-								Create a category to start organizing files in this space.
+								Create a category to start organizing files in
+								this space.
 							</p>
 						</div>
 					)}
 				</div>
 
 				<div className="flex justify-end gap-2 border-t border-border bg-muted/40 px-6 py-3">
-					<Button type="button" variant="outline" size="lg" onClick={onClose}>
+					<Button
+						type="button"
+						variant="outline"
+						size="lg"
+						onClick={onClose}
+					>
 						Done
 					</Button>
 					<Button
@@ -410,7 +452,9 @@ export function EditSpaceModal({
 							id="edit-space-name"
 							type="text"
 							value={editSpaceName}
-							onChange={(event) => onNameChange(event.target.value)}
+							onChange={(event) =>
+								onNameChange(event.target.value)
+							}
 							maxLength={80}
 							autoFocus
 							className="h-10 bg-background px-3"
@@ -439,7 +483,10 @@ export function EditSpaceModal({
 							variant="accent"
 							size="lg"
 							className="min-w-32"
-							disabled={isUpdatingSpace || editSpaceName.trim() === space.name}
+							disabled={
+								isUpdatingSpace ||
+								editSpaceName.trim() === space.name
+							}
 						>
 							{isUpdatingSpace ? "Saving..." : "Save"}
 						</Button>
@@ -490,7 +537,7 @@ export function DeleteSpaceModal({
 							{deleteSpaceError}
 						</p>
 					)}
-					<div className="flex justify-end gap-2 border-t border-border pt-4">
+					<div className="flex justify-end gap-2 pt-4">
 						<Button
 							type="button"
 							variant="outline"
