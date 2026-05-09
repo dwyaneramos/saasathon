@@ -240,6 +240,7 @@ export default function Dashboard() {
 		if (!element) return;
 		element.style.height = "auto";
 		element.style.height = `${Math.min(element.scrollHeight, 140)}px`;
+		element.style.overflowY = element.scrollHeight > 140 ? "auto" : "hidden";
 	}, [input]);
 
 	useEffect(() => {
@@ -567,7 +568,7 @@ export default function Dashboard() {
 								}
 								onKeyDown={handleKeyDown}
 								placeholder={`Ask me to find a file, open an image, or search ${spaceLabel}`}
-								className={`flex-1 resize-none bg-transparent py-2 leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 transition-all duration-700 ${
+								className={`flex-1 resize-none overflow-hidden bg-transparent py-2 leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 transition-all duration-700 ${
 									hasStartedConversation
 										? "text-base md:text-[1.05rem]"
 										: "text-base md:text-lg"
