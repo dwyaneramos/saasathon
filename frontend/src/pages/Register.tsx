@@ -39,7 +39,7 @@ export default function Register() {
 		e.preventDefault();
 		const firstName = formData.firstName.trim();
 		const lastName = formData.lastName.trim();
-		const email = formData.email.trim();
+		const email = formData.email.trim().toLowerCase();
 		const password = formData.password;
 		const repeatPassword = formData.repeatPassword;
 

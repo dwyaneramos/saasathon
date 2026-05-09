@@ -51,7 +51,7 @@ router.post("/register", validate(registerSchema), async (req, res) => {
 router.post("/login", validate(loginSchema), async (req, res) => {
 	const { email, password } = req.body;
 	const { rows } = await getDb().query<User>(
-		"SELECT * FROM users WHERE email = $1",
+		"SELECT * FROM users WHERE lower(email) = lower($1)",
 		[email],
 	);
 
