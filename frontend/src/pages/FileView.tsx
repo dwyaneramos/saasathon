@@ -8,12 +8,19 @@ import {
 	Maximize2,
 	Minimize2,
 	Minus,
+	MoreVertical,
 	Plus,
 	Save,
 	Trash2,
 	X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { KibiFile } from "@/components/app-sidebar";
 import { apiBaseUrl } from "@/lib/api";
@@ -166,11 +173,12 @@ export default function FileView() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
+	const [isFileLoading, setIsFileLoading] = useState(false);
 
-	const fileUrl = useMemo(() => {
+	const fileApiUrl = useMemo(() => {
 		return documentId ? `${apiBaseUrl}/documents/${documentId}/file` : "";
 	}, [documentId]);
-	const downloadUrl = `${fileUrl}?download=1`;
 
 	useEffect(() => {
 		let ignore = false;
@@ -188,9 +196,19 @@ export default function FileView() {
 			try {
 				const response = await fetch(
 					`${apiBaseUrl}/documents/${documentId}`,
+					{ headers: authHeaders() },
 				);
 
 				if (!response.ok) {
+					if (
+						response.status === 401 ||
+						response.status === 403 ||
+						response.status === 404
+					) {
+						navigate("/", { replace: true });
+						return;
+					}
+
 					throw new Error(
 						toFriendlyDocumentError(
 							"load",
@@ -235,7 +253,75 @@ export default function FileView() {
 		return () => {
 			ignore = true;
 		};
-	}, [documentId]);
+	}, [documentId, navigate]);
+
+	useEffect(() => {
+		if (!document || !fileApiUrl) {
+			setFileObjectUrl(null);
+			return;
+		}
+
+		let objectUrl: string | null = null;
+		let ignore = false;
+
+		async function loadFileBlob() {
+			setIsFileLoading(true);
+			setFileObjectUrl(null);
+
+			try {
+				const response = await fetch(fileApiUrl, {
+					headers: authHeaders(),
+				});
+
+				if (!response.ok) {
+					if (
+						response.status === 401 ||
+						response.status === 403 ||
+						response.status === 404
+					) {
+						navigate("/", { replace: true });
+						return;
+					}
+
+					throw new Error(
+						toFriendlyDocumentError(
+							"load",
+							response.status,
+							await readApiError(response),
+						),
+					);
+				}
+
+				const blob = await response.blob();
+				objectUrl = URL.createObjectURL(blob);
+
+				if (!ignore) {
+					setFileObjectUrl(objectUrl);
+				}
+			} catch (err) {
+				if (!ignore) {
+					setActionError(
+						err instanceof Error
+							? err.message
+							: "Could not load file preview.",
+					);
+				}
+			} finally {
+				if (!ignore) {
+					setIsFileLoading(false);
+				}
+			}
+		}
+
+		loadFileBlob();
+
+		return () => {
+			ignore = true;
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [document, fileApiUrl, navigate]);
 
 	if (isLoading) {
 		return (
@@ -268,11 +354,29 @@ export default function FileView() {
 	const displayName =
 		document.originalFileName || document.fileName || document.filename;
 	const canPreview =
-		document.mimeType === "application/pdf" ||
-		document.mimeType.startsWith("image/") ||
-		document.mimeType.startsWith("text/") ||
-		document.mimeType.includes("json") ||
-		document.mimeType.includes("xml");
+		Boolean(fileObjectUrl) &&
+		(document.mimeType === "application/pdf" ||
+			document.mimeType.startsWith("image/") ||
+			document.mimeType.startsWith("text/") ||
+			document.mimeType.includes("json") ||
+			document.mimeType.includes("xml"));
+
+	function handleOpenFile() {
+		if (!fileObjectUrl) return;
+		window.open(fileObjectUrl, "_blank", "noopener,noreferrer");
+	}
+
+	function handleDownloadFile() {
+		if (!fileObjectUrl) return;
+
+		const link = window.document.createElement("a");
+		link.href = fileObjectUrl;
+		link.download = displayName;
+		link.rel = "noreferrer";
+		window.document.body.appendChild(link);
+		link.click();
+		link.remove();
+	}
 
 	async function handleSaveName() {
 		if (!documentId || !document) {
@@ -403,16 +507,17 @@ export default function FileView() {
 										disabled={isSavingName || isDeleting}
 										aria-label="File name"
 									/>
-									<button
+									<Button
 										type="button"
 										onClick={handleSaveName}
 										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+										variant="outline"
+										size="icon-lg"
 										aria-label="Save file name"
 									>
 										<Save className="size-4" />
-									</button>
-									<button
+									</Button>
+									<Button
 										type="button"
 										onClick={() => {
 											setEditableName(displayName);
@@ -420,18 +525,19 @@ export default function FileView() {
 											setActionError(null);
 										}}
 										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+										variant="outline"
+										size="icon-lg"
 										aria-label="Cancel file name edit"
 									>
 										<X className="size-4" />
-									</button>
+									</Button>
 								</>
 							) : (
 								<>
 									<h1 className="truncate text-lg font-semibold text-foreground">
 										{displayName}
 									</h1>
-									<button
+									<Button
 										type="button"
 										onClick={() => {
 											setEditableName(displayName);
@@ -439,11 +545,12 @@ export default function FileView() {
 											setActionError(null);
 										}}
 										disabled={isDeleting}
-										className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+										variant="ghost"
+										size="icon"
 										aria-label="Edit file name"
 									>
 										<Edit3 className="size-4" />
-									</button>
+									</Button>
 								</>
 							)}
 						</div>
@@ -458,34 +565,45 @@ export default function FileView() {
 						) : null}
 					</div>
 					<div className="flex shrink-0 gap-2">
-						<button
-							type="button"
-							onClick={() => {
-								setActionError(null);
-								setIsDeleteModalOpen(true);
-							}}
-							disabled={isSavingName || isDeleting}
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							<Trash2 className="size-4" />
-							{isDeleting ? "Deleting..." : "Delete"}
-						</button>
-						<a
-							href={fileUrl}
-							target="_blank"
-							rel="noreferrer"
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted"
-						>
-							<ExternalLink className="size-4" />
-							Open
-						</a>
-						<a
-							href={downloadUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover)"
-						>
-							<Download className="size-4" />
-							Download
-						</a>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									type="button"
+									variant="outline"
+									size="icon-lg"
+									disabled={isSavingName || isDeleting}
+									aria-label="File actions"
+								>
+									<MoreVertical className="size-4" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-44">
+								<DropdownMenuItem
+									onClick={handleOpenFile}
+									disabled={!fileObjectUrl || isFileLoading}
+								>
+									<ExternalLink className="size-4" />
+									Open
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={handleDownloadFile}
+									disabled={!fileObjectUrl || isFileLoading}
+								>
+									<Download className="size-4" />
+									Download
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									variant="destructive"
+									onClick={() => {
+										setActionError(null);
+										setIsDeleteModalOpen(true);
+									}}
+								>
+									<Trash2 className="size-4" />
+									{isDeleting ? "Deleting..." : "Delete"}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
 				</div>
 				{fileSummary ? (
@@ -500,14 +618,24 @@ export default function FileView() {
 				) : null}
 			</header>
 
-			<section className="min-h-[480px] flex-1 p-4 md:p-6">
-				{canPreview ? (
-					<FilePreview
-						document={document}
-						fileUrl={fileUrl}
-						displayName={displayName}
-					/>
-				) : (
+				<section className="min-h-[480px] flex-1 p-4 md:p-6">
+					{isFileLoading ? (
+						<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
+							<FileText className="size-12 text-muted-foreground" />
+							<h2 className="mt-4 text-base font-semibold">
+								Loading preview
+							</h2>
+							<p className="mt-2 max-w-md text-sm text-muted-foreground">
+								Preparing the secured file preview.
+							</p>
+						</div>
+					) : canPreview && fileObjectUrl ? (
+						<FilePreview
+							document={document}
+							fileUrl={fileObjectUrl}
+							displayName={displayName}
+						/>
+					) : (
 					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
 						<FileText className="size-12 text-muted-foreground" />
 						<h2 className="mt-4 text-base font-semibold">
@@ -521,59 +649,58 @@ export default function FileView() {
 				)}
 			</section>
 
-			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 px-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<div className="flex items-start justify-between gap-4">
-							<div>
-								<h2 className="text-base font-semibold text-foreground">
-									Delete file?
-								</h2>
-								<p className="mt-2 text-sm text-muted-foreground">
-									Are you sure you want to delete{" "}
-									<span className="font-medium text-foreground">
-										{displayName}
-									</span>
-									? This action cannot be undone.
-								</p>
+				{isDeleteModalOpen ? (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+						<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+							<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+								<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-red-600 ring-1 ring-red-200">
+									<Trash2 className="size-5" />
+								</span>
+								<div className="min-w-0">
+									<h2 className="text-lg font-semibold text-foreground">
+										Delete file?
+									</h2>
+									<p className="mt-1 text-sm leading-6 text-muted-foreground">
+										This deletes{" "}
+										<span className="font-medium text-foreground">
+											{displayName}
+										</span>{" "}
+										permanently.
+									</p>
+								</div>
 							</div>
-							<button
-								type="button"
-								onClick={() => {
-									if (isDeleting) return;
-									setIsDeleteModalOpen(false);
-								}}
-								className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-								aria-label="Close delete modal"
-							>
-								<X className="size-4" />
-							</button>
-						</div>
-						{actionError ? (
-							<p className="mt-4 text-sm text-destructive">
-								{actionError}
-							</p>
-						) : null}
-						<div className="mt-6 flex justify-end gap-2">
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => setIsDeleteModalOpen(false)}
-								disabled={isDeleting}
-							>
-								Cancel
-							</Button>
-							<Button
-								type="button"
-								variant="destructive"
-								onClick={handleDelete}
-								disabled={isDeleting}
-							>
-								{isDeleting ? "Deleting..." : "Delete item"}
-							</Button>
+							<div className="px-6 py-5">
+								{actionError ? (
+									<p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+										{actionError}
+									</p>
+								) : null}
+								<div className="flex justify-end gap-2 border-t border-border pt-4">
+									<Button
+										type="button"
+										variant="outline"
+										size="lg"
+										className="min-w-24"
+										onClick={() => setIsDeleteModalOpen(false)}
+										disabled={isDeleting}
+									>
+										Cancel
+									</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="lg"
+									className="min-w-28"
+									onClick={handleDelete}
+									disabled={isDeleting}
+								>
+										<Trash2 className="size-4" />
+										{isDeleting ? "Deleting..." : "Delete"}
+									</Button>
+								</div>
+							</div>
 						</div>
 					</div>
-				</div>
 			) : null}
 		</main>
 	);
@@ -674,37 +801,43 @@ function ZoomableFileViewer({
 					</span>
 				</div>
 				<div className="flex shrink-0 items-center gap-1">
-					<button
+					<Button
 						type="button"
-						className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+						variant="ghost"
+						size="icon"
 						onClick={() =>
 							setZoom((value) => Math.max(50, value - 10))
 						}
 						aria-label="Zoom out"
 					>
 						<Minus className="size-4" />
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						className="h-8 w-12 rounded-md text-center text-xs tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
+						variant="ghost"
+						size="sm"
+						className="w-12 tabular-nums"
 						onClick={() => setZoom(100)}
 						aria-label="Reset zoom"
 					>
 						{zoom}%
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+						variant="ghost"
+						size="icon"
 						onClick={() =>
 							setZoom((value) => Math.min(250, value + 10))
 						}
 						aria-label="Zoom in"
 					>
 						<Plus className="size-4" />
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						className="ml-1 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+						variant="ghost"
+						size="icon"
+						className="ml-1"
 						onClick={toggleExpanded}
 						aria-label={
 							isExpanded ? "Shrink viewer" : "Expand viewer"
@@ -715,7 +848,7 @@ function ZoomableFileViewer({
 						) : (
 							<Maximize2 className="size-4" />
 						)}
-					</button>
+					</Button>
 				</div>
 			</div>
 			<div className="flex-1 overflow-auto bg-muted">

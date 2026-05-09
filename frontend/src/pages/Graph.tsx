@@ -11,6 +11,7 @@ import GraphView from "@/components/GraphView";
 import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
+import { Button } from "@/components/ui/button";
 import type {
   CategorySummary,
   DocumentSummary,
@@ -47,6 +48,9 @@ export default function Graph() {
   const tooltipHoveredRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [documentPreviewUrl, setDocumentPreviewUrl] = useState<string | null>(
+    null,
+  );
   const [tooltipFrameSize, setTooltipFrameSize] = useState({
     width: 0,
     height: 0,
@@ -114,6 +118,51 @@ export default function Graph() {
       ignore = true;
     };
   }, [activeSpaceId, graphRefreshKey]);
+
+  useEffect(() => {
+    if (mode !== "files" || !hoveredNode?.documentId) {
+      setDocumentPreviewUrl(null);
+      return;
+    }
+
+    let ignore = false;
+    let objectUrl: string | null = null;
+    const token = localStorage.getItem("token");
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    async function loadDocumentPreview() {
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/documents/${hoveredNode!.documentId}/file`,
+          { headers },
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+
+        if (!ignore) {
+          setDocumentPreviewUrl(objectUrl);
+        }
+      } catch {
+        if (!ignore) {
+          setDocumentPreviewUrl(null);
+        }
+      }
+    }
+
+    loadDocumentPreview();
+
+    return () => {
+      ignore = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [hoveredNode?.documentId, mode]);
 
   // Track viewport mouse position without re-rendering.
   useEffect(() => {
@@ -261,9 +310,6 @@ export default function Graph() {
     mode === "categories" && hoveredNode?.categoryId != null;
   const showTooltip =
     tooltipVisible && (isCategoryTooltip || isDocumentTooltip);
-  const documentPreviewUrl = hoveredNode?.documentId
-    ? `${apiBaseUrl}/documents/${hoveredNode.documentId}/file`
-    : "";
   const isImagePreview = Boolean(hoveredNode?.mimeType?.startsWith("image/"));
   const isPdfPreview = hoveredNode?.mimeType === "application/pdf";
 
@@ -394,24 +440,28 @@ export default function Graph() {
       className="graph-page relative h-[calc(100vh-var(--header-height)-1rem)] min-h-[calc(100vh-var(--header-height)-1rem)] overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
     >
       <div className="absolute right-5 bottom-5 z-20 flex gap-3">
-        <button
+        <Button
+          type="button"
+          variant="accent"
+          size="lg"
           onClick={() => setIs2D((current) => !current)}
-          className="rounded bg-accent px-4 py-2 text-black transition hover:bg-gray-700"
         >
           {is2D ? "Switch to 3D" : "Switch to 2D"}
-        </button>
+        </Button>
 
         {mode === "files" ? (
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
             onClick={() => {
               hideTooltip();
               setMode("categories");
               setActiveCategoryId(null);
             }}
-            className="rounded border border-stone-300 bg-white px-4 py-2 text-stone-700 transition hover:bg-stone-100"
           >
             Back
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -491,13 +541,14 @@ export default function Graph() {
                 </ul>
 
                 <div className="border-t border-stone-100 px-4 py-2">
-                  <button
+                  <Button
                     type="button"
                     onClick={handleTooltipAction}
-                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                    size="sm"
+                    className="w-full"
                   >
                     Explore files
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -513,13 +564,13 @@ export default function Graph() {
 
                 <div className="border-b border-stone-100 bg-stone-100/70 p-3">
                   <div className="flex h-[180px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
-                    {isImagePreview ? (
+                    {isImagePreview && documentPreviewUrl ? (
                       <img
                         src={documentPreviewUrl}
                         alt={`${hoveredNode!.label} preview`}
                         className="h-full w-full object-cover"
                       />
-                    ) : isPdfPreview ? (
+                    ) : isPdfPreview && documentPreviewUrl ? (
                       <iframe
                         src={`${documentPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`}
                         title={`${hoveredNode!.label} preview`}
@@ -534,13 +585,14 @@ export default function Graph() {
                 </div>
 
                 <div className="px-4 py-2">
-                  <button
+                  <Button
                     type="button"
                     onClick={handleTooltipAction}
-                    className="w-full rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-stone-700"
+                    size="sm"
+                    className="w-full"
                   >
                     Open file page
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

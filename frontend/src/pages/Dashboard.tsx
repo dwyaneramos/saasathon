@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { openUploadModalEvent } from "@/components/app-sidebar";
+import { Button } from "@/components/ui/button";
 import { apiBaseUrl } from "@/lib/api";
 import { fileIconFor } from "@/lib/file-icons";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
@@ -206,7 +207,7 @@ function QuickActions({
 					? Array.from({ length: 3 }).map((_, index) => (
 							<div
 								key={index}
-								className="flex min-h-16 w-full flex-col justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm"
+								className="flex min-h-16 w-full flex-col justify-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left"
 							>
 								<div className="h-4 w-28 animate-pulse rounded bg-zinc-100" />
 								<div className="mt-2 h-3 w-full animate-pulse rounded bg-zinc-100" />
@@ -220,7 +221,7 @@ function QuickActions({
 							<button
 								key={suggestion.prompt}
 								onClick={() => onSelect(suggestion.prompt)}
-								className="inline-flex min-h-20 w-full min-w-0 flex-col items-start justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+								className="inline-flex min-h-16 w-full min-w-0 flex-col items-start justify-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50"
 								title={suggestion.sub}
 							>
 								<span className="flex items-start gap-2">
@@ -247,7 +248,7 @@ function QuickActions({
 	}
 
 	return (
-		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 shadow-sm sm:grid-cols-3">
+		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
 			{isLoading
 				? Array.from({ length: 3 }).map((_, index) => (
 						<div key={index} className="bg-white p-3">
@@ -599,14 +600,15 @@ export default function Dashboard() {
 								<p className="text-xs text-zinc-400">
 									{contextSummary}
 								</p>
-								<button
-									onClick={resetConversation}
-									className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700"
+								<Button
 									type="button"
+									onClick={resetConversation}
+									variant="outline"
+									size="sm"
 								>
 									<RotateCcw size={12} strokeWidth={2} />
 									Clear
-								</button>
+								</Button>
 							</div>
 							{messages.map((message) => (
 								<ChatMessage
@@ -661,10 +663,13 @@ export default function Dashboard() {
 							/>
 
 							<div className="flex flex-shrink-0 items-center self-center">
-								<button
+								<Button
+									type="button"
 									onClick={() => void sendMessage(input)}
 									disabled={!input.trim() || isLoading}
-									className={`flex items-center justify-center rounded-full bg-(--color-accent) transition-all hover:bg-(--color-accent-hover) active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
+									variant="accent"
+									size="icon"
+									className={`rounded-full disabled:bg-gray-300 ${
 										hasStartedConversation
 											? "h-9 w-9"
 											: "h-10 w-10 md:h-11 md:w-11"
@@ -675,7 +680,7 @@ export default function Dashboard() {
 										strokeWidth={2.5}
 										className="text-black"
 									/>
-								</button>
+								</Button>
 							</div>
 						</div>
 						<div className="mx-5 h-px bg-zinc-100" />

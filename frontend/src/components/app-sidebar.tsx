@@ -5,10 +5,16 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
 	ChevronRight,
+	Edit3,
 	FolderOpen,
 	Layers,
 	FolderClosed,
+	ListCollapse,
+	ListTree,
+	Trash2,
 	Search,
+	Settings,
+	SlidersHorizontal,
 	X,
 	FolderPlus,
 	LayersPlus,
@@ -23,6 +29,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -110,11 +117,15 @@ function SpaceSwitcher({
 	activeSpace,
 	onSelect,
 	onCreateSpace,
+	onEditActiveSpace,
+	onDeleteActiveSpace,
 }: {
 	spaces: Space[];
 	activeSpace: Space | null;
 	onSelect: (space: Space) => void;
 	onCreateSpace?: () => void;
+	onEditActiveSpace?: () => void;
+	onDeleteActiveSpace?: () => void;
 }) {
 	const { isMobile } = useSidebar();
 	const activeSpaceName = activeSpace?.name ?? "No spaces";
@@ -180,6 +191,22 @@ function SpaceSwitcher({
 						New space
 					</span>
 				</DropdownMenuItem>
+				{activeSpace ? (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onClick={onEditActiveSpace}>
+							<Edit3 className="size-4" />
+							Rename current space
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							variant="destructive"
+							onClick={onDeleteActiveSpace}
+						>
+							<Trash2 className="size-4" />
+							Delete current space
+						</DropdownMenuItem>
+					</>
+				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
@@ -189,20 +216,23 @@ function SpaceSwitcher({
 
 function CategoryItem({
 	category,
+	open,
 	hasNewCategory,
 	hasNewFiles,
 	newFileIds,
+	onOpenChange,
 	onClearCategory,
 	onClearNewFile,
 }: {
 	category: Category;
+	open: boolean;
 	hasNewCategory: boolean;
 	hasNewFiles: boolean;
 	newFileIds: Set<number>;
+	onOpenChange: (categoryId: number, open: boolean) => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 }) {
-	const [open, setOpen] = React.useState(category.files.length > 0);
 	const [allowCategoryWrap, setAllowCategoryWrap] = React.useState(false);
 	const { state, setOpen: setSidebarOpen } = useSidebar();
 
@@ -222,7 +252,7 @@ function CategoryItem({
 	}, [state]);
 
 	function handleOpenChange(nextOpen: boolean) {
-		setOpen(nextOpen);
+		onOpenChange(category.id, nextOpen);
 		setSidebarOpen(true);
 	}
 
@@ -269,13 +299,13 @@ function CategoryItem({
 						>
 							{category.name}
 						</span>
-						<ChevronRight
-							className={
-								allowCategoryWrap
-									? "mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
-									: "ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden"
-							}
-						/>
+						<span
+							className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center self-center rounded bg-zinc-100 px-1 text-[10px] font-medium leading-none tabular-nums text-muted-foreground ring-1 ring-border/60 group-data-[collapsible=icon]:hidden"
+							aria-label={`${category.files.length} files`}
+						>
+							{category.files.length}
+						</span>
+						<ChevronRight className="self-center transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
 					</SidebarMenuButton>
 				</CollapsibleTrigger>
 
@@ -338,6 +368,10 @@ function FileTree({
 	newCategoryIds,
 	newFileCategoryIds,
 	newFileIds,
+	expandedCategoryIds,
+	onCategoryOpenChange,
+	onManageCategories,
+	onToggleAllCategories,
 	onClearCategory,
 	onClearNewFile,
 }: {
@@ -347,14 +381,57 @@ function FileTree({
 	newCategoryIds: Set<number>;
 	newFileCategoryIds: Set<number>;
 	newFileIds: Set<number>;
+	expandedCategoryIds: Set<number>;
+	onCategoryOpenChange: (categoryId: number, open: boolean) => void;
+	onManageCategories: () => void;
+	onToggleAllCategories: () => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 }) {
+	const hasCategories = categories.length > 0;
+	const allExpanded =
+		hasCategories &&
+		categories.every((category) => expandedCategoryIds.has(category.id));
+	const ToggleIcon = allExpanded ? ListCollapse : ListTree;
+
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
-				Categories
-			</SidebarGroupLabel>
+			<div className="flex h-8 items-center justify-between gap-2 pr-1 group-data-[collapsible=icon]:hidden">
+				<SidebarGroupLabel className="h-auto flex-1 px-0">
+					CATEGORIES
+				</SidebarGroupLabel>
+				<div className="flex items-center gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onToggleAllCategories}
+						disabled={!hasCategories}
+						aria-label={
+							allExpanded
+								? "Collapse all categories"
+								: "Expand all categories"
+						}
+						title={
+							allExpanded
+								? "Collapse all categories"
+								: "Expand all categories"
+						}
+					>
+						<ToggleIcon className="size-3.5" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onManageCategories}
+						aria-label="Manage categories"
+						title="Manage categories"
+					>
+						<Settings className="size-3.5" />
+					</Button>
+				</div>
+			</div>
 			<SidebarMenu>
 				{isLoading && (
 					<SidebarMenuItem>
@@ -383,9 +460,11 @@ function FileTree({
 						<CategoryItem
 							key={category.id}
 							category={category}
+							open={expandedCategoryIds.has(category.id)}
 							hasNewCategory={newCategoryIds.has(category.id)}
 							hasNewFiles={newFileCategoryIds.has(category.id)}
 							newFileIds={newFileIds}
+							onOpenChange={onCategoryOpenChange}
 							onClearCategory={onClearCategory}
 							onClearNewFile={onClearNewFile}
 						/>
@@ -460,29 +539,39 @@ function UploadModal({
 				}
 			}}
 		>
-			<Card className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card py-0">
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-sm"
-					className="absolute top-4 right-4 z-10 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-					onClick={requestClose}
-					disabled={isUploadLocked}
-				>
-					<X className="size-4" />
-					<span className="sr-only">Close upload modal</span>
-				</Button>
-				<CardHeader className="border-b border-border px-6 py-5 pr-14">
-					<CardTitle
-						id="upload-files-title"
-						className="text-lg font-semibold text-foreground"
+			<Card
+				className="relative z-[201] max-h-[88vh] w-full max-w-2xl gap-0 overflow-hidden rounded-xl bg-card py-0"
+				style={{ padding: 0 }}
+			>
+				<CardHeader className="!flex !flex-row items-start justify-between gap-4 border-b border-border bg-muted/40 px-6 py-5">
+					<div className="flex min-w-0 items-start gap-3">
+						<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+							<UploadCloud className="size-5" />
+						</span>
+						<div className="min-w-0">
+							<CardTitle
+								id="upload-files-title"
+								className="text-lg font-semibold text-foreground"
+							>
+								Upload files
+							</CardTitle>
+							<CardDescription className="mt-1 max-w-xl">
+								Add PDFs or images to analyse and organize them
+								into categories.
+							</CardDescription>
+						</div>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+						onClick={requestClose}
+						disabled={isUploadLocked}
+						aria-label="Close upload modal"
 					>
-						Upload files
-					</CardTitle>
-					<CardDescription className="max-w-xl">
-						Add PDFs or images to analyse and organize them into
-						categories.
-					</CardDescription>
+						<X className="size-4" />
+					</Button>
 				</CardHeader>
 				<CardContent className="max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 py-6">
 					<UploadWorkspace
@@ -545,12 +634,40 @@ export function AppSidebar({
 		string | null
 	>(null);
 	const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
+	const [isManageCategoriesOpen, setIsManageCategoriesOpen] =
+		React.useState(false);
+	const [editingCategoryId, setEditingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [editingCategoryName, setEditingCategoryName] = React.useState("");
+	const [categoryActionError, setCategoryActionError] = React.useState<
+		string | null
+	>(null);
+	const [updatingCategoryId, setUpdatingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [deletingCategoryId, setDeletingCategoryId] = React.useState<
+		number | null
+	>(null);
+	const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] =
+		React.useState<number | null>(null);
 	const [isCreateSpaceOpen, setIsCreateSpaceOpen] = React.useState(false);
 	const [newSpaceName, setNewSpaceName] = React.useState("");
 	const [isCreatingSpace, setIsCreatingSpace] = React.useState(false);
 	const [createSpaceError, setCreateSpaceError] = React.useState<
 		string | null
 	>(null);
+	const [isEditSpaceOpen, setIsEditSpaceOpen] = React.useState(false);
+	const [editSpaceName, setEditSpaceName] = React.useState("");
+	const [editSpaceError, setEditSpaceError] = React.useState<string | null>(
+		null,
+	);
+	const [isUpdatingSpace, setIsUpdatingSpace] = React.useState(false);
+	const [isDeleteSpaceOpen, setIsDeleteSpaceOpen] = React.useState(false);
+	const [deleteSpaceError, setDeleteSpaceError] = React.useState<
+		string | null
+	>(null);
+	const [isDeletingSpace, setIsDeletingSpace] = React.useState(false);
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 	const [searchQuery, setSearchQuery] = React.useState("");
 	const searchInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -563,10 +680,14 @@ export function AppSidebar({
 	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
+	const [expandedCategoryIds, setExpandedCategoryIds] = React.useState<
+		Set<number>
+	>(() => new Set());
 	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(
 		new Map(),
 	);
 	const fileTreeLoadedRef = React.useRef(false);
+	const categoryExpansionInitializedRef = React.useRef(false);
 
 	const activeSpaceId =
 		controlledActiveSpaceId !== undefined
@@ -674,12 +795,72 @@ export function AppSidebar({
 		setIsCreateCategoryOpen(true);
 	}, []);
 
+	const openManageCategoriesModal = React.useCallback(() => {
+		setEditingCategoryId(null);
+		setEditingCategoryName("");
+		setCategoryActionError(null);
+		setConfirmDeleteCategoryId(null);
+		setIsManageCategoriesOpen(true);
+	}, []);
+
+	const handleCategoryOpenChange = React.useCallback(
+		(categoryId: number, open: boolean) => {
+			setExpandedCategoryIds((currentIds) => {
+				const nextIds = new Set(currentIds);
+				if (open) {
+					nextIds.add(categoryId);
+				} else {
+					nextIds.delete(categoryId);
+				}
+				return nextIds;
+			});
+		},
+		[],
+	);
+
+	const toggleAllCategories = React.useCallback(() => {
+		setExpandedCategoryIds((currentIds) => {
+			const expandableCategories = categories.filter(
+				(category) => category.files.length > 0,
+			);
+			const allExpanded =
+				expandableCategories.length > 0 &&
+				expandableCategories.every((category) =>
+					currentIds.has(category.id),
+				);
+
+			return allExpanded
+				? new Set()
+				: new Set(expandableCategories.map((category) => category.id));
+		});
+	}, [categories]);
+
 	const closeCreateCategoryModal = React.useCallback(() => {
 		if (isCreatingCategory) return;
 		setIsCreateCategoryOpen(false);
 		setNewCategoryName("");
 		setCreateCategoryError(null);
 	}, [isCreatingCategory]);
+
+	const openEditSpaceModal = React.useCallback(() => {
+		if (!activeSpace) return;
+		setEditSpaceName(activeSpace.name);
+		setEditSpaceError(null);
+		setIsEditSpaceOpen(true);
+	}, [activeSpace]);
+
+	const openDeleteSpaceModal = React.useCallback(() => {
+		if (!activeSpace) return;
+		setDeleteSpaceError(null);
+		setIsDeleteSpaceOpen(true);
+	}, [activeSpace]);
+
+	const startEditingCategory = React.useCallback((category: Category) => {
+		setEditingCategoryId(category.id);
+		setEditingCategoryName(category.name);
+		setCategoryActionError(null);
+		setConfirmDeleteCategoryId(null);
+	}, []);
 
 	const clearNewFile = React.useCallback(
 		(categoryId: number, fileId: number) => {
@@ -876,6 +1057,27 @@ export function AppSidebar({
 
 				categoryFileIdsRef.current = nextCategoryFileIds;
 				fileTreeLoadedRef.current = true;
+				setExpandedCategoryIds((currentIds) => {
+					const nextCategoryIds = new Set(
+						nextCategories.map((category) => category.id),
+					);
+					const nextIds = new Set(
+						[...currentIds].filter((categoryId) =>
+							nextCategoryIds.has(categoryId),
+						),
+					);
+
+					if (!categoryExpansionInitializedRef.current) {
+						for (const category of nextCategories) {
+							if (category.files.length > 0) {
+								nextIds.add(category.id);
+							}
+						}
+						categoryExpansionInitializedRef.current = true;
+					}
+
+					return nextIds;
+				});
 				setCategories(nextCategories);
 			} catch {
 				setCategories([]);
@@ -942,6 +1144,9 @@ export function AppSidebar({
 
 	React.useEffect(() => {
 		if (!spacesLoaded) return;
+
+		categoryExpansionInitializedRef.current = false;
+		setExpandedCategoryIds(new Set());
 
 		async function run() {
 			await loadFileTree();
@@ -1068,6 +1273,127 @@ export function AppSidebar({
 		}
 	};
 
+	const handleUpdateCategory = async (category: Category) => {
+		const trimmedName = editingCategoryName.trim();
+		if (!trimmedName) {
+			setCategoryActionError("Category name is required.");
+			return;
+		}
+		if (trimmedName.length > 80) {
+			setCategoryActionError(
+				"Category name must be 80 characters or fewer.",
+			);
+			return;
+		}
+		if (
+			categories.some(
+				(currentCategory) =>
+					currentCategory.id !== category.id &&
+					currentCategory.name.trim().toLowerCase() ===
+						trimmedName.toLowerCase(),
+			)
+		) {
+			setCategoryActionError("A category with this name already exists.");
+			return;
+		}
+
+		setUpdatingCategoryId(category.id);
+		setCategoryActionError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/categories/${category.id}`,
+				{
+					method: "PATCH",
+					headers: {
+						...authHeaders(),
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ name: trimmedName }),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				category?: { id: number; name: string };
+				error?: string;
+			} | null;
+
+			if (!response.ok || !payload?.category) {
+				throw new Error(payload?.error ?? "Could not rename category.");
+			}
+
+			setCategories((currentCategories) =>
+				currentCategories
+					.map((currentCategory) =>
+						currentCategory.id === payload.category!.id
+							? {
+									...currentCategory,
+									name: payload.category!.name,
+								}
+							: currentCategory,
+					)
+					.sort((left, right) => left.name.localeCompare(right.name)),
+			);
+			setEditingCategoryId(null);
+			setEditingCategoryName("");
+			toast.success(`Category renamed to '${payload.category.name}'`);
+			window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+		} catch (err) {
+			setCategoryActionError(
+				err instanceof Error
+					? err.message
+					: "Could not rename category.",
+			);
+		} finally {
+			setUpdatingCategoryId(null);
+		}
+	};
+
+	const handleDeleteCategory = async (category: Category) => {
+		if (confirmDeleteCategoryId !== category.id) {
+			setConfirmDeleteCategoryId(category.id);
+			setCategoryActionError(null);
+			return;
+		}
+
+		setDeletingCategoryId(category.id);
+		setCategoryActionError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/categories/${category.id}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not delete category.");
+			}
+
+			setCategories((currentCategories) =>
+				currentCategories.filter(
+					(currentCategory) => currentCategory.id !== category.id,
+				),
+			);
+			setEditingCategoryId(null);
+			setConfirmDeleteCategoryId(null);
+			toast.success(`Category '${category.name}' deleted`);
+			window.dispatchEvent(new CustomEvent(fileTreeUpdatedEvent));
+		} catch (err) {
+			setCategoryActionError(
+				err instanceof Error
+					? err.message
+					: "Could not delete category.",
+			);
+		} finally {
+			setDeletingCategoryId(null);
+		}
+	};
+
 	const handleCreateSpace = async (
 		event?: React.FormEvent<HTMLFormElement>,
 	) => {
@@ -1133,6 +1459,104 @@ export function AppSidebar({
 		}
 	};
 
+	const handleUpdateSpace = async (
+		event: React.FormEvent<HTMLFormElement>,
+	) => {
+		event.preventDefault();
+		if (!activeSpace) return;
+
+		const trimmedName = editSpaceName.trim();
+		const validationError = validateSpaceName(trimmedName);
+		if (validationError) {
+			setEditSpaceError(validationError);
+			return;
+		}
+
+		setIsUpdatingSpace(true);
+		setEditSpaceError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/spaces/${activeSpace.id}`,
+				{
+					method: "PATCH",
+					headers: {
+						...authHeaders(),
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ name: trimmedName }),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				space?: ApiSpace;
+				error?: string;
+			} | null;
+
+			if (!response.ok || !payload?.space) {
+				throw new Error(payload?.error ?? "Could not rename space.");
+			}
+
+			setSpaces((currentSpaces) =>
+				currentSpaces.map((space) =>
+					space.id === payload.space!.id ? payload.space! : space,
+				),
+			);
+			onSpacesLoaded?.((currentSpaces) =>
+				currentSpaces.map((space) =>
+					space.id === payload.space!.id ? payload.space! : space,
+				),
+			);
+			toast.success(`Space renamed to '${payload.space.name}'`);
+			setIsEditSpaceOpen(false);
+		} catch (err) {
+			setEditSpaceError(
+				err instanceof Error ? err.message : "Could not rename space.",
+			);
+		} finally {
+			setIsUpdatingSpace(false);
+		}
+	};
+
+	const handleDeleteSpace = async () => {
+		if (!activeSpace) return;
+
+		setIsDeletingSpace(true);
+		setDeleteSpaceError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/spaces/${activeSpace.id}`,
+				{
+					method: "DELETE",
+					headers: authHeaders(),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as {
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(payload?.error ?? "Could not delete space.");
+			}
+
+			const nextSpaces = spaces.filter(
+				(space) => space.id !== activeSpace.id,
+			);
+			setSpaces(nextSpaces);
+			onSpacesLoaded?.(nextSpaces);
+			setActiveSpaceId(nextSpaces[0]?.id ?? null);
+			setCategories([]);
+			toast.success(`Space '${activeSpace.name}' deleted`);
+			setIsDeleteSpaceOpen(false);
+		} catch (err) {
+			setDeleteSpaceError(
+				err instanceof Error ? err.message : "Could not delete space.",
+			);
+		} finally {
+			setIsDeletingSpace(false);
+		}
+	};
+
 	return (
 		<>
 			<Sidebar
@@ -1150,6 +1574,8 @@ export function AppSidebar({
 								activeSpace={activeSpace}
 								onSelect={(space) => setActiveSpaceId(space.id)}
 								onCreateSpace={() => setIsCreateSpaceOpen(true)}
+								onEditActiveSpace={openEditSpaceModal}
+								onDeleteActiveSpace={openDeleteSpaceModal}
 							/>
 						</SidebarMenuItem>
 					</SidebarMenu>
@@ -1195,6 +1621,10 @@ export function AppSidebar({
 						newCategoryIds={newCategoryIds}
 						newFileCategoryIds={newFileCategoryIds}
 						newFileIds={newFileIds}
+						expandedCategoryIds={expandedCategoryIds}
+						onCategoryOpenChange={handleCategoryOpenChange}
+						onManageCategories={openManageCategoriesModal}
+						onToggleAllCategories={toggleAllCategories}
 						onClearCategory={clearCategoryNotification}
 						onClearNewFile={clearNewFile}
 					/>
@@ -1239,52 +1669,297 @@ export function AppSidebar({
 				spaceId={activeSpaceId}
 			/>
 
+			{isManageCategoriesOpen && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start justify-between gap-4 border-b border-border bg-muted/40 px-6 py-5">
+							<div className="flex min-w-0 items-start gap-3">
+								<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+									<SlidersHorizontal className="size-5" />
+								</span>
+								<div className="min-w-0">
+									<h2 className="text-lg font-semibold text-foreground">
+										Manage categories
+									</h2>
+									<p className="mt-1 text-sm leading-6 text-muted-foreground">
+										Rename or delete categories in{" "}
+										<span className="font-medium text-foreground">
+											{activeSpace?.name ?? "this space"}
+										</span>
+										.
+									</p>
+								</div>
+							</div>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									setIsManageCategoriesOpen(false);
+									setEditingCategoryId(null);
+									setConfirmDeleteCategoryId(null);
+									setCategoryActionError(null);
+								}}
+								aria-label="Close category manager"
+							>
+								<X className="size-4" />
+							</Button>
+						</div>
+
+						<div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+							{categoryActionError && (
+								<p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+									{categoryActionError}
+								</p>
+							)}
+							{categories.length > 0 ? (
+								<div className="space-y-2">
+									{categories.map((category) => {
+										const isEditing =
+											editingCategoryId === category.id;
+										const isUpdating =
+											updatingCategoryId === category.id;
+										const isDeleting =
+											deletingCategoryId === category.id;
+										const isConfirmingDelete =
+											confirmDeleteCategoryId ===
+											category.id;
+
+										return (
+											<div
+												key={category.id}
+												className="rounded-lg bg-background px-3 py-3 ring-1 ring-border/80"
+											>
+												{isEditing ? (
+													<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+														<Input
+															value={
+																editingCategoryName
+															}
+															onChange={(
+																event,
+															) => {
+																setEditingCategoryName(
+																	event.target
+																		.value,
+																);
+																if (
+																	categoryActionError
+																) {
+																	setCategoryActionError(
+																		null,
+																	);
+																}
+															}}
+															maxLength={80}
+															className="h-9 bg-background px-3"
+															aria-label="Category name"
+														/>
+														<div className="flex shrink-0 justify-end gap-2">
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																onClick={() => {
+																	setEditingCategoryId(
+																		null,
+																	);
+																	setEditingCategoryName(
+																		"",
+																	);
+																	setCategoryActionError(
+																		null,
+																	);
+																}}
+																disabled={
+																	isUpdating
+																}
+															>
+																Cancel
+															</Button>
+															<Button
+																type="button"
+																variant="accent"
+																size="sm"
+																onClick={() =>
+																	handleUpdateCategory(
+																		category,
+																	)
+																}
+																disabled={
+																	isUpdating
+																}
+															>
+																{isUpdating
+																	? "Saving..."
+																	: "Save"}
+															</Button>
+														</div>
+													</div>
+												) : (
+													<div className="flex items-center gap-3">
+														<div className="min-w-0 flex-1">
+															<p className="truncate text-sm font-medium text-foreground">
+																{category.name}
+															</p>
+															<p className="mt-0.5 text-xs text-muted-foreground">
+																{
+																	category
+																		.files
+																		.length
+																}{" "}
+																{category.files
+																	.length ===
+																1
+																	? "file"
+																	: "files"}
+															</p>
+														</div>
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															onClick={() =>
+																startEditingCategory(
+																	category,
+																)
+															}
+															disabled={
+																isDeleting
+															}
+														>
+															<Edit3 className="size-3.5" />
+															Rename
+														</Button>
+														<Button
+															type="button"
+															variant="destructive"
+															size="sm"
+															onClick={() =>
+																handleDeleteCategory(
+																	category,
+																)
+															}
+															disabled={
+																isDeleting
+															}
+														>
+															<Trash2 className="size-3.5" />
+															{isDeleting
+																? "Deleting..."
+																: isConfirmingDelete
+																	? "Confirm"
+																	: "Delete"}
+														</Button>
+													</div>
+												)}
+											</div>
+										);
+									})}
+								</div>
+							) : (
+								<div className="rounded-lg bg-background px-4 py-8 text-center ring-1 ring-border/80">
+									<p className="text-sm font-medium text-foreground">
+										No categories yet
+									</p>
+									<p className="mt-1 text-sm text-muted-foreground">
+										Create a category to start organizing
+										files in this space.
+									</p>
+								</div>
+							)}
+						</div>
+
+						<div className="flex justify-end gap-2 border-t border-border bg-muted/40 px-6 py-3">
+							<Button
+								type="button"
+								variant="outline"
+								size="lg"
+								onClick={() => setIsManageCategoriesOpen(false)}
+							>
+								Done
+							</Button>
+							<Button
+								type="button"
+								variant="accent"
+								size="lg"
+								onClick={() => {
+									setIsManageCategoriesOpen(false);
+									openCreateCategoryModal();
+								}}
+							>
+								<FolderPlus className="size-4" />
+								New category
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{isCreateCategoryOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<h2 className="text-lg font-semibold text-foreground">
-							Create New Category
-						</h2>
-						<p className="mt-1 text-sm text-muted-foreground">
-							Add a name for the new category.
-						</p>
-						<p className="mt-2 text-xs text-muted-foreground">
-							Creating category in:{" "}
-							<strong>
-								{activeSpace?.name ?? "Default Space"}
-							</strong>
-						</p>
+					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+								<FolderPlus className="size-5" />
+							</span>
+							<div className="min-w-0">
+								<h2 className="text-lg font-semibold text-foreground">
+									Create new category
+								</h2>
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									Group related files inside the current
+									space.
+								</p>
+								<span className="mt-3 inline-flex max-w-full rounded-md bg-background px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border/80">
+									<span className="truncate">
+										{activeSpace?.name ?? "Default Space"}
+									</span>
+								</span>
+							</div>
+						</div>
 
-						<form className="mt-5" onSubmit={handleCreateCategory}>
-							<Label htmlFor="new-category-name">
-								Category name
-							</Label>
-							<Input
-								id="new-category-name"
-								type="text"
-								value={newCategoryName}
-								onChange={(event) => {
-									setNewCategoryName(event.target.value);
-									if (createCategoryError) {
-										setCreateCategoryError(null);
-									}
-								}}
-								placeholder="e.g. Contracts"
-								maxLength={80}
-								autoFocus
-								className="mt-2"
-							/>
+						<form
+							className="px-6 py-5"
+							onSubmit={handleCreateCategory}
+						>
+							<div className="space-y-2">
+								<Label htmlFor="new-category-name">
+									Category name
+								</Label>
+								<Input
+									id="new-category-name"
+									type="text"
+									value={newCategoryName}
+									onChange={(event) => {
+										setNewCategoryName(event.target.value);
+										if (createCategoryError) {
+											setCreateCategoryError(null);
+										}
+									}}
+									placeholder="e.g. Contracts"
+									maxLength={80}
+									autoFocus
+									className="h-10 bg-background px-3"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Use a short label that will scan well in the
+									sidebar.
+								</p>
+							</div>
 
 							{createCategoryError && (
-								<p className="mt-2 text-sm text-destructive">
+								<p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
 									{createCategoryError}
 								</p>
 							)}
 
-							<div className="mt-5 flex justify-end gap-3">
+							<div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
 								<Button
 									type="button"
 									variant="outline"
+									size="lg"
+									className="min-w-24"
 									onClick={closeCreateCategoryModal}
 									disabled={isCreatingCategory}
 								>
@@ -1293,6 +1968,8 @@ export function AppSidebar({
 								<Button
 									type="submit"
 									variant="accent"
+									size="lg"
+									className="min-w-40"
 									disabled={isCreatingCategory}
 								>
 									{isCreatingCategory
@@ -1306,41 +1983,62 @@ export function AppSidebar({
 			)}
 			{isCreateSpaceOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-card-foreground">
-						<h2 className="text-lg font-semibold text-foreground">
-							Create New Space
-						</h2>
-						<p className="mt-1 text-sm text-muted-foreground">
-							Add a name for the new space.
-						</p>
+					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+								<LayersPlus className="size-5" />
+							</span>
+							<div className="min-w-0">
+								<h2 className="text-lg font-semibold text-foreground">
+									Create new space
+								</h2>
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									Keep files, categories, and graph
+									connections separated by workspace.
+								</p>
+							</div>
+						</div>
 
-						<form className="mt-5" onSubmit={handleCreateSpace}>
-							<Label htmlFor="new-space-name">Space name</Label>
-							<Input
-								id="new-space-name"
-								type="text"
-								value={newSpaceName}
-								onChange={(event) => {
-									setNewSpaceName(event.target.value);
-									if (createSpaceError)
-										setCreateSpaceError(null);
-								}}
-								placeholder="e.g. Acme Corp"
-								maxLength={80}
-								autoFocus
-								className="mt-2"
-							/>
+						<form
+							className="px-6 py-5"
+							onSubmit={handleCreateSpace}
+						>
+							<div className="space-y-2">
+								<Label htmlFor="new-space-name">
+									Space name
+								</Label>
+								<Input
+									id="new-space-name"
+									type="text"
+									value={newSpaceName}
+									onChange={(event) => {
+										setNewSpaceName(event.target.value);
+										if (createSpaceError)
+											setCreateSpaceError(null);
+									}}
+									placeholder="e.g. Acme Corp"
+									maxLength={80}
+									autoFocus
+									className="h-10 bg-background px-3"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Spaces are private containers for a focused
+									set of documents.
+								</p>
+							</div>
 
 							{createSpaceError && (
-								<p className="mt-2 text-sm text-destructive">
+								<p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
 									{createSpaceError}
 								</p>
 							)}
 
-							<div className="mt-5 flex justify-end gap-3">
+							<div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
 								<Button
 									type="button"
 									variant="outline"
+									size="lg"
+									className="min-w-24"
 									onClick={() => {
 										if (isCreatingSpace) return;
 										setIsCreateSpaceOpen(false);
@@ -1354,6 +2052,8 @@ export function AppSidebar({
 								<Button
 									type="submit"
 									variant="accent"
+									size="lg"
+									className="min-w-36"
 									disabled={isCreatingSpace}
 								>
 									{isCreatingSpace
@@ -1362,6 +2062,139 @@ export function AppSidebar({
 								</Button>
 							</div>
 						</form>
+					</div>
+				</div>
+			)}
+			{isEditSpaceOpen && activeSpace && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+								<Edit3 className="size-5" />
+							</span>
+							<div className="min-w-0">
+								<h2 className="text-lg font-semibold text-foreground">
+									Rename space
+								</h2>
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									Update the workspace name shown in the
+									sidebar.
+								</p>
+							</div>
+						</div>
+
+						<form
+							className="px-6 py-5"
+							onSubmit={handleUpdateSpace}
+						>
+							<div className="space-y-2">
+								<Label htmlFor="edit-space-name">
+									Space name
+								</Label>
+								<Input
+									id="edit-space-name"
+									type="text"
+									value={editSpaceName}
+									onChange={(event) => {
+										setEditSpaceName(event.target.value);
+										if (editSpaceError)
+											setEditSpaceError(null);
+									}}
+									maxLength={80}
+									autoFocus
+									className="h-10 bg-background px-3"
+								/>
+							</div>
+
+							{editSpaceError && (
+								<p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+									{editSpaceError}
+								</p>
+							)}
+
+							<div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									className="min-w-24"
+									onClick={() => {
+										if (isUpdatingSpace) return;
+										setIsEditSpaceOpen(false);
+										setEditSpaceError(null);
+									}}
+									disabled={isUpdatingSpace}
+								>
+									Cancel
+								</Button>
+								<Button
+									type="submit"
+									variant="accent"
+									size="lg"
+									className="min-w-32"
+									disabled={isUpdatingSpace}
+								>
+									{isUpdatingSpace ? "Saving..." : "Save"}
+								</Button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+			{isDeleteSpaceOpen && activeSpace && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-red-600 ring-1 ring-red-200">
+								<Trash2 className="size-5" />
+							</span>
+							<div className="min-w-0">
+								<h2 className="text-lg font-semibold text-foreground">
+									Delete space?
+								</h2>
+								<p className="mt-1 text-sm leading-6 text-muted-foreground">
+									This deletes{" "}
+									<span className="font-medium text-foreground">
+										{activeSpace.name}
+									</span>{" "}
+									and all categories and files inside it.
+								</p>
+							</div>
+						</div>
+
+						<div className="px-6 py-5">
+							{deleteSpaceError && (
+								<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+									{deleteSpaceError}
+								</p>
+							)}
+							<div className="flex justify-end gap-2 border-t border-border pt-4">
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									className="min-w-24"
+									onClick={() => {
+										if (isDeletingSpace) return;
+										setIsDeleteSpaceOpen(false);
+										setDeleteSpaceError(null);
+									}}
+									disabled={isDeletingSpace}
+								>
+									Cancel
+								</Button>
+								<Button
+									type="button"
+									variant="destructive"
+									size="lg"
+									className="min-w-32"
+									onClick={handleDeleteSpace}
+									disabled={isDeletingSpace}
+								>
+									{isDeletingSpace ? "Deleting..." : "Delete"}
+								</Button>
+							</div>
+						</div>
 					</div>
 				</div>
 			)}
