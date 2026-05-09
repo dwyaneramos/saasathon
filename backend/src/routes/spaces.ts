@@ -1,20 +1,11 @@
 import { Router } from "express";
 import {
 	createSpace,
-	getSpace,
 	listSpaces,
 	listSpacesForUser,
 	toPublicSpace,
 } from "../services/spaceService.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
-import {
-	getItem,
-	listCategories,
-	listItemsForCategory,
-	toPublicCategory,
-	toPublicItem,
-} from "../services/documentAnalyzer.js";
-import { HttpError } from "../utils/httpError.js";
 import uploadRoutes from "./upload.js";
 
 const router = Router();
@@ -45,66 +36,6 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
 	res.status(201).json({ space: toPublicSpace(space) });
 });
 
-router.get("/:spaceId/categories", async (req, res) => {
-	const spaceId = parsePositiveInteger(req.params.spaceId, "spaceId");
-	const space = await getSpace(spaceId);
-
-	if (!space) {
-		throw new HttpError(404, "Space not found");
-	}
-
-	const categories = await listCategories(spaceId);
-	res.json({ categories: categories.map(toPublicCategory) });
-});
-
-router.get("/:spaceId/categories/:categoryId/items", async (req, res) => {
-	const spaceId = parsePositiveInteger(req.params.spaceId, "spaceId");
-	const categoryId = parsePositiveInteger(req.params.categoryId, "categoryId");
-
-	const space = await getSpace(spaceId);
-	if (!space) {
-		throw new HttpError(404, "Space not found");
-	}
-
-	const categories = await listCategories(spaceId);
-	const category = categories.find((entry) => entry.id === categoryId);
-
-	if (!category) {
-		throw new HttpError(404, "Category not found");
-	}
-
-	const items = await listItemsForCategory({ spaceId, categoryId });
-	res.json({
-		items: items.map(toPublicItem),
-	});
-});
-
-router.get("/:spaceId/items/:itemId", async (req, res) => {
-	const spaceId = parsePositiveInteger(req.params.spaceId, "spaceId");
-	const itemId = parsePositiveInteger(req.params.itemId, "itemId");
-
-	const space = await getSpace(spaceId);
-	if (!space) {
-		throw new HttpError(404, "Space not found");
-	}
-
-	const item = await getItem({ spaceId, itemId });
-	if (!item) {
-		throw new HttpError(404, "Item not found");
-	}
-
-	res.json({ item: toPublicItem(item) });
-});
-
 router.use("/:spaceId/upload", uploadRoutes);
 
 export default router;
-
-function parsePositiveInteger(value: string | undefined, fieldName: string) {
-	const parsed = Number(value);
-	if (!Number.isInteger(parsed) || parsed < 1) {
-		throw new HttpError(400, `${fieldName} must be a positive integer`);
-	}
-
-	return parsed;
-}

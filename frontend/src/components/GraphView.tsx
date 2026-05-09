@@ -328,7 +328,6 @@ const ForceSimulation: React.FC<ForceSimulationProps> = ({
             >
               <mesh
                 onClick={() => onNodeClick(index)}
-                cursor="pointer"
               >
                 <sphereGeometry args={[0.07, 16, 16]} />
 
@@ -432,9 +431,6 @@ const GraphView: React.FC<GraphViewProps> = ({
         // Zoom limits
         minDistance={3}
         maxDistance={10}
-
-        // Pan limits
-        maxTargetRadius={2.5}
 
         // Smoothness
         enableDamping

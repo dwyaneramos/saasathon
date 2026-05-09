@@ -257,28 +257,26 @@ export async function listDocuments(spaceId?: number | null) {
   return rows;
 }
 
-export async function getItem(input: {
-  itemId: number;
-  spaceId?: number | null;
-}) {
+export async function getDocument(documentId: number) {
   await ensureDocumentSchema();
-  const { rows } = await getDb().query<ItemRow>(
+  const { rows } = await getDb().query<DocumentRow>(
     `SELECT
         id,
         space_id,
-        category_id,
         filename,
         filepath,
-        metadata,
+        file_name,
         original_file_name,
+        stored_file_name,
         mime_type,
         file_size,
+        category_id,
+        summary,
         created_at
      FROM documents
      WHERE id = $1
-       AND ($2::integer IS NULL OR space_id = $2)
      LIMIT 1`,
-    [input.itemId, input.spaceId ?? null],
+    [documentId],
   );
   return rows[0] ?? null;
 }

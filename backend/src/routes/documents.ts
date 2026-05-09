@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { validate } from "../middleware/validate.js";
@@ -7,6 +10,7 @@ import {
 	analyzePdf,
 	assignDocumentCategory,
 	createCategory,
+	getDocument,
 	listCategories,
 	listDocuments,
 	toPublicCategory,
@@ -14,6 +18,10 @@ import {
 } from "../services/documentAnalyzer.js";
 
 const router = Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workspaceRoot = path.resolve(__dirname, "../../..");
+const uploadRoot = path.join(workspaceRoot, "backend/upload");
 export const uploadPdfMiddleware = multer({
 	storage: multer.memoryStorage(),
 	limits: {
@@ -63,6 +71,71 @@ router.get("/documents", async (req, res) => {
 
 	const documents = await listDocuments(spaceId);
 	res.json({ documents: documents.map(toPublicDocument) });
+});
+
+router.get("/documents/:documentId", async (req, res) => {
+	const documentId = getDocumentIdFromParams(req);
+	if (!documentId) {
+		res.status(400).json({ error: "documentId must be a positive integer" });
+		return;
+	}
+
+	const document = await getDocument(documentId);
+	if (!document) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
+	res.json({ document: toPublicDocument(document) });
+});
+
+router.get("/documents/:documentId/file", async (req, res, next) => {
+	const documentId = getDocumentIdFromParams(req);
+	if (!documentId) {
+		res.status(400).json({ error: "documentId must be a positive integer" });
+		return;
+	}
+
+	const document = await getDocument(documentId);
+	if (!document) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
+	if (!document.filepath) {
+		res.status(404).json({ error: "Stored file not found" });
+		return;
+	}
+
+	const filePath = resolveStoredFilePath(document.filepath);
+	if (!filePath) {
+		res.status(400).json({ error: "Invalid stored file path" });
+		return;
+	}
+
+	try {
+		await fs.promises.access(filePath, fs.constants.R_OK);
+	} catch {
+		res.status(404).json({ error: "Stored file not found" });
+		return;
+	}
+
+	const publicDocument = toPublicDocument(document);
+	const displayName =
+		publicDocument.originalFileName ??
+		publicDocument.fileName ??
+		publicDocument.filename;
+	const disposition = req.query.download === "1" ? "attachment" : "inline";
+
+	res.setHeader("Content-Type", publicDocument.mimeType);
+	res.setHeader(
+		"Content-Disposition",
+		`${disposition}; filename="${sanitizeHeaderFilename(displayName)}"`,
+	);
+
+	res.sendFile(filePath, (err) => {
+		if (err) next(err);
+	});
 });
 
 router.post(
@@ -194,4 +267,35 @@ function getSpaceId(req: Request) {
 
 	const spaceId = Number(req.query.spaceId);
 	return Number.isInteger(spaceId) && spaceId > 0 ? spaceId : false;
+}
+
+function getDocumentIdFromParams(req: Request) {
+	const documentId = Number(req.params.documentId);
+	return Number.isInteger(documentId) && documentId > 0 ? documentId : null;
+}
+
+function resolveStoredFilePath(filepath: string) {
+	const normalizedPath = path.normalize(filepath);
+	if (
+		path.isAbsolute(normalizedPath) ||
+		(!normalizedPath.startsWith("backend/upload/") &&
+			!normalizedPath.startsWith("backend\\upload\\"))
+	) {
+		return null;
+	}
+
+	const filePath = path.resolve(workspaceRoot, normalizedPath);
+	const relativeToUploadRoot = path.relative(uploadRoot, filePath);
+	if (
+		relativeToUploadRoot.startsWith("..") ||
+		path.isAbsolute(relativeToUploadRoot)
+	) {
+		return null;
+	}
+
+	return filePath;
+}
+
+function sanitizeHeaderFilename(filename: string) {
+	return filename.replace(/["\r\n]/g, "_");
 }
