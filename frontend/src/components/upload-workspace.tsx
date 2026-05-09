@@ -81,6 +81,7 @@ type UploadWorkspaceProps = {
 };
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
+const MAX_UPLOAD_FILES = 20;
 const textareaClassName =
 	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";
 
@@ -134,8 +135,23 @@ export function UploadWorkspace({
 			return;
 		}
 
-		setFiles((prev) => [...prev, ...newFiles]);
-		setStatus(null);
+		let nextStatus: string | null = null;
+		setFiles((prev) => {
+			const remainingSlots = Math.max(MAX_UPLOAD_FILES - prev.length, 0);
+
+			if (remainingSlots === 0) {
+				nextStatus = `You can upload up to ${MAX_UPLOAD_FILES} files at once. Remove a file before adding more.`;
+				return prev;
+			}
+
+			if (newFiles.length > remainingSlots) {
+				nextStatus = `You can upload up to ${MAX_UPLOAD_FILES} files at once. Added ${remainingSlots} file(s) and skipped ${newFiles.length - remainingSlots}.`;
+				return [...prev, ...newFiles.slice(0, remainingSlots)];
+			}
+
+			return [...prev, ...newFiles];
+		});
+		setStatus(nextStatus);
 		setSummary("");
 		setUploadedFiles([]);
 		setCompactAnalysisStatus(null);
@@ -819,7 +835,7 @@ export function UploadWorkspace({
 									Drop files here
 								</p>
 								<p className="mt-1 text-sm text-muted-foreground">
-									PDF, PNG, JPG, GIF, WebP, SVG, BMP, or TIFF
+									PDF, PNG, JPG, GIF, WebP, SVG, BMP, or TIFF. Up to {MAX_UPLOAD_FILES} files at once.
 								</p>
 								<Button
 									type="button"
@@ -848,6 +864,11 @@ export function UploadWorkspace({
 												? "being processed"
 												: "ready for analysis"}
 										</p>
+										{!shouldCollapseCompactSelection ? (
+											<p className="mt-1 text-xs text-muted-foreground">
+												Up to {MAX_UPLOAD_FILES} files per upload
+											</p>
+										) : null}
 									</div>
 									{shouldCollapseCompactSelection ? (
 										<span className="rounded-md bg-zinc-50 px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1048,7 +1069,7 @@ export function UploadWorkspace({
 						</p>
 						<small className="text-sm text-muted-foreground mt-1">
 							Supported: PDF and image files (JPEG, PNG, GIF,
-							WebP, SVG, BMP, TIFF)
+							WebP, SVG, BMP, TIFF). Up to {MAX_UPLOAD_FILES} files per upload.
 						</small>
 						<input
 							ref={inputRef}
