@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import GraphView from "@/components/GraphView";
 import type {
@@ -117,7 +117,7 @@ export default function Graph() {
     };
   }, []);
 
-  const scheduleHide = () => {
+  const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
       if (!tooltipHoveredRef.current) {
@@ -127,35 +127,35 @@ export default function Graph() {
         hoveredNodeIdRef.current = null;
       }
     }, 200);
-  };
+  }, []);
 
-  const cancelHide = () => {
+  const cancelHide = useCallback(() => {
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const handleNodeHover = (
-    node: GraphNode | null,
-    anchor?: { x: number; y: number },
-  ) => {
-    if (node) {
-      cancelHide();
+  const handleNodeHover = useCallback(
+    (node: GraphNode | null, anchor?: { x: number; y: number }) => {
+      if (node) {
+        cancelHide();
 
-      if (hoveredNodeIdRef.current !== node.id) {
-        hoveredNodeIdRef.current = node.id;
-        setTooltipFrameSize({ width: 0, height: 0 });
-        setTooltipAnchor(anchor ?? cursorPosRef.current);
+        if (hoveredNodeIdRef.current !== node.id) {
+          hoveredNodeIdRef.current = node.id;
+          setTooltipFrameSize({ width: 0, height: 0 });
+          setTooltipAnchor(anchor ?? cursorPosRef.current);
+        }
+
+        setHoveredNode(node);
+        setTooltipVisible(true);
+        return;
       }
 
-      setHoveredNode(node);
-      setTooltipVisible(true);
-      return;
-    }
-
-    scheduleHide();
-  };
+      scheduleHide();
+    },
+    [cancelHide, scheduleHide],
+  );
 
   const categoryNodes = useMemo<GraphNode[]>(() => {
     return categories.map((category) => ({
