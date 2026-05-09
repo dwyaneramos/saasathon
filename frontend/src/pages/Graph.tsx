@@ -2,14 +2,26 @@ import {
   useNavigate,
   useOutletContext,
   useSearchParams,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	type DragEvent,
+} from "react";
+import {
+	useNavigate,
+	useOutletContext,
+	useSearchParams,
 } from "react-router-dom";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import {
   useCallback,
@@ -23,7 +35,12 @@ import { ArrowLeft, Box, SquareStack } from "lucide-react";
 import GraphView from "@/components/GraphView";
 import { Button } from "@/components/ui/button";
 import { fileIconFor } from "@/lib/file-icons";
-import { fileTreeUpdatedEvent } from "@/components/app-sidebar";
+import {
+	fileTreeUpdatedEvent,
+	openUploadModalEvent,
+} from "@/components/app-sidebar";
+import { Button } from "@/components/ui/button";
+import { UploadCloud } from "lucide-react";
 import type {
   CategoryConnectionSummary,
   CategorySummary,
@@ -42,8 +59,8 @@ type DocumentsResponse = { documents?: DocumentSummary[]; error?: string };
 const apiBaseUrl = "http://localhost:3000/api/v1";
 
 type AppLayoutContext = {
-  activeSpaceId: number | null;
-  activeSpaceName: string | null;
+	activeSpaceId: number | null;
+	activeSpaceName: string | null;
 };
 
 export default function Graph() {
