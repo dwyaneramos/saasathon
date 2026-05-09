@@ -1,11 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import {
-	Share2,
-	LogIn,
-	UserPlus,
-	LogOut,
-	Sparkles,
-} from "lucide-react";
+import { Share2, LogIn, UserPlus, LogOut, Loader } from "lucide-react";
 import kibiLogo from "../assets/kibi.svg";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -40,7 +34,7 @@ export const NavbarContent = () => {
 								}`
 							}
 						>
-							<Sparkles size={16} strokeWidth={2.25} />
+							<Loader size={16} strokeWidth={2.25} />
 							Dashboard
 						</NavLink>
 						<NavLink

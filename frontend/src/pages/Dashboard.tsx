@@ -6,10 +6,19 @@ import {
 	type KeyboardEvent,
 } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
-import { ArrowUp, RotateCcw, Sparkles } from "lucide-react";
+import {
+	ArrowUp,
+	FileClock,
+	Bot,
+	FolderClosed,
+	LayoutGrid,
+	RotateCcw,
+	UploadCloud,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { openUploadModalEvent } from "@/components/app-sidebar";
 import { apiBaseUrl } from "@/lib/api";
+import { fileIconFor } from "@/lib/file-icons";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -31,6 +40,56 @@ type Suggestion = {
 	sub: string;
 	prompt: string;
 };
+
+function quickActionIconForSuggestion(suggestion: Suggestion) {
+	const normalizedLabel = suggestion.label.toLowerCase();
+	const normalizedPrompt = suggestion.prompt.toLowerCase();
+	const normalizedSub = suggestion.sub.toLowerCase();
+
+	if (
+		normalizedLabel.includes("recent file") ||
+		normalizedPrompt.includes("recent file")
+	) {
+		return FileClock;
+	}
+
+	if (
+		normalizedLabel.includes("upload") ||
+		normalizedPrompt.includes("upload") ||
+		normalizedPrompt.includes("import")
+	) {
+		return UploadCloud;
+	}
+
+	if (
+		normalizedLabel.includes("dashboard") ||
+		normalizedPrompt.includes("dashboard") ||
+		normalizedPrompt.includes("assistant home")
+	) {
+		return LayoutGrid;
+	}
+
+	if (
+		normalizedLabel.includes("category") ||
+		normalizedLabel.includes("categories") ||
+		normalizedPrompt.includes("category") ||
+		normalizedPrompt.includes("categories") ||
+		normalizedPrompt.includes("files in")
+	) {
+		return FolderClosed;
+	}
+
+	const fileLikeName =
+		normalizedSub.includes(".") || normalizedLabel.includes("open")
+			? suggestion.sub
+			: suggestion.label;
+
+	return fileIconFor({
+		name: fileLikeName,
+		filename: fileLikeName,
+		mimeType: "",
+	});
+}
 
 type CategoriesResponse = { categories?: CategorySummary[] };
 type DocumentsResponse = { documents?: DocumentSummary[] };
@@ -62,11 +121,7 @@ function TypingIndicator() {
 	return (
 		<div className="mb-6 flex items-end gap-3">
 			<div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm">
-				<Sparkles
-					size={13}
-					strokeWidth={1.5}
-					className="text-zinc-400"
-				/>
+				<Bot size={13} strokeWidth={1.5} className="text-zinc-400" />
 			</div>
 			<div className="rounded-2xl rounded-bl-md border border-zinc-200 bg-white px-4 py-3 shadow-sm">
 				<div className="flex h-5 items-center gap-1.5">
@@ -97,7 +152,7 @@ function ChatMessage({ message }: { message: Message }) {
 		>
 			{!isUser && (
 				<div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white shadow-sm">
-					<Sparkles
+					<Bot
 						size={13}
 						strokeWidth={1.5}
 						className="text-zinc-400"
@@ -168,8 +223,19 @@ function QuickActions({
 								className="inline-flex min-h-20 w-full min-w-0 flex-col items-start justify-center rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50"
 								title={suggestion.sub}
 							>
-								<span className="text-sm font-medium leading-snug text-zinc-800">
-									{suggestion.label}
+								<span className="flex items-start gap-2">
+									{(() => {
+										const Icon =
+											quickActionIconForSuggestion(
+												suggestion,
+											);
+										return (
+											<Icon className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+										);
+									})()}
+									<span className="text-sm font-medium leading-snug text-zinc-800">
+										{suggestion.label}
+									</span>
 								</span>
 								<span className="mt-1 line-clamp-2 text-xs leading-snug text-zinc-500">
 									{suggestion.sub}
@@ -247,7 +313,8 @@ export default function Dashboard() {
 		if (!element) return;
 		element.style.height = "auto";
 		element.style.height = `${Math.min(element.scrollHeight, 140)}px`;
-		element.style.overflowY = element.scrollHeight > 140 ? "auto" : "hidden";
+		element.style.overflowY =
+			element.scrollHeight > 140 ? "auto" : "hidden";
 	}, [input]);
 
 	useEffect(() => {
@@ -611,15 +678,16 @@ export default function Dashboard() {
 								</button>
 							</div>
 						</div>
-					</div>
-					<div className="mt-3">
-						<QuickActions
-							suggestions={suggestions}
-							isLoading={isSuggestionsLoading}
-							onSelect={(prompt) => void sendMessage(prompt)}
-							spaceLabel={spaceLabel}
-							compact
-						/>
+						<div className="mx-5 h-px bg-zinc-100" />
+						<div className="px-5 py-3">
+							<QuickActions
+								suggestions={suggestions}
+								isLoading={isSuggestionsLoading}
+								onSelect={(prompt) => void sendMessage(prompt)}
+								spaceLabel={spaceLabel}
+								compact
+							/>
+						</div>
 					</div>
 				</div>
 			</div>
