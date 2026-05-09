@@ -16,6 +16,7 @@ import {
 	Plus,
 	Layers,
 	FolderClosed,
+	Orbit,
 } from "lucide-react";
 import {
 	Collapsible,
@@ -44,6 +45,7 @@ import {
 	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 const apiBaseUrl = "http://localhost:3000/api/v1";
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -121,7 +123,9 @@ function fileIconFor(file: KibiFile) {
 	if (
 		mimeType.includes("json") ||
 		mimeType.includes("xml") ||
-		["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(extension)
+		["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(
+			extension,
+		)
 	) {
 		return FileCode;
 	}
@@ -146,8 +150,12 @@ function SpaceSwitcher({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<SidebarMenuButton tooltip={activeSpaceName}>
-					<Layers />
+				<SidebarMenuButton
+					tooltip={activeSpaceName}
+					className="hover:bg-zinc-200"
+					style={{ transition: "none" }}
+				>
+					<Orbit />
 					<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
 						<span className="truncate font-semibold">
 							{activeSpaceName}
@@ -172,7 +180,7 @@ function SpaceSwitcher({
 							className="gap-2"
 						>
 							<div className="flex size-6 items-center justify-center rounded-md border bg-background">
-								<Layers className="size-3.5 shrink-0" />
+								<Orbit className="size-3.5 shrink-0" />
 							</div>
 							{space.name}
 							{space.id === activeSpace?.id && (
@@ -183,7 +191,9 @@ function SpaceSwitcher({
 						</DropdownMenuItem>
 					))
 				) : (
-					<DropdownMenuItem disabled>No spaces found</DropdownMenuItem>
+					<DropdownMenuItem disabled>
+						No spaces found
+					</DropdownMenuItem>
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -250,9 +260,13 @@ function CategoryItem({
 				<CollapsibleTrigger asChild>
 					<SidebarMenuButton
 						tooltip={category.name}
-						className={
-							allowCategoryWrap ? "h-auto min-h-8 items-start" : undefined
-						}
+						className={cn(
+							"hover:bg-zinc-200",
+							allowCategoryWrap
+								? "h-auto min-h-8 items-start"
+								: undefined,
+						)}
+						style={{ transition: "none" }}
 						onClick={() => onClearCategory(category)}
 					>
 						<span
@@ -291,16 +305,28 @@ function CategoryItem({
 						{category.files.length > 0 ? (
 							category.files.map((file) => (
 								<SidebarMenuSubItem key={file.id}>
-									<SidebarMenuSubButton asChild>
+									<SidebarMenuSubButton
+										asChild
+										className="hover:bg-zinc-200"
+									>
 										<Link
 											to={`/file/${file.id}`}
 											className="flex items-start gap-2 text-muted-foreground"
-											onClick={() => onClearNewFile(category.id, file.id)}
+											onClick={() =>
+												onClearNewFile(
+													category.id,
+													file.id,
+												)
+											}
 										>
 											<span className="relative mt-0.5 flex shrink-0">
-												{React.createElement(fileIconFor(file), {
-													className: "size-3.5 shrink-0 text-muted-foreground/80",
-												})}
+												{React.createElement(
+													fileIconFor(file),
+													{
+														className:
+															"size-3.5 shrink-0 text-muted-foreground/80",
+													},
+												)}
 												{newFileIds.has(file.id) && (
 													<span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-rose-400" />
 												)}
@@ -398,7 +424,8 @@ function AddButton() {
 			<DropdownMenuTrigger asChild>
 				<SidebarMenuButton
 					tooltip="Add new"
-					className="w-full border border-dashed border-sidebar-border hover:border-sidebar-accent-foreground/30 text-muted-foreground hover:text-foreground transition-colors"
+					className="w-full border border-dashed border-sidebar-border hover:border-sidebar-accent-foreground/30 text-muted-foreground hover:text-foreground hover:bg-zinc-200"
+					style={{ transition: "none" }}
 				>
 					<Plus className="shrink-0" />
 					<span className="group-data-[collapsible=icon]:hidden">
@@ -414,7 +441,7 @@ function AddButton() {
 					<FolderOpen className="size-4" /> New collection
 				</DropdownMenuItem>
 				<DropdownMenuItem className="gap-2">
-					<Layers className="size-4" /> New space
+					<Orbit className="size-4" /> New space
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -425,7 +452,9 @@ function AddButton() {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const [spaces, setSpaces] = React.useState<Space[]>([]);
-	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(null);
+	const [activeSpaceId, setActiveSpaceId] = React.useState<number | null>(
+		null,
+	);
 	const [categories, setCategories] = React.useState<Category[]>([]);
 	const [isLoading, setIsLoading] = React.useState(true);
 	const [spacesLoaded, setSpacesLoaded] = React.useState(false);
@@ -433,191 +462,225 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const [newCategoryIds, setNewCategoryIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
-	const [newFileCategoryIds, setNewFileCategoryIds] = React.useState<Set<number>>(
-		() => new Set(),
-	);
+	const [newFileCategoryIds, setNewFileCategoryIds] = React.useState<
+		Set<number>
+	>(() => new Set());
 	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
-	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(new Map());
+	const categoryFileIdsRef = React.useRef<Map<number, Set<number>>>(
+		new Map(),
+	);
 	const fileTreeLoadedRef = React.useRef(false);
 
 	const activeSpace =
 		spaces.find((space) => space.id === activeSpaceId) ?? spaces[0] ?? null;
 
-	const clearNewFile = React.useCallback((categoryId: number, fileId: number) => {
-		setNewFileIds((currentIds) => {
-			if (!currentIds.has(fileId)) return currentIds;
+	const clearNewFile = React.useCallback(
+		(categoryId: number, fileId: number) => {
+			setNewFileIds((currentIds) => {
+				if (!currentIds.has(fileId)) return currentIds;
 
-			const nextIds = new Set(currentIds);
-			nextIds.delete(fileId);
-			return nextIds;
-		});
-		setNewCategoryIds((currentIds) => {
-			if (!currentIds.has(categoryId)) return currentIds;
+				const nextIds = new Set(currentIds);
+				nextIds.delete(fileId);
+				return nextIds;
+			});
+			setNewCategoryIds((currentIds) => {
+				if (!currentIds.has(categoryId)) return currentIds;
 
-			const nextIds = new Set(currentIds);
-			nextIds.delete(categoryId);
-			return nextIds;
-		});
-		setNewFileCategoryIds((currentIds) => {
-			if (!currentIds.has(categoryId)) return currentIds;
+				const nextIds = new Set(currentIds);
+				nextIds.delete(categoryId);
+				return nextIds;
+			});
+			setNewFileCategoryIds((currentIds) => {
+				if (!currentIds.has(categoryId)) return currentIds;
 
-			const nextIds = new Set(currentIds);
-			nextIds.delete(categoryId);
-			return nextIds;
-		});
-	}, []);
+				const nextIds = new Set(currentIds);
+				nextIds.delete(categoryId);
+				return nextIds;
+			});
+		},
+		[],
+	);
 
-	const clearCategoryNotification = React.useCallback((category: Category) => {
-		setNewCategoryIds((currentIds) => {
-			if (!currentIds.has(category.id)) return currentIds;
+	const clearCategoryNotification = React.useCallback(
+		(category: Category) => {
+			setNewCategoryIds((currentIds) => {
+				if (!currentIds.has(category.id)) return currentIds;
 
-			const nextIds = new Set(currentIds);
-			nextIds.delete(category.id);
-			return nextIds;
-		});
-		setNewFileCategoryIds((currentIds) => {
-			if (!currentIds.has(category.id)) return currentIds;
+				const nextIds = new Set(currentIds);
+				nextIds.delete(category.id);
+				return nextIds;
+			});
+			setNewFileCategoryIds((currentIds) => {
+				if (!currentIds.has(category.id)) return currentIds;
 
-			const nextIds = new Set(currentIds);
-			nextIds.delete(category.id);
-			return nextIds;
-		});
-		setNewFileIds((currentIds) => {
-			const nextIds = new Set(currentIds);
-			let changed = false;
+				const nextIds = new Set(currentIds);
+				nextIds.delete(category.id);
+				return nextIds;
+			});
+			setNewFileIds((currentIds) => {
+				const nextIds = new Set(currentIds);
+				let changed = false;
 
-			for (const file of category.files) {
-				if (nextIds.delete(file.id)) {
-					changed = true;
+				for (const file of category.files) {
+					if (nextIds.delete(file.id)) {
+						changed = true;
+					}
 				}
-			}
 
-			return changed ? nextIds : currentIds;
-		});
-	}, []);
+				return changed ? nextIds : currentIds;
+			});
+		},
+		[],
+	);
 
-	const loadFileTree = React.useCallback(async (
-		detectNewFiles = false,
-		changedDocumentIds: number[] = [],
-	) => {
-		if (!spacesLoaded) return;
+	const loadFileTree = React.useCallback(
+		async (detectNewFiles = false, changedDocumentIds: number[] = []) => {
+			if (!spacesLoaded) return;
 
-		setIsLoading(true);
-		setError(null);
+			setIsLoading(true);
+			setError(null);
 
-		const query = activeSpaceId ? `?spaceId=${activeSpaceId}` : "";
+			const query = activeSpaceId ? `?spaceId=${activeSpaceId}` : "";
 
-		try {
-			const [categoryResponse, documentResponse] = await Promise.all([
-				fetch(`${apiBaseUrl}/categories${query}`, {
-					headers: authHeaders(),
-				}),
-				fetch(`${apiBaseUrl}/documents${query}`, {
-					headers: authHeaders(),
-				}),
-			]);
+			try {
+				const [categoryResponse, documentResponse] = await Promise.all([
+					fetch(`${apiBaseUrl}/categories${query}`, {
+						headers: authHeaders(),
+					}),
+					fetch(`${apiBaseUrl}/documents${query}`, {
+						headers: authHeaders(),
+					}),
+				]);
 
-			if (!categoryResponse.ok || !documentResponse.ok) {
-				throw new Error("Unable to load files");
-			}
+				if (!categoryResponse.ok || !documentResponse.ok) {
+					throw new Error("Unable to load files");
+				}
 
-			const [categoryPayload, documentPayload] = (await Promise.all([
-				categoryResponse.json(),
-				documentResponse.json(),
-			])) as [{ categories?: ApiCategory[] }, { documents?: ApiDocument[] }];
+				const [categoryPayload, documentPayload] = (await Promise.all([
+					categoryResponse.json(),
+					documentResponse.json(),
+				])) as [
+					{ categories?: ApiCategory[] },
+					{ documents?: ApiDocument[] },
+				];
 
-			const documents = documentPayload.documents ?? [];
-			const nextCategories = (categoryPayload.categories ?? []).map(
-				(category) => ({
-					id: category.id,
-					name: category.name,
-					files: documents
-						.filter((document) => document.categoryId === category.id)
-						.map((document) => ({
-							id: document.id,
-							name: fileDisplayName(document),
-							filename: document.filename,
-							mimeType: document.mimeType,
-						})),
-				}),
-			);
-			const nextCategoryFileIds = new Map(
-				nextCategories.map((category) => [
-					category.id,
-					new Set(category.files.map((file) => file.id)),
-				]),
-			);
-			const changedDocumentIdSet = new Set(changedDocumentIds);
+				const documents = documentPayload.documents ?? [];
+				const nextCategories = (categoryPayload.categories ?? []).map(
+					(category) => ({
+						id: category.id,
+						name: category.name,
+						files: documents
+							.filter(
+								(document) =>
+									document.categoryId === category.id,
+							)
+							.map((document) => ({
+								id: document.id,
+								name: fileDisplayName(document),
+								filename: document.filename,
+								mimeType: document.mimeType,
+							})),
+					}),
+				);
+				const nextCategoryFileIds = new Map(
+					nextCategories.map((category) => [
+						category.id,
+						new Set(category.files.map((file) => file.id)),
+					]),
+				);
+				const changedDocumentIdSet = new Set(changedDocumentIds);
 
-			if (detectNewFiles && (fileTreeLoadedRef.current || changedDocumentIdSet.size > 0)) {
-				setNewCategoryIds((currentIds) => {
-					const nextIds = new Set(currentIds);
+				if (
+					detectNewFiles &&
+					(fileTreeLoadedRef.current || changedDocumentIdSet.size > 0)
+				) {
+					setNewCategoryIds((currentIds) => {
+						const nextIds = new Set(currentIds);
 
-					for (const category of nextCategories) {
-						const previousFileIds = categoryFileIdsRef.current.get(category.id);
-						const hasChangedDocument = category.files.some((file) =>
-							changedDocumentIdSet.has(file.id),
-						);
+						for (const category of nextCategories) {
+							const previousFileIds =
+								categoryFileIdsRef.current.get(category.id);
+							const hasChangedDocument = category.files.some(
+								(file) => changedDocumentIdSet.has(file.id),
+							);
 
-						if (!previousFileIds && (fileTreeLoadedRef.current || hasChangedDocument)) {
-							nextIds.add(category.id);
-						}
-					}
-
-					return nextIds;
-				});
-				setNewFileCategoryIds((currentIds) => {
-					const nextIds = new Set(currentIds);
-
-					for (const [categoryId, fileIds] of nextCategoryFileIds) {
-						const previousFileIds = categoryFileIdsRef.current.get(categoryId);
-						const hasChangedDocument = [...fileIds].some((fileId) =>
-							changedDocumentIdSet.has(fileId),
-						);
-						const hasAddedFiles = previousFileIds
-							? [...fileIds].some((fileId) => !previousFileIds.has(fileId))
-							: fileIds.size > 0;
-
-						if (hasAddedFiles || hasChangedDocument) {
-							nextIds.add(categoryId);
-						}
-					}
-
-					return nextIds;
-				});
-				setNewFileIds((currentIds) => {
-					const nextIds = new Set(currentIds);
-
-					for (const [categoryId, fileIds] of nextCategoryFileIds) {
-						const previousFileIds = categoryFileIdsRef.current.get(categoryId);
-
-						for (const fileId of fileIds) {
 							if (
-								changedDocumentIdSet.has(fileId) ||
-								(fileTreeLoadedRef.current &&
-									(!previousFileIds || !previousFileIds.has(fileId)))
+								!previousFileIds &&
+								(fileTreeLoadedRef.current ||
+									hasChangedDocument)
 							) {
-								nextIds.add(fileId);
+								nextIds.add(category.id);
 							}
 						}
-					}
 
-					return nextIds;
-				});
+						return nextIds;
+					});
+					setNewFileCategoryIds((currentIds) => {
+						const nextIds = new Set(currentIds);
+
+						for (const [
+							categoryId,
+							fileIds,
+						] of nextCategoryFileIds) {
+							const previousFileIds =
+								categoryFileIdsRef.current.get(categoryId);
+							const hasChangedDocument = [...fileIds].some(
+								(fileId) => changedDocumentIdSet.has(fileId),
+							);
+							const hasAddedFiles = previousFileIds
+								? [...fileIds].some(
+										(fileId) =>
+											!previousFileIds.has(fileId),
+									)
+								: fileIds.size > 0;
+
+							if (hasAddedFiles || hasChangedDocument) {
+								nextIds.add(categoryId);
+							}
+						}
+
+						return nextIds;
+					});
+					setNewFileIds((currentIds) => {
+						const nextIds = new Set(currentIds);
+
+						for (const [
+							categoryId,
+							fileIds,
+						] of nextCategoryFileIds) {
+							const previousFileIds =
+								categoryFileIdsRef.current.get(categoryId);
+
+							for (const fileId of fileIds) {
+								if (
+									changedDocumentIdSet.has(fileId) ||
+									(fileTreeLoadedRef.current &&
+										(!previousFileIds ||
+											!previousFileIds.has(fileId)))
+								) {
+									nextIds.add(fileId);
+								}
+							}
+						}
+
+						return nextIds;
+					});
+				}
+
+				categoryFileIdsRef.current = nextCategoryFileIds;
+				fileTreeLoadedRef.current = true;
+				setCategories(nextCategories);
+			} catch {
+				setCategories([]);
+				setError("Unable to load files");
+			} finally {
+				setIsLoading(false);
 			}
-
-			categoryFileIdsRef.current = nextCategoryFileIds;
-			fileTreeLoadedRef.current = true;
-			setCategories(nextCategories);
-		} catch {
-			setCategories([]);
-			setError("Unable to load files");
-		} finally {
-			setIsLoading(false);
-		}
-	}, [activeSpaceId, spacesLoaded]);
+		},
+		[activeSpaceId, spacesLoaded],
+	);
 
 	React.useEffect(() => {
 		let ignore = false;
@@ -632,7 +695,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					throw new Error("Unable to load spaces");
 				}
 
-				const payload = (await response.json()) as { spaces?: ApiSpace[] };
+				const payload = (await response.json()) as {
+					spaces?: ApiSpace[];
+				};
 				const nextSpaces = payload.spaces ?? [];
 				if (ignore) return;
 
@@ -678,7 +743,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		window.addEventListener(fileTreeUpdatedEvent, handleFileTreeUpdated);
 
 		return () => {
-			window.removeEventListener(fileTreeUpdatedEvent, handleFileTreeUpdated);
+			window.removeEventListener(
+				fileTreeUpdatedEvent,
+				handleFileTreeUpdated,
+			);
 		};
 	}, [loadFileTree]);
 

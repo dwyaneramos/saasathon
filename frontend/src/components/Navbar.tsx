@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { Share2, LogIn, UserPlus, UploadCloud } from "lucide-react";
+import { Share2, LogIn, UserPlus, UploadCloud, LogOut } from "lucide-react";
 import kibiLogo from "../assets/kibi-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -83,36 +83,25 @@ export const NavbarContent = () => {
 									alt="User Profile"
 								/>
 							</PopoverTrigger>
-							<PopoverContent className="w-64 mr-3 mt-3">
-								<div className="space-y-4">
-									<div className="space-y-1">
-										<h4 className="text-sm font-medium">
-											First name
-										</h4>
-										<p className="text-sm text-muted-foreground">
-											{user.firstName}
+							<PopoverContent className="w-32 mr-3 mt-3 p-2">
+								<div className="flex flex-col gap-1">
+									<div className="px-2 py-1.5">
+										<p className="text-sm font-semibold break-all">
+											{user.firstName} {user.lastName}
 										</p>
-									</div>
-									<div className="space-y-1">
-										<h4 className="text-sm font-medium">
-											Last name
-										</h4>
-										<p className="text-sm text-muted-foreground">
-											{user.lastName}
-										</p>
-									</div>
-									<div className="space-y-1">
-										<h4 className="text-sm font-medium">
-											Email
-										</h4>
-										<p className="text-sm text-muted-foreground">
+										<p className="text-xs text-muted-foreground break-all">
 											{user.email}
 										</p>
 									</div>
+
+									<div className="border-t my-1 border-zinc-100" />
+
 									<button
 										onClick={handleLogout}
-										className="w-full text-left text-sm text-red-500 hover:underline pt-2 border-t"
+										className="flex items-center gap-1.5 w-full text-left text-sm px-2 py-1.5 rounded-md text-red-600 hover:bg-zinc-200"
+										style={{ transition: "none" }}
 									>
+										<LogOut size={16} strokeWidth={2.25} />
 										Log out
 									</button>
 								</div>
