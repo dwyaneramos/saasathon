@@ -41,3 +41,54 @@
 button {
 	@apply hover:opacity-80 cursor-pointer transition duration-300;
 }
+
+@keyframes upload-processing-gradient {
+	0% {
+		background-position: 0% 50%;
+	}
+	50% {
+		background-position: 100% 50%;
+	}
+	100% {
+		background-position: 0% 50%;
+	}
+}
+
+.upload-processing-gradient {
+	background:
+		linear-gradient(#fff, #fff) padding-box,
+		linear-gradient(
+				120deg,
+				rgba(21, 230, 124, 0.25),
+				rgba(14, 165, 233, 0.28),
+				rgba(168, 85, 247, 0.22),
+				rgba(21, 230, 124, 0.25)
+			)
+			border-box;
+	background-size: 100% 100%, 260% 260%;
+	animation: upload-processing-gradient 3.4s ease-in-out infinite;
+}
+
+.upload-processing-gradient::before {
+	background: linear-gradient(
+		90deg,
+		transparent,
+		rgba(21, 230, 124, 0.18),
+		transparent
+	);
+	content: "";
+	inset: 0;
+	position: absolute;
+	transform: translateX(-100%);
+	animation: upload-processing-sheen 2.4s ease-in-out infinite;
+}
+
+@keyframes upload-processing-sheen {
+	0% {
+		transform: translateX(-100%);
+	}
+	55%,
+	100% {
+		transform: translateX(100%);
+	}
+}

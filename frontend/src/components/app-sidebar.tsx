@@ -573,7 +573,12 @@ function UploadModal({
 						<X className="size-4" />
 					</Button>
 				</CardHeader>
-				<CardContent className="max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 py-6">
+				<CardContent
+					className={cn(
+						"max-h-[calc(88vh-9rem)] overflow-y-auto bg-card px-6 pt-6",
+						hasAnalysisStarted ? "pb-0" : "pb-6",
+					)}
+				>
 					<UploadWorkspace
 						detailMode="compact"
 						showHeading={false}
@@ -582,8 +587,8 @@ function UploadModal({
 					/>
 				</CardContent>
 				{hasAnalysisStarted ? (
-					<div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t border-border bg-muted/50 px-6 py-3 text-muted-foreground">
-						<span className="flex min-h-full items-center text-sm leading-relaxed">
+					<div className="flex items-center justify-between gap-4 border-t border-border bg-muted/50 px-6 py-4 text-muted-foreground">
+						<span className="min-w-0 text-sm leading-relaxed">
 							{isUploadLocked
 								? "Analysis is running. Keep this window open until it finishes."
 								: "Analysis complete. New files are ready in the sidebar."}
@@ -591,7 +596,7 @@ function UploadModal({
 						<Button
 							type="button"
 							variant="accent"
-							className="shrink-0 self-end"
+							className="shrink-0"
 							size="default"
 							onClick={requestClose}
 							disabled={isUploadLocked}
