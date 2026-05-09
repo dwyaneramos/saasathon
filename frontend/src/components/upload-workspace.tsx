@@ -151,17 +151,20 @@ export function UploadWorkspace({
 		setPendingCompletion(null);
 	};
 
-  const notifyFileTreeUpdated = (documentIds: Array<number | undefined> = []) => {
-    window.dispatchEvent(
-      new CustomEvent(fileTreeUpdatedEvent, {
-        detail: {
-          documentIds: documentIds.filter(
-            (documentId): documentId is number => typeof documentId === "number",
-          ),
-        },
-      }),
-    );
-  };
+	const notifyFileTreeUpdated = (
+		documentIds: Array<number | undefined> = [],
+	) => {
+		window.dispatchEvent(
+			new CustomEvent(fileTreeUpdatedEvent, {
+				detail: {
+					documentIds: documentIds.filter(
+						(documentId): documentId is number =>
+							typeof documentId === "number",
+					),
+				},
+			}),
+		);
+	};
 
 	const onDrop = (e: DragEvent<HTMLDivElement>) => {
 		e.preventDefault();
@@ -225,7 +228,7 @@ export function UploadWorkspace({
 
 			const payload = (await res.json()) as MultipleUploadResponse;
 			setUploadedFiles(payload.files);
-      notifyFileTreeUpdated(payload.files.map((file) => file.documentId));
+			notifyFileTreeUpdated(payload.files.map((file) => file.documentId));
 			setSummary(
 				`${payload.message} Total size: ${(payload.totalSize / 1024 / 1024).toFixed(2)} MB`,
 			);
@@ -533,10 +536,10 @@ export function UploadWorkspace({
 		);
 	};
 
-  const authHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem("token");
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+	const authHeaders = (): Record<string, string> => {
+		const token = localStorage.getItem("token");
+		return token ? { Authorization: `Bearer ${token}` } : {};
+	};
 
 	const confirmCategory = async (result: FileAnalysisResult) => {
 		const name = result.categoryInput.trim();
@@ -1343,6 +1346,7 @@ export function UploadWorkspace({
 																								create
 																								"
 																								{result.categoryInput.trim()}
+
 																								"
 																							</div>
 																						)}
