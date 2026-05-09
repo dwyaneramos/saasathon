@@ -17,6 +17,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import AppNavbar from "@/components/AppNavbar";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/sonner";
+import Footer from "./components/Footer";
 
 function AppLayout() {
 	return (
@@ -40,6 +41,7 @@ function PublicLayout() {
 		<>
 			<Navbar />
 			<Outlet />
+			<Footer />
 		</>
 	);
 }
