@@ -4,7 +4,7 @@ import { Float, Line, OrbitControls, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 
 const NODE_COUNT = 25;
-const NETWORK_SIZE = 2.8;
+const NETWORK_SIZE = 3;
 
 const LABELS = [
   "tax.pdf",
@@ -64,14 +64,14 @@ export const LandingAnimation = () => {
         camera={{ position: [0, 0, 6.5], fov: 42 }}
         gl={{ antialias: true, alpha: true }}
       >
-        <ambientLight intensity={1.2} />
+        <ambientLight intensity={1.5} />
 
         <pointLight position={[0, 0, 5]} intensity={12} color="#242f40" />
 
         <pointLight position={[-2, -2, -2]} intensity={6} color="#242f40" />
 
         <Suspense fallback={null}>
-          <group ref={groupRef} scale={1} rotation={[0.1, 0, 0]}>
+          <group ref={groupRef} scale={1.0} rotation={[0.1, 0, 0]}>
             {connections.map(([start, end], index) => (
               <Line
                 key={index}
@@ -97,7 +97,7 @@ export const LandingAnimation = () => {
                 <Billboard>
                   <Text
                     position={[0, 0.07, 0]}
-                    fontSize={0.034}
+                    fontSize={0.07}
                     color="#242f40"
                     anchorX="center"
                     anchorY="middle"
@@ -112,7 +112,6 @@ export const LandingAnimation = () => {
 
         <OrbitControls
           enableZoom={false}
-          enableRotate={false}
           enablePan={false}
           autoRotate
           autoRotateSpeed={0.2}
