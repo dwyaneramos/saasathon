@@ -45,6 +45,10 @@ export type FileTreeUpdatedEvent = CustomEvent<{
 	documentIds?: number[];
 }>;
 
+export type OpenUploadModalEvent = CustomEvent<{
+	files?: File[];
+}>;
+
 export type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 	activeSpaceId?: number | null;
 	onSpaceChange?: React.Dispatch<React.SetStateAction<number | null>>;

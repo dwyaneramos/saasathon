@@ -36,6 +36,7 @@ import {
 	type AppSidebarProps,
 	type Category,
 	type FileTreeUpdatedEvent,
+	type OpenUploadModalEvent,
 	type Space,
 } from "./app-sidebar/types";
 
@@ -168,6 +169,11 @@ export function AppSidebar({
 	>(null);
 	const [isDeletingSpace, setIsDeletingSpace] = React.useState(false);
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+	const [pendingUploadFiles, setPendingUploadFiles] = React.useState<File[]>(
+		[],
+	);
+	const [pendingUploadFilesToken, setPendingUploadFilesToken] =
+		React.useState(0);
 	const [searchQuery, setSearchQuery] = React.useState("");
 	const [contentSearchResults, setContentSearchResults] = React.useState<
 		ApiDocumentSearchResult[]
@@ -806,7 +812,13 @@ export function AppSidebar({
 	}, [activeSpaceId, searchQuery]);
 
 	React.useEffect(() => {
-		const handleOpenUploadModal = () => {
+		const handleOpenUploadModal = (event: Event) => {
+			const files =
+				(event as OpenUploadModalEvent).detail?.files ?? [];
+			if (files.length > 0) {
+				setPendingUploadFiles(files);
+				setPendingUploadFilesToken((currentValue) => currentValue + 1);
+			}
 			setIsUploadModalOpen(true);
 		};
 
@@ -1293,6 +1305,8 @@ export function AppSidebar({
 				open={isUploadModalOpen}
 				onOpenChange={setIsUploadModalOpen}
 				spaceId={activeSpaceId}
+				incomingFiles={pendingUploadFiles}
+				incomingFilesToken={pendingUploadFilesToken}
 			/>
 
 			{isManageCategoriesOpen && (
