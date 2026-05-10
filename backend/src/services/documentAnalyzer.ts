@@ -862,18 +862,50 @@ export async function updateCategory(categoryId: number, input: { name: string }
 
 export async function deleteCategory(categoryId: number) {
   await ensureDocumentSchema();
-  const { rows } = await getDb().query<CategoryRow>(
-    `DELETE FROM document_categories
-     WHERE id = $1
-     RETURNING id, name, space_id, metadata, description, summary, keywords, created_at`,
-    [categoryId],
-  );
+  const client = await getDb().connect();
+  let committed = false;
 
-  if (rows[0]) {
-    await refreshCategoryConnections(rows[0].space_id);
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query<CategoryRow>(
+      `SELECT id, name, space_id, metadata, description, summary, keywords, created_at
+       FROM document_categories
+       WHERE id = $1
+       FOR UPDATE`,
+      [categoryId],
+    );
+    const category = rows[0] ?? null;
+
+    if (!category) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    await client.query(
+      `DELETE FROM documents
+       WHERE category_id = $1`,
+      [categoryId],
+    );
+
+    await client.query(
+      `DELETE FROM document_categories
+       WHERE id = $1`,
+      [categoryId],
+    );
+
+    await client.query("COMMIT");
+    committed = true;
+    await refreshCategoryConnections(category.space_id);
+    return category;
+  } catch (error) {
+    if (!committed) {
+      await client.query("ROLLBACK");
+    }
+    throw error;
+  } finally {
+    client.release();
   }
-
-  return rows[0] ?? null;
 }
 
 export function toPublicCategory(category: CategoryRow): PublicCategory {

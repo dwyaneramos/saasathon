@@ -70,14 +70,58 @@ export async function updateSpace(input: {
 
 export async function deleteSpace(input: { spaceId: number; userId: number }) {
 	await ensureSpaceSchema();
-	const { rows } = await getDb().query<Space>(
-		`DELETE FROM spaces
-		 WHERE id = $1
-		   AND created_by = $2
-		 RETURNING id, created_by, name, created_at`,
-		[input.spaceId, input.userId],
-	);
-	return rows[0] ?? null;
+	const client = await getDb().connect();
+
+	try {
+		await client.query("BEGIN");
+
+		const { rows } = await client.query<Space>(
+			`SELECT id, created_by, name, created_at
+			 FROM spaces
+			 WHERE id = $1
+			   AND created_by = $2
+			 FOR UPDATE`,
+			[input.spaceId, input.userId],
+		);
+		const space = rows[0] ?? null;
+
+		if (!space) {
+			await client.query("ROLLBACK");
+			return null;
+		}
+
+		await client.query(
+			`DELETE FROM documents
+			 WHERE space_id = $1`,
+			[input.spaceId],
+		);
+
+		await client.query(
+			`DELETE FROM category_connections
+			 WHERE space_id = $1`,
+			[input.spaceId],
+		);
+
+		await client.query(
+			`DELETE FROM document_categories
+			 WHERE space_id = $1`,
+			[input.spaceId],
+		);
+
+		await client.query(
+			`DELETE FROM spaces
+			 WHERE id = $1`,
+			[input.spaceId],
+		);
+
+		await client.query("COMMIT");
+		return space;
+	} catch (error) {
+		await client.query("ROLLBACK");
+		throw error;
+	} finally {
+		client.release();
+	}
 }
 
 export async function getOrCreateUserSpace(input: {

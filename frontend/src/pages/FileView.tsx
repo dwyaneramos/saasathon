@@ -306,10 +306,7 @@ export default function FileView() {
 				objectUrl = URL.createObjectURL(blob);
 				setFileObjectUrl(objectUrl);
 			} catch (err) {
-				if (
-					err instanceof DOMException &&
-					err.name === "AbortError"
-				) {
+				if (err instanceof DOMException && err.name === "AbortError") {
 					return;
 				}
 
@@ -531,234 +528,246 @@ export default function FileView() {
 		<div className="graph-page relative min-h-[calc(100vh-var(--header-height)-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50">
 			<main className="min-h-[calc(100svh-var(--header-height)-1rem)] bg-muted/40">
 				<header className="border-b border-border bg-background px-6 py-4">
-				<Breadcrumb className="mb-4">
-					<BreadcrumbList>
-						<BreadcrumbItem>
-							<BreadcrumbLink asChild>
-								<Link to="/graph">
-									{activeSpaceName ?? "Space"}
-								</Link>
-							</BreadcrumbLink>
-						</BreadcrumbItem>
-						{categoryName ? (
-							<>
-								<BreadcrumbSeparator />
-								<BreadcrumbItem>
-									<BreadcrumbLink asChild>
-										<Link
-											to={
-												document.categoryId
-													? `/graph?categoryId=${document.categoryId}`
-													: "/graph"
+					<Breadcrumb className="mb-4">
+						<BreadcrumbList>
+							<BreadcrumbItem>
+								<BreadcrumbLink asChild>
+									<Link to="/graph">
+										{activeSpaceName ?? "Space"}
+									</Link>
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+							{categoryName ? (
+								<>
+									<BreadcrumbSeparator />
+									<BreadcrumbItem>
+										<BreadcrumbLink asChild>
+											<Link
+												to={
+													document.categoryId
+														? `/graph?categoryId=${document.categoryId}`
+														: "/graph"
+												}
+											>
+												{categoryName}
+											</Link>
+										</BreadcrumbLink>
+									</BreadcrumbItem>
+								</>
+							) : null}
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbPage>{displayName}</BreadcrumbPage>
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
+					<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+						<div className="min-w-0">
+							<div className="flex min-w-0 items-center gap-2">
+								{isEditingName ? (
+									<>
+										<input
+											value={editableName}
+											onChange={(event) =>
+												setEditableName(
+													event.target.value,
+												)
 											}
+											className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-lg font-semibold text-foreground outline-none ring-0 placeholder:text-muted-foreground focus:border-ring"
+											maxLength={180}
+											disabled={
+												isSavingName || isDeleting
+											}
+											aria-label="File name"
+										/>
+										<button
+											type="button"
+											onClick={handleSaveName}
+											disabled={
+												isSavingName || isDeleting
+											}
+											className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Save file name"
 										>
-											{categoryName}
-										</Link>
-									</BreadcrumbLink>
-								</BreadcrumbItem>
-							</>
-						) : null}
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbPage>{displayName}</BreadcrumbPage>
-						</BreadcrumbItem>
-					</BreadcrumbList>
-				</Breadcrumb>
-				<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-					<div className="min-w-0">
-						<div className="flex min-w-0 items-center gap-2">
-							{isEditingName ? (
-								<>
-									<input
-										value={editableName}
-										onChange={(event) =>
-											setEditableName(event.target.value)
-										}
-										className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-lg font-semibold text-foreground outline-none ring-0 placeholder:text-muted-foreground focus:border-ring"
-										maxLength={180}
-										disabled={isSavingName || isDeleting}
-										aria-label="File name"
-									/>
-									<button
-										type="button"
-										onClick={handleSaveName}
-										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Save file name"
-									>
-										<Save className="size-4" />
-									</button>
-									<button
-										type="button"
-										onClick={() => {
-											setEditableName(displayName);
-											setIsEditingName(false);
-											setActionError(null);
-										}}
-										disabled={isSavingName || isDeleting}
-										className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Cancel file name edit"
-									>
-										<X className="size-4" />
-									</button>
-								</>
-							) : (
-								<>
-									<h1 className="truncate text-lg font-semibold text-foreground">
-										{displayName}
-									</h1>
-									<button
-										type="button"
-										onClick={() => {
-											setEditableName(displayName);
-											setIsEditingName(true);
-											setActionError(null);
-										}}
-										disabled={isDeleting}
-										className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label="Edit file name"
-									>
-										<Edit3 className="size-4" />
-									</button>
-								</>
-							)}
-						</div>
-						<p className="mt-1 text-xs text-muted-foreground">
-							{document.mimeType} ·{" "}
-							{formatFileSize(document.fileSize)}
-						</p>
-						{actionError ? (
-							<p className="mt-2 text-xs text-destructive">
-								{actionError}
-							</p>
-						) : null}
-					</div>
-					<div className="flex shrink-0 gap-2">
-						<button
-							type="button"
-							onClick={() => {
-								setActionError(null);
-								setIsDeleteModalOpen(true);
-							}}
-							disabled={isSavingName || isDeleting}
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-destructive/30 bg-background px-3 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
-						>
-							<Trash2 className="size-4" />
-							{isDeleting ? "Deleting..." : "Delete"}
-						</button>
-						<a
-							href={fileObjectUrl ?? undefined}
-							target="_blank"
-							rel="noreferrer"
-							aria-disabled={!fileObjectUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-60"
-						>
-							<ExternalLink className="size-4" />
-							Open
-						</a>
-						<a
-							href={fileObjectUrl ?? undefined}
-							download={displayName}
-							aria-disabled={!fileObjectUrl}
-							className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover) aria-disabled:pointer-events-none aria-disabled:opacity-60"
-						>
-							<Download className="size-4" />
-							Download
-						</a>
-					</div>
-				</div>
-				{fileSummary ? (
-					<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-						<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-							Summary
-						</p>
-						<p className="mt-1 text-sm leading-6 text-zinc-700">
-							{fileSummary}
-						</p>
-					</div>
-				) : null}
-				</header>
-
-			<section className="min-h-[480px] flex-1 p-4 md:p-6">
-				{canPreview ? (
-					isFileLoading || !fileObjectUrl ? (
-						<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
-							Loading preview...
-						</div>
-					) : (
-						<FilePreview
-							document={document}
-							fileUrl={fileObjectUrl}
-							displayName={displayName}
-						/>
-					)
-				) : (
-					<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
-						<FileText className="size-12 text-muted-foreground" />
-						<h2 className="mt-4 text-base font-semibold">
-							Preview unavailable
-						</h2>
-						<p className="mt-2 max-w-md text-sm text-muted-foreground">
-							This file type cannot be previewed inline. Open it
-							in a new tab or download it to view.
-						</p>
-					</div>
-				)}
-			</section>
-
-			{isDeleteModalOpen ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
-					<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
-						<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
-							<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-red-600 ring-1 ring-red-200">
-								<Trash2 className="size-5" />
-							</span>
-							<div className="min-w-0">
-								<h2 className="text-lg font-semibold text-foreground">
-									Delete file?
-								</h2>
-								<p className="mt-1 text-sm leading-6 text-muted-foreground">
-									This deletes{" "}
-									<span className="font-medium text-foreground">
-										{displayName}
-									</span>{" "}
-									from this space. This action cannot be
-									undone.
-								</p>
+											<Save className="size-4" />
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												setEditableName(displayName);
+												setIsEditingName(false);
+												setActionError(null);
+											}}
+											disabled={
+												isSavingName || isDeleting
+											}
+											className="inline-flex size-9 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Cancel file name edit"
+										>
+											<X className="size-4" />
+										</button>
+									</>
+								) : (
+									<>
+										<h1 className="truncate text-lg font-semibold text-foreground">
+											{displayName}
+										</h1>
+										<button
+											type="button"
+											onClick={() => {
+												setEditableName(displayName);
+												setIsEditingName(true);
+												setActionError(null);
+											}}
+											disabled={isDeleting}
+											className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+											aria-label="Edit file name"
+										>
+											<Edit3 className="size-4" />
+										</button>
+									</>
+								)}
 							</div>
-						</div>
-
-						<div className="px-6 py-5">
+							<p className="mt-1 text-xs text-muted-foreground">
+								{document.mimeType} ·{" "}
+								{formatFileSize(document.fileSize)}
+							</p>
 							{actionError ? (
-								<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+								<p className="mt-2 text-xs text-destructive">
 									{actionError}
 								</p>
 							) : null}
-							<div className="flex justify-end gap-2 border-t border-border pt-4">
-								<Button
-									type="button"
-									variant="outline"
-									size="lg"
-									className="min-w-24"
-									onClick={() => setIsDeleteModalOpen(false)}
-									disabled={isDeleting}
-								>
-									Cancel
-								</Button>
-								<Button
-									type="button"
-									variant="destructive"
-									size="lg"
-									className="min-w-32"
-									onClick={handleDelete}
-									disabled={isDeleting}
-								>
-									{isDeleting ? "Deleting..." : "Delete"}
-								</Button>
+						</div>
+						<div className="flex shrink-0 gap-2">
+							<Button
+								type="button"
+								variant="destructive"
+								size="lg"
+								onClick={() => {
+									setActionError(null);
+									setIsDeleteModalOpen(true);
+								}}
+								disabled={isSavingName || isDeleting}
+							>
+								<Trash2 className="size-4" />
+								{isDeleting ? "Deleting..." : "Delete"}
+							</Button>
+							<a
+								href={fileObjectUrl ?? undefined}
+								target="_blank"
+								rel="noreferrer"
+								aria-disabled={!fileObjectUrl}
+								className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-60"
+							>
+								<ExternalLink className="size-4" />
+								Open
+							</a>
+							<a
+								href={fileObjectUrl ?? undefined}
+								download={displayName}
+								aria-disabled={!fileObjectUrl}
+								className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium bg-(--color-accent) text-foreground hover:bg-(--color-accent-hover) aria-disabled:pointer-events-none aria-disabled:opacity-60"
+							>
+								<Download className="size-4" />
+								Download
+							</a>
+						</div>
+					</div>
+					{fileSummary ? (
+						<div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+							<p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+								Summary
+							</p>
+							<p className="mt-1 text-sm leading-6 text-zinc-700">
+								{fileSummary}
+							</p>
+						</div>
+					) : null}
+				</header>
+
+				<section className="min-h-[480px] flex-1 p-4 md:p-6">
+					{canPreview ? (
+						isFileLoading || !fileObjectUrl ? (
+							<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
+								Loading preview...
+							</div>
+						) : (
+							<FilePreview
+								document={document}
+								fileUrl={fileObjectUrl}
+								displayName={displayName}
+							/>
+						)
+					) : (
+						<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
+							<FileText className="size-12 text-muted-foreground" />
+							<h2 className="mt-4 text-base font-semibold">
+								Preview unavailable
+							</h2>
+							<p className="mt-2 max-w-md text-sm text-muted-foreground">
+								This file type cannot be previewed inline. Open
+								it in a new tab or download it to view.
+							</p>
+						</div>
+					)}
+				</section>
+
+				{isDeleteModalOpen ? (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
+						<div className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+							<div className="flex items-start gap-3 border-b border-border bg-muted/40 px-6 py-5">
+								<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-red-600 ring-1 ring-red-200">
+									<Trash2 className="size-5" />
+								</span>
+								<div className="min-w-0">
+									<h2 className="text-lg font-semibold text-foreground">
+										Delete file?
+									</h2>
+									<p className="mt-1 text-sm leading-6 text-muted-foreground">
+										This deletes{" "}
+										<span className="font-medium text-foreground">
+											{displayName}
+										</span>{" "}
+										from this space. This action cannot be
+										undone.
+									</p>
+								</div>
+							</div>
+
+							<div className="px-6 py-5">
+								{actionError ? (
+									<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-red-100">
+										{actionError}
+									</p>
+								) : null}
+								<div className="flex justify-end gap-2 pt-4">
+									<Button
+										type="button"
+										variant="outline"
+										size="lg"
+										className="min-w-24"
+										onClick={() =>
+											setIsDeleteModalOpen(false)
+										}
+										disabled={isDeleting}
+									>
+										Cancel
+									</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="lg"
+										className="min-w-32"
+										disabled={isSavingName || isDeleting}
+										onClick={handleDelete}
+									>
+										<Trash2 className="size-4" />
+										{isDeleting ? "Deleting..." : "Delete"}
+									</Button>
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
 				) : null}
 			</main>
 		</div>

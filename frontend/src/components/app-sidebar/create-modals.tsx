@@ -556,6 +556,7 @@ export function DeleteSpaceModal({
 							onClick={onDelete}
 							disabled={isDeletingSpace}
 						>
+							<Trash2 className="size-4" />
 							{isDeletingSpace ? "Deleting..." : "Delete"}
 						</Button>
 					</div>

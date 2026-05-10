@@ -65,11 +65,7 @@ export const NavbarContent = () => {
 								<LogIn size={16} strokeWidth={2.25} />
 								Log in
 							</Link>
-							<Button
-								asChild
-								variant="accent"
-								size="lg"
-							>
+							<Button asChild variant="accent" size="lg">
 								<Link to="/register">
 									<UserPlus size={16} strokeWidth={2.25} />
 									Sign up
