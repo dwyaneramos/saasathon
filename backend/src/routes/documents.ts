@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Router, type Request, type Response } from "express";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import multer from "multer";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -94,13 +94,13 @@ function createPerUserRateLimiter({
 		limit: maxRequests,
 		standardHeaders: true,
 		legacyHeaders: false,
-		message: { error: "Too many requests. Please try again in a minute." },
-		keyGenerator: (req) => {
-			const authReq = req as AuthRequest;
-			return `${authReq.userId ?? "anonymous"}:${req.ip}:${req.path}`;
-		},
-	});
-}
+			message: { error: "Too many requests. Please try again in a minute." },
+			keyGenerator: (req) => {
+				const authReq = req as AuthRequest;
+				return `${authReq.userId ?? "anonymous"}:${ipKeyGenerator(req.ip ?? "")}:${req.path}`;
+			},
+		});
+	}
 
 export const uploadPdfMiddleware = multer({
 	storage: multer.memoryStorage(),
