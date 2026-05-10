@@ -24,6 +24,13 @@ A project for the 2026 Lumin SaaSathon.
 
 Small businesses waste hours managing documents that should already be searchable, organized, and actionable. Kibi gives small teams a simple workspace to upload documents, automatically classify them, and retrieve what they need without digging through folders or email threads. Instead of manually managing paperwork, small businesses can rely on AI to structure and connect their information for them.
 
+## Video Demo
+
+
+https://github.com/user-attachments/assets/fa172896-0c88-4727-93d5-a2bdfb39e831
+
+
+
 <!-- GETTING STARTED -->
 
 ## Getting Started
@@ -87,7 +94,7 @@ _Below are instructions for how you can clone and run a development build of the
 Martyn Gascoigne <br>
 John Gascoigne <br>
 Bogdans Teplovs <br>
-Dwayne Ramos <br>
+Dwyane Ramos <br>
 James Taylor <br>
 Max Moir - mmo199@uclive.ac.nz - maxwmoir@gmail.com <br>
 
