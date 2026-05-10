@@ -20,8 +20,9 @@ https://kibi.page
 <!-- ABOUT THE PROJECT -->
 
 ## About The Project
+A project for the 2026 Lumin SaaSathon.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Small businesses waste hours managing documents that should already be searchable, organized, and actionable. Kibi gives small teams a simple workspace to upload documents, automatically classify them, and retrieve what they need without digging through folders or email threads. Instead of manually managing paperwork, small businesses can rely on AI to structure and connect their information for them.
 
 <!-- GETTING STARTED -->
 
