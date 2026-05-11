@@ -3,10 +3,10 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <h3 align="center">Kibi</h3>
+  <h1 align="center">Kibi</h1>
 
   <p align="center">
-    A project for the SaaSathon
+    A project for the 2026 Lumin SaaSathon
   </p>
 </div>
 
@@ -14,14 +14,12 @@
   <img width="1920" height="872" alt="image" src="https://github.com/user-attachments/assets/a07d0c6c-0df7-4aa4-a8f8-e485749d2d5a" />
 </p>
 
-<h4>Live server</h4>
+<h4>Deployed server</h4>
 https://kibi.page
 
 <!-- ABOUT THE PROJECT -->
 
 ## About The Project
-A project for the 2026 Lumin SaaSathon.
-
 Small businesses waste hours managing documents that should already be searchable, organized, and actionable. Kibi gives small teams a simple workspace to upload documents, automatically classify them, and retrieve what they need without digging through folders or email threads. Instead of manually managing paperwork, small businesses can rely on AI to structure and connect their information for them.
 
 ## Video Demo
@@ -72,12 +70,12 @@ _Below are instructions for how you can clone and run a development build of the
 <!-- USAGE EXAMPLES -->
 
 ## AI Features
+- Automatically categorize uploaded files instantly
+- Group similar categories and map relationships between different categories and items.
+- Context-based search, supporting searching through images and file content.
+- Interactive context-based chatbot with full awareness of the content in a user's space.
 
-- Automatically categorize files
-
-- Group similar categories, map categorical relationships
-
-- Interactive context-based chatbot 
+These features combine to provide a comprehensive AI-powered file storage workspace that saves you time and money.
 
 ## Tech Stack
 - React
@@ -91,7 +89,7 @@ _Below are instructions for how you can clone and run a development build of the
 
 ## Contact
 
-Martyn Gascoigne <br>
+Martyn Gascoigne - martyngasc@gmail.com <br>
 John Gascoigne <br>
 Bogdans Teplovs <br>
 Dwyane Ramos <br>
