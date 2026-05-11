@@ -29,9 +29,17 @@ const uploadDir = path.resolve(__dirname, "../../upload");
 const router = express.Router({ mergeParams: true });
 
 const MAX_FILES = 20;
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 const allowedMimeTypes = new Set([
 	"application/pdf",
+	"application/json",
+	"application/msword",
+	"application/octet-stream",
+	"application/rtf",
+	"application/vnd.ms-excel",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"application/xml",
 	"image/jpeg",
 	"image/png",
 	"image/gif",
@@ -39,6 +47,78 @@ const allowedMimeTypes = new Set([
 	"image/svg+xml",
 	"image/bmp",
 	"image/tiff",
+	"text/csv",
+	"text/css",
+	"text/html",
+	"text/markdown",
+	"text/plain",
+	"text/tab-separated-values",
+	"text/xml",
+]);
+
+const allowedFileExtensions = new Set([
+	"bash",
+	"bmp",
+	"c",
+	"cc",
+	"cpp",
+	"cs",
+	"css",
+	"csv",
+	"doc",
+	"docx",
+	"gif",
+	"go",
+	"h",
+	"heic",
+	"heif",
+	"hpp",
+	"html",
+	"java",
+	"jpeg",
+	"jpg",
+	"js",
+	"jsx",
+	"json",
+	"kt",
+	"log",
+	"lua",
+	"md",
+	"mdx",
+	"mov",
+	"mp3",
+	"mp4",
+	"m4a",
+	"odt",
+	"ogg",
+	"pdf",
+	"php",
+	"png",
+	"py",
+	"rb",
+	"rs",
+	"rtf",
+	"scss",
+	"sh",
+	"sql",
+	"svg",
+	"swift",
+	"tif",
+	"tiff",
+	"toml",
+	"ts",
+	"tsx",
+	"tsv",
+	"txt",
+	"vue",
+	"wav",
+	"webm",
+	"webp",
+	"xls",
+	"xlsx",
+	"xml",
+	"yaml",
+	"yml",
 ]);
 
 type UploadRequest = Request & {
@@ -64,12 +144,19 @@ const upload = multer({
 		files: MAX_FILES,
 	},
 	fileFilter: (_req, file, cb) => {
-		if (allowedMimeTypes.has(file.mimetype)) {
+		const extension = path.extname(file.originalname).slice(1).toLowerCase();
+		if (
+			allowedMimeTypes.has(file.mimetype) ||
+			file.mimetype.startsWith("text/") ||
+			file.mimetype.startsWith("audio/") ||
+			file.mimetype.startsWith("video/") ||
+			allowedFileExtensions.has(extension)
+		) {
 			cb(null, true);
 			return;
 		}
 
-		cb(new Error("Only PDF and image files are allowed."));
+		cb(new Error("This file type is not supported."));
 	},
 });
 
@@ -368,7 +455,7 @@ router.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
 		return;
 	}
 
-	if (err.message === "Only PDF and image files are allowed.") {
+	if (err.message === "This file type is not supported.") {
 		res.status(400).json({ error: err.message });
 		return;
 	}

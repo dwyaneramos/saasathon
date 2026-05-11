@@ -15,6 +15,8 @@ import {
 } from "../validation/documents.js";
 import {
 	askDashboardAssistant,
+	askFileAssistant,
+	analyzeGenericFile,
 	analyzeImage,
 	analyzePdf,
 	assignDocumentCategory,
@@ -35,6 +37,7 @@ import {
 	toPublicDocument,
 	toPublicDocumentSearchResult,
 	updateCategory,
+	updateDocumentStoredContent,
 	type DownloadableDocumentRow,
 } from "../services/documentAnalyzer.js";
 import { userCanAccessSpace } from "../services/spaceService.js";
@@ -50,6 +53,7 @@ const archiveDownloadRateLimit = createPerUserRateLimiter({
 });
 const MIN_ARCHIVE_NAME_TOKEN_LENGTH = 2;
 const MAX_ARCHIVE_NAME_LENGTH = 72;
+const MAX_EDITABLE_FILE_BYTES = 2 * 1024 * 1024;
 const ARCHIVE_NAME_STOPWORDS = new Set([
 	"a",
 	"all",
@@ -132,6 +136,140 @@ export const uploadImageMiddleware = multer({
 			return;
 		}
 		cb(null, true);
+	},
+});
+
+const genericFileMimeTypes = new Set([
+	"application/json",
+	"application/msword",
+	"application/octet-stream",
+	"application/rtf",
+	"application/vnd.ms-excel",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"application/xml",
+	"text/csv",
+	"text/css",
+	"text/html",
+	"text/markdown",
+	"text/plain",
+	"text/tab-separated-values",
+	"text/xml",
+]);
+
+const genericFileExtensions = new Set([
+	"bash",
+	"c",
+	"cc",
+	"cpp",
+	"cs",
+	"css",
+	"csv",
+	"doc",
+	"docx",
+	"go",
+	"h",
+	"hpp",
+	"html",
+	"java",
+	"js",
+	"jsx",
+	"json",
+	"kt",
+	"log",
+	"lua",
+	"md",
+	"mdx",
+	"m4a",
+	"mov",
+	"mp3",
+	"mp4",
+	"odt",
+	"ogg",
+	"php",
+	"py",
+	"rb",
+	"rs",
+	"rtf",
+	"scss",
+	"sh",
+	"sql",
+	"swift",
+	"toml",
+	"ts",
+	"tsx",
+	"tsv",
+	"txt",
+	"vue",
+	"wav",
+	"webm",
+	"xls",
+	"xlsx",
+	"xml",
+	"yaml",
+	"yml",
+]);
+
+const editableTextFileExtensions = new Set([
+	"bash",
+	"c",
+	"cc",
+	"cpp",
+	"cs",
+	"css",
+	"csv",
+	"go",
+	"h",
+	"hpp",
+	"html",
+	"java",
+	"js",
+	"jsx",
+	"json",
+	"kt",
+	"log",
+	"lua",
+	"md",
+	"mdx",
+	"php",
+	"py",
+	"rb",
+	"rs",
+	"scss",
+	"sh",
+	"sql",
+	"swift",
+	"toml",
+	"ts",
+	"tsx",
+	"tsv",
+	"txt",
+	"vue",
+	"xml",
+	"yaml",
+	"yml",
+]);
+
+export const uploadGenericFileMiddleware = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 25 * 1024 * 1024,
+		files: 1,
+	},
+	fileFilter: (_req, file, cb) => {
+		const extension = path.extname(file.originalname).slice(1).toLowerCase();
+		if (
+			genericFileMimeTypes.has(file.mimetype) ||
+			file.mimetype.startsWith("text/") ||
+			file.mimetype.startsWith("audio/") ||
+			file.mimetype.startsWith("video/") ||
+			genericFileExtensions.has(extension)
+		) {
+			cb(null, true);
+			return;
+		}
+
+		cb(new Error("This file type is not supported for analysis"));
 	},
 });
 
@@ -272,6 +410,35 @@ router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) =
 	res.json(response);
 });
 
+router.post(
+	"/assistant/file/:documentId",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
+
+		const document = await getManageableDocument(req, documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		const prompt =
+			typeof req.body?.prompt === "string" ? req.body.prompt : "";
+		const response = await askFileAssistant({
+			prompt,
+			documentId,
+		});
+
+		res.json(response);
+	},
+);
+
 router.get(
 	"/categories/:categoryId/download",
 	requireAuth,
@@ -406,6 +573,67 @@ router.delete("/documents/:documentId", requireAuth, async (req, res) => {
 
 	res.json({ success: true });
 });
+
+router.patch(
+	"/documents/:documentId/file",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
+
+		const document = await getManageableDocument(req, documentId);
+		if (!document) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		if (!canEditStoredDocument(document)) {
+			res.status(400).json({
+				error: "This file type cannot be edited in the browser.",
+			});
+			return;
+		}
+
+		const content = req.body?.content;
+		if (typeof content !== "string") {
+			res.status(400).json({ error: "content must be a string" });
+			return;
+		}
+
+		if (Buffer.byteLength(content) > MAX_EDITABLE_FILE_BYTES) {
+			res.status(413).json({
+				error: "This file is too large to edit in the browser.",
+			});
+			return;
+		}
+
+		if (!document.filepath) {
+			res.status(404).json({ error: "Stored file not found" });
+			return;
+		}
+
+		const filePath = resolveStoredFilePath(document.filepath);
+		if (!filePath) {
+			res.status(400).json({ error: "Invalid stored file path" });
+			return;
+		}
+
+		await fs.promises.writeFile(filePath, content, "utf8");
+		const updatedDocument = await updateDocumentStoredContent(
+			documentId,
+			content,
+		);
+
+		res.json({
+			document: toPublicDocument(updatedDocument ?? document),
+		});
+	},
+);
 
 router.get(
 	"/documents/:documentId/file",
@@ -692,6 +920,57 @@ export async function analyzeImageUploadHandler(req: AuthRequest, res: Response)
 	});
 }
 
+export async function analyzeGenericFileUploadHandler(
+	req: AuthRequest,
+	res: Response,
+) {
+	if (!req.file) {
+		res.status(400).json({ error: "File is required" });
+		return;
+	}
+
+	const documentId = getDocumentId(req);
+	if (documentId && !(await getManageableDocument(req, documentId))) {
+		res.status(404).json({ error: "Document not found" });
+		return;
+	}
+
+	const minConfidence =
+		typeof req.body?.minConfidence === "string"
+			? Number(req.body.minConfidence)
+			: undefined;
+	const analysis = await analyzeGenericFile(
+		req.file,
+		Number.isFinite(minConfidence) ? minConfidence : undefined,
+		documentId,
+	);
+	const selectedCategory = await applyRequestedCategory(req, analysis.documentId);
+	const responseCategory = selectedCategory ?? analysis.match.category;
+
+	res.status(selectedCategory || !analysis.match.needsNewCategory ? 200 : 202).json({
+		document: {
+			id: analysis.documentId,
+			fileName: analysis.fileName,
+			sourceType: analysis.sourceType,
+			pageCount: analysis.pageCount,
+			summary: analysis.summary,
+			textPreview: analysis.textPreview,
+			model: analysis.model,
+		},
+		category: responseCategory ? toPublicCategory(responseCategory) : null,
+		confidence: analysis.match.confidence,
+		matchedKeywords: analysis.match.matchedKeywords,
+		needsNewCategory: selectedCategory ? false : analysis.match.needsNewCategory,
+		suggestedCategoryName: selectedCategory
+			? selectedCategory.name
+			: analysis.match.suggestedCategoryName,
+		suggestedCategoryDescription: selectedCategory
+			? selectedCategory.description
+			: analysis.match.suggestedCategoryDescription,
+		prompt: selectedCategory ? null : analysis.match.prompt,
+	});
+}
+
 router.post(
 	"/documents/analyze",
 	requireAuth,
@@ -704,6 +983,13 @@ router.post(
 	requireAuth,
 	uploadImageMiddleware.single("file"),
 	analyzeImageUploadHandler,
+);
+
+router.post(
+	"/files/analyze",
+	requireAuth,
+	uploadGenericFileMiddleware.single("file"),
+	analyzeGenericFileUploadHandler,
 );
 
 export default router;
@@ -1022,6 +1308,25 @@ function resolveStoredFilePath(filepath: string) {
 	}
 
 	return filePath;
+}
+
+function canEditStoredDocument(document: {
+	filename: string;
+	file_name: string | null;
+	original_file_name: string | null;
+	mime_type: string;
+}) {
+	const displayName =
+		document.original_file_name ?? document.file_name ?? document.filename;
+	const extension = path.extname(displayName).slice(1).toLowerCase();
+	const mimeType = document.mime_type.toLowerCase();
+
+	return (
+		mimeType.startsWith("text/") ||
+		mimeType.includes("json") ||
+		mimeType.includes("xml") ||
+		editableTextFileExtensions.has(extension)
+	);
 }
 
 function sanitizeHeaderFilename(filename: string) {

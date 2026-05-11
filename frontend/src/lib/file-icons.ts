@@ -32,7 +32,7 @@ export function fileIconFor(file: FileIconInput) {
 	if (
 		mimeType.includes("spreadsheet") ||
 		mimeType.includes("excel") ||
-		["csv", "tsv", "xls", "xlsx"].includes(extension)
+		["csv", "numbers", "ods", "tsv", "xls", "xlsx"].includes(extension)
 	) {
 		return FileSpreadsheet;
 	}
@@ -46,9 +46,39 @@ export function fileIconFor(file: FileIconInput) {
 	if (
 		mimeType.includes("json") ||
 		mimeType.includes("xml") ||
-		["js", "jsx", "ts", "tsx", "json", "html", "css", "md", "xml"].includes(
-			extension,
-		)
+		[
+			"bash",
+			"c",
+			"cc",
+			"cpp",
+			"cs",
+			"css",
+			"go",
+			"h",
+			"hpp",
+			"html",
+			"java",
+			"js",
+			"jsx",
+			"json",
+			"kt",
+			"lua",
+			"php",
+			"py",
+			"rb",
+			"rs",
+			"scss",
+			"sh",
+			"sql",
+			"swift",
+			"toml",
+			"ts",
+			"tsx",
+			"vue",
+			"xml",
+			"yaml",
+			"yml",
+		].includes(extension)
 	) {
 		return FileCode;
 	}

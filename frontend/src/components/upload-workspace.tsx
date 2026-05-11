@@ -21,7 +21,6 @@ import type {
 } from "@/components/upload-workspace/types";
 import type {
 	FileAnalysisResult,
-	MultipleUploadResponse,
 	UploadedFile,
 } from "@/types/upload";
 
@@ -73,6 +72,31 @@ type CategoryUpsertResponse = {
 	error?: string;
 };
 
+type SingleUploadResponse = {
+	message?: string;
+	file?: UploadedFile;
+	error?: string;
+};
+
+type UploadProgressStatus =
+	| "Queued"
+	| "Uploading"
+	| "Analysing"
+	| "Waiting"
+	| "Finished"
+	| "Failed";
+
+type UploadProgressItem = {
+	id: string;
+	fileName: string;
+	fileSize: number;
+	mimeType: string;
+	status: UploadProgressStatus;
+	progress: number;
+	detail: string;
+	documentId?: number;
+};
+
 type UploadWorkspaceProps = {
 	detailMode?: "full" | "compact";
 	showHeading?: boolean;
@@ -85,6 +109,11 @@ type UploadWorkspaceProps = {
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
 const MAX_UPLOAD_FILES = 20;
+const PARALLEL_UPLOAD_LIMIT = 3;
+const supportedUploadAccept =
+	".pdf,image/*,text/*,audio/*,video/*,.txt,.md,.mdx,.csv,.tsv,.xls,.xlsx,.doc,.docx,.rtf,.odt,.js,.jsx,.ts,.tsx,.css,.html,.json,.xml,.py,.c,.cc,.cpp,.cs,.java,.rs,.go,.rb,.php,.sh,.bash,.sql,.swift,.kt,.lua,.toml,.yaml,.yml,.scss,.vue,.mp3,.m4a,.wav,.ogg,.mp4,.mov,.webm";
+const supportedUploadDescription =
+	"PDFs, images, text, Word docs, CSV/XLS, code, Markdown, audio, and video.";
 const textareaClassName =
 	"min-h-20 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm";
 
@@ -94,6 +123,114 @@ function formatFileSize(bytes: number) {
 	}
 
 	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function uploadProgressIconFor(status: UploadProgressStatus) {
+	if (status === "Finished") {
+		return <CheckCircle2 className="size-4 text-(--color-accent)" />;
+	}
+
+	if (status === "Failed") {
+		return <X className="size-4 text-red-600" />;
+	}
+
+	if (status === "Waiting") {
+		return <Hourglass className="size-4 text-(--color-accent)" />;
+	}
+
+	if (status === "Queued") {
+		return <Hourglass className="size-4 text-muted-foreground" />;
+	}
+
+	return <LoaderCircle className="size-4 animate-spin text-(--color-accent)" />;
+}
+
+function uploadProgressTone(status: UploadProgressStatus) {
+	if (status === "Failed") return "text-red-600";
+	if (status === "Finished") return "text-foreground";
+	if (status === "Waiting") return "text-foreground";
+	return "text-muted-foreground";
+}
+
+function UploadProgressList({
+	items,
+	limit,
+}: {
+	items: UploadProgressItem[];
+	limit?: number;
+}) {
+	const visibleItems = typeof limit === "number" ? items.slice(0, limit) : items;
+	const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+
+	if (items.length === 0) {
+		return null;
+	}
+
+	return (
+		<div className="space-y-2">
+			{visibleItems.map((item) => {
+				const FileIcon = fileIconFor({
+					name: item.fileName,
+					filename: item.fileName,
+					mimeType: item.mimeType,
+				});
+
+				return (
+					<div
+						key={item.id}
+						className="rounded-lg bg-background px-3 py-2 ring-1 ring-border/80"
+					>
+						<div className="flex items-center gap-3">
+							<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-50 text-muted-foreground">
+								<FileIcon className="size-4" />
+							</span>
+							<div className="min-w-0 flex-1">
+								<div className="flex items-center justify-between gap-3">
+									<p className="truncate text-sm font-medium text-foreground">
+										{item.fileName}
+									</p>
+									<span
+										className={`shrink-0 text-xs font-medium ${uploadProgressTone(
+											item.status,
+										)}`}
+									>
+										{item.status}
+									</span>
+								</div>
+								<p className="mt-0.5 truncate text-xs text-muted-foreground">
+									{item.detail}
+								</p>
+							</div>
+							<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-50">
+								{uploadProgressIconFor(item.status)}
+							</span>
+						</div>
+						<div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+							<div
+								className={
+									item.status === "Failed"
+										? "h-full rounded-full bg-red-500"
+										: "h-full rounded-full bg-(--color-accent) transition-all duration-300"
+								}
+								style={{
+									width: `${Math.max(
+										0,
+										Math.min(item.progress, 100),
+									)}%`,
+								}}
+							/>
+						</div>
+					</div>
+				);
+			})}
+			{hiddenCount > 0 ? (
+				<p className="px-1 text-xs text-muted-foreground">
+					{hiddenCount} more file{hiddenCount === 1 ? "" : "s"} in
+					progress
+				</p>
+			) : null}
+		</div>
+	);
 }
 
 export function UploadWorkspace({
@@ -111,6 +248,9 @@ export function UploadWorkspace({
 	const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 	const [compactAnalysisStatus, setCompactAnalysisStatus] =
 		useState<CompactAnalysisStatus | null>(null);
+	const [uploadProgress, setUploadProgress] = useState<
+		UploadProgressItem[]
+	>([]);
 	const [analysisResults, setAnalysisResults] = useState<
 		FileAnalysisResult[]
 	>([]);
@@ -132,10 +272,6 @@ export function UploadWorkspace({
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const activePromptRef = useRef<HTMLElement | null>(null);
 	const processedIncomingFilesTokenRef = useRef(0);
-	const pendingCategoryConfirmationRef = useRef<{
-		fileName: string;
-		resolve: () => void;
-	} | null>(null);
 
 	const addFiles = (newFiles: File[]) => {
 		if (newFiles.length === 0 || isBusy) {
@@ -162,6 +298,7 @@ export function UploadWorkspace({
 		setSummary("");
 		setUploadedFiles([]);
 		setCompactAnalysisStatus(null);
+		setUploadProgress([]);
 		setAnalysisResults([]);
 		setPendingCompletion(null);
 	};
@@ -233,77 +370,37 @@ export function UploadWorkspace({
 			return;
 		}
 
+		const uploadItems = files.map((file, index) =>
+			createUploadProgressItem(file, index),
+		);
 		setIsBusy(true);
-		setStatus(`Uploading ${files.length} file(s)...`);
+		setStatus(`Uploading ${files.length} file(s) in parallel...`);
 		setAnalysisResults([]);
 		setCompactAnalysisStatus(null);
+		setUploadProgress(uploadItems);
+		setUploadedFiles([]);
+		setSummary("");
 		setPendingCompletion(null);
-		setIsAnalyzing(false);
+		setIsAnalyzing(true);
 
 		try {
-			const body = new FormData();
-			files.forEach((file) => body.append("files", file));
-			if (typeof spaceId === "number") {
-				body.append("spaceId", String(spaceId));
-			}
-			if (selectedCategoryId) {
-				body.append("categoryId", selectedCategoryId);
-			}
-			const res = await fetch(`${apiBaseUrl}/upload/multiple`, {
-				method: "POST",
-				headers: authHeaders(),
-				body,
-			});
-
-			if (!res.ok) {
-				throw new Error(`${res.status} ${res.statusText}`);
-			}
-
-			const payload = (await res.json()) as MultipleUploadResponse;
-			setUploadedFiles(payload.files);
-			notifyFileTreeUpdated(payload.files.map((file) => file.documentId));
-			setSummary(
-				`${payload.message} Total size: ${(payload.totalSize / 1024 / 1024).toFixed(2)} MB`,
-			);
-			setStatus("Upload successful. Analysing files...");
-			setIsAnalyzing(true);
-
 			const knownCategories = await loadKnownCategories();
-			const results: FileAnalysisResult[] = [];
-			const totalCount = files.length;
-
-			for (const [index, file] of files.entries()) {
-				setCompactAnalysisStatus({
-					currentFileName: file.name,
-					currentStatus: "Analysing",
-					remainingCount: totalCount - index,
-					totalCount,
-				});
-
-				const result = await analyzeFile(
+			const results = await runWithConcurrency(
+				files.map((file, index) => ({
 					file,
-					knownCategories,
-					payload.files[index],
-				);
-				results.push(result);
-				setAnalysisResults((prev) => [...prev, result]);
-				setCompactAnalysisStatus({
-					currentFileName: file.name,
-					currentStatus: result.error ? "Failed" : "Finished",
-					remainingCount: Math.max(totalCount - (index + 1), 0),
-					totalCount,
-				});
-
-				if (result.needsNewCategory && !result.error) {
-					await waitForCategoryConfirmation(result.fileName);
-				}
-			}
+					progressId: uploadItems[index].id,
+				})),
+				PARALLEL_UPLOAD_LIMIT,
+				async ({ file, progressId }) =>
+					processUploadFile(file, progressId, knownCategories),
+			);
 
 			const failedCount = results.filter((result) => result.error).length;
+			const documentIds = results.map((result) => result.documentId);
 			setPendingCompletion({
-				documentIds: results.map((result) => result.documentId),
+				documentIds,
 				failedCount,
-				totalCount,
+				totalCount: files.length,
 				lastFileName:
 					results[results.length - 1]?.fileName ??
 					files[files.length - 1]?.name ??
@@ -314,15 +411,186 @@ export function UploadWorkspace({
 			setIsBusy(false);
 			setIsAnalyzing(false);
 			setPendingCompletion(null);
-			setCompactAnalysisStatus((prev) =>
-				prev
-					? {
-							...prev,
-							currentStatus: "Failed",
-						}
-					: null,
+			setUploadProgress((prev) =>
+				prev.map((item) =>
+					item.status === "Finished" ||
+					item.status === "Failed" ||
+					item.status === "Waiting"
+						? item
+						: {
+								...item,
+								status: "Failed",
+								progress: 100,
+								detail: "Upload stopped.",
+							},
+				),
 			);
 		}
+	};
+
+	const processUploadFile = async (
+		file: File,
+		progressId: string,
+		knownCategories: Map<string, CreatedCategory>,
+	): Promise<FileAnalysisResult> => {
+		try {
+			updateUploadProgress(progressId, {
+				status: "Uploading",
+				progress: 15,
+				detail: "Uploading file...",
+			});
+
+			const uploadedFile = await uploadSingleFile(file);
+			setUploadedFiles((prev) => [...prev, uploadedFile]);
+			notifyFileTreeUpdated([uploadedFile.documentId]);
+			updateUploadProgress(progressId, {
+				status: "Analysing",
+				progress: 45,
+				detail: "Upload complete. Analysing content...",
+				documentId: uploadedFile.documentId,
+			});
+
+			const result = await analyzeFile(file, knownCategories, uploadedFile);
+			setAnalysisResults((prev) => [...prev, result]);
+
+			if (result.error) {
+				updateUploadProgress(progressId, {
+					status: "Failed",
+					progress: 100,
+					detail: result.error,
+					documentId: result.documentId,
+				});
+				return result;
+			}
+
+			if (result.needsNewCategory) {
+				updateUploadProgress(progressId, {
+					status: "Waiting",
+					progress: 85,
+					detail: "Waiting for category confirmation.",
+					documentId: result.documentId,
+				});
+				return result;
+			}
+
+			updateUploadProgress(progressId, {
+				status: "Finished",
+				progress: 100,
+				detail: result.categoryStatus ?? "Analysis complete.",
+				documentId: result.documentId,
+			});
+			return result;
+		} catch (err: any) {
+			const result: FileAnalysisResult = {
+				fileName: file.name,
+				categoryName: "Upload failed",
+				summary: "",
+				prompt: null,
+				needsNewCategory: false,
+				categoryInput: "",
+				categoryDescription: "",
+				isCreatingCategory: false,
+				error: err.message ?? "Upload failed",
+			};
+			setAnalysisResults((prev) => [...prev, result]);
+			updateUploadProgress(progressId, {
+				status: "Failed",
+				progress: 100,
+				detail: result.error ?? "Upload failed.",
+			});
+			return result;
+		}
+	};
+
+	const uploadSingleFile = async (file: File) => {
+		const body = new FormData();
+		body.append("file", file);
+		if (typeof spaceId === "number") {
+			body.append("spaceId", String(spaceId));
+		}
+		if (selectedCategoryId) {
+			body.append("categoryId", selectedCategoryId);
+		}
+
+		const res = await fetch(`${apiBaseUrl}/upload`, {
+			method: "POST",
+			headers: authHeaders(),
+			body,
+		});
+		const payload = (await res
+			.json()
+			.catch(() => null)) as SingleUploadResponse | null;
+
+		if (!res.ok) {
+			throw new Error(
+				payload?.error ?? `${res.status} ${res.statusText}`,
+			);
+		}
+
+		if (!payload?.file) {
+			throw new Error("Upload did not return a stored file.");
+		}
+
+		return payload.file;
+	};
+
+	const createUploadProgressItem = (file: File, index: number) => ({
+		id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+		fileName: file.name,
+		fileSize: file.size,
+		mimeType: file.type,
+		status: "Queued" as const,
+		progress: 0,
+		detail: "Waiting for an upload slot.",
+	});
+
+	const updateUploadProgress = (
+		id: string,
+		updates:
+			| Partial<UploadProgressItem>
+			| ((item: UploadProgressItem) => Partial<UploadProgressItem>),
+	) => {
+		setUploadProgress((prev) =>
+			prev.map((item) =>
+				item.id === id
+					? {
+							...item,
+							...(typeof updates === "function"
+								? updates(item)
+								: updates),
+						}
+					: item,
+			),
+		);
+	};
+
+	const runWithConcurrency = async <TItem, TResult>(
+		items: TItem[],
+		limit: number,
+		worker: (item: TItem, index: number) => Promise<TResult>,
+	) => {
+		const results: TResult[] = [];
+		let nextIndex = 0;
+
+		async function runNext() {
+			while (nextIndex < items.length) {
+				const currentIndex = nextIndex;
+				nextIndex += 1;
+				results[currentIndex] = await worker(
+					items[currentIndex],
+					currentIndex,
+				);
+			}
+		}
+
+		await Promise.all(
+			Array.from(
+				{ length: Math.min(limit, items.length) },
+				() => runNext(),
+			),
+		);
+
+		return results;
 	};
 
 	const analyzeFile = async (
@@ -631,13 +899,35 @@ export function UploadWorkspace({
 						: item,
 				),
 			);
-			if (
-				pendingCategoryConfirmationRef.current?.fileName ===
-				result.fileName
-			) {
-				pendingCategoryConfirmationRef.current.resolve();
-				pendingCategoryConfirmationRef.current = null;
-			}
+			setUploadProgress((prev) =>
+				prev.map((item) => {
+					const matchingResult = analysisResults.find(
+						(analysisResult) =>
+							analysisResult.fileName === item.fileName,
+					);
+					if (
+						item.fileName !== result.fileName &&
+						(!matchingResult ||
+							!shouldApplyCreatedCategory(
+								matchingResult,
+								result,
+								name,
+							))
+					) {
+						return item;
+					}
+
+					return {
+						...item,
+						status: "Finished",
+						progress: 100,
+						detail:
+							item.fileName === result.fileName
+								? "Category created and assigned."
+								: `Assigned to ${category.name}.`,
+					};
+				}),
+			);
 		} catch (err: any) {
 			setAnalysisResults((prev) =>
 				prev.map((item) =>
@@ -681,7 +971,7 @@ export function UploadWorkspace({
 		) {
 			return "/images/analyze";
 		}
-		return null;
+		return "/files/analyze";
 	};
 
 	const activeCategoryPromptIndex = analysisResults.findIndex(
@@ -706,22 +996,59 @@ export function UploadWorkspace({
 		detailMode === "compact" &&
 		(Boolean(status) ||
 			Boolean(compactAnalysisStatus) ||
+			uploadProgress.length > 0 ||
 			analysisResults.length > 0);
 	const shouldCollapseCompactSelection =
-		hasCompactSelection && (isBusy || Boolean(compactAnalysisStatus));
+		hasCompactSelection &&
+		(isBusy ||
+			Boolean(compactAnalysisStatus) ||
+			uploadProgress.length > 0);
 	const shouldShowCompactDropzone =
 		detailMode === "compact" && !hasCompactSelection && !hasCompactActivity;
 	const shouldShowAnalysisPlaceholder =
 		detailMode === "compact" && isBusy && analysisResults.length === 0;
-	const compactProgressText = compactAnalysisStatus
-		? compactAnalysisStatus.remainingCount > 0
+	const uploadProgressCounts = uploadProgress.reduce(
+		(counts, item) => {
+			if (item.status === "Finished") counts.finished += 1;
+			if (item.status === "Failed") counts.failed += 1;
+			if (item.status === "Waiting") counts.waiting += 1;
+			if (item.status === "Uploading") counts.uploading += 1;
+			if (item.status === "Analysing") counts.analysing += 1;
+			return counts;
+		},
+		{
+			uploading: 0,
+			analysing: 0,
+			waiting: 0,
+			finished: 0,
+			failed: 0,
+		},
+	);
+	const completedUploadProgressCount =
+		uploadProgressCounts.finished + uploadProgressCounts.failed;
+	const compactProgressText =
+		uploadProgress.length > 0
 			? isWaitingForCategoryInput
-				? "Action needed"
-				: `${compactAnalysisStatus.remainingCount} of ${compactAnalysisStatus.totalCount} left`
-			: compactAnalysisStatus.currentStatus === "Failed"
-				? "Needs attention"
-				: "Complete"
-		: null;
+				? `${uploadProgressCounts.waiting} waiting`
+				: `${completedUploadProgressCount}/${uploadProgress.length} done`
+			: compactAnalysisStatus
+				? compactAnalysisStatus.remainingCount > 0
+					? isWaitingForCategoryInput
+						? "Action needed"
+						: `${compactAnalysisStatus.remainingCount} of ${compactAnalysisStatus.totalCount} left`
+					: compactAnalysisStatus.currentStatus === "Failed"
+						? "Needs attention"
+						: "Complete"
+				: null;
+	const activeUploadProgressItem =
+		uploadProgress.find(
+			(item) =>
+				item.status === "Uploading" || item.status === "Analysing",
+		) ??
+		uploadProgress.find((item) => item.status === "Waiting") ??
+		uploadProgress.find((item) => item.status === "Queued") ??
+		uploadProgress[uploadProgress.length - 1] ??
+		null;
 	const selectedFiles = files.map((file) => ({
 		file,
 		Icon: fileIconFor({
@@ -741,11 +1068,6 @@ export function UploadWorkspace({
 		/>
 	);
 
-	const waitForCategoryConfirmation = (fileName: string) =>
-		new Promise<void>((resolve) => {
-			pendingCategoryConfirmationRef.current = { fileName, resolve };
-		});
-
 	useEffect(() => {
 		if (!pendingCompletion) {
 			return;
@@ -755,13 +1077,14 @@ export function UploadWorkspace({
 			(result) => result.needsNewCategory && !result.error,
 		);
 
-		if (
-			hasPendingCategoryActions ||
-			pendingCategoryConfirmationRef.current
-		) {
+		if (hasPendingCategoryActions) {
 			return;
 		}
 
+		const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+		setSummary(
+			`Processed ${pendingCompletion.totalCount} file(s). Total size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+		);
 		setStatus(
 			pendingCompletion.failedCount > 0
 				? `Upload complete. Analysis failed for ${pendingCompletion.failedCount} file(s).`
@@ -782,7 +1105,7 @@ export function UploadWorkspace({
 		setFiles([]);
 		setIsAnalyzing(false);
 		setPendingCompletion(null);
-	}, [analysisResults, pendingCompletion]);
+	}, [analysisResults, files, pendingCompletion]);
 
 	useEffect(() => {
 		onBusyChange?.(isBusy);
@@ -846,7 +1169,7 @@ export function UploadWorkspace({
 							multiple
 							className="hidden"
 							onChange={onFileChange}
-							accept=".pdf,image/*"
+							accept={supportedUploadAccept}
 							disabled={isBusy}
 						/>
 						{shouldShowCompactDropzone ? (
@@ -862,8 +1185,8 @@ export function UploadWorkspace({
 									Drop files here
 								</p>
 								<p className="mt-1 text-sm text-muted-foreground">
-									PDF, PNG, JPG, GIF, WebP, SVG, BMP, or TIFF.
-									Up to {MAX_UPLOAD_FILES} files at once.
+									{supportedUploadDescription} Up to{" "}
+									{MAX_UPLOAD_FILES} files at once.
 								</p>
 								<Button
 									type="button"
@@ -919,14 +1242,10 @@ export function UploadWorkspace({
 								</div>
 								{shouldCollapseCompactSelection ? (
 									<div className="px-4 pb-4">
-										<div className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-muted-foreground">
-											<LoaderCircle className="size-4 animate-spin text-(--color-accent)" />
-											<span className="min-w-0 truncate">
-												{compactAnalysisStatus?.currentFileName ??
-													files[0]?.name ??
-													"Preparing files"}
-											</span>
-										</div>
+										<UploadProgressList
+											items={uploadProgress}
+											limit={3}
+										/>
 									</div>
 								) : (
 									<>
@@ -992,7 +1311,9 @@ export function UploadWorkspace({
 							</section>
 						) : null}
 
-						{(status || compactAnalysisStatus) && (
+						{(status ||
+							compactAnalysisStatus ||
+							uploadProgress.length > 0) && (
 							<section
 								className={
 									isBusy && !isWaitingForCategoryInput
@@ -1016,7 +1337,7 @@ export function UploadWorkspace({
 												{isWaitingForCategoryInput
 													? "Waiting for your input"
 													: isBusy
-														? "Analysing files"
+														? "Uploading and analysing"
 														: "Upload status"}
 											</p>
 											{compactProgressText ? (
@@ -1025,11 +1346,15 @@ export function UploadWorkspace({
 												</span>
 											) : null}
 										</div>
-										{compactAnalysisStatus ? (
+										{activeUploadProgressItem ? (
 											<p className="mt-1 truncate text-sm text-muted-foreground">
 												{isWaitingForCategoryInput
 													? activeCategoryPrompt?.fileName
-													: compactAnalysisStatus.currentFileName}
+													: activeUploadProgressItem.fileName}
+											</p>
+										) : compactAnalysisStatus ? (
+											<p className="mt-1 truncate text-sm text-muted-foreground">
+												{compactAnalysisStatus.currentFileName}
 											</p>
 										) : null}
 										{isWaitingForCategoryInput ? (
@@ -1044,6 +1369,13 @@ export function UploadWorkspace({
 										) : null}
 									</div>
 								</div>
+								{uploadProgress.length > 0 ? (
+									<div className="relative z-10 mt-3">
+										<UploadProgressList
+											items={uploadProgress}
+										/>
+									</div>
+								) : null}
 							</section>
 						)}
 
@@ -1067,7 +1399,8 @@ export function UploadWorkspace({
 												Parsing documents
 											</p>
 											<p className="mt-1 truncate text-sm text-muted-foreground">
-												{compactAnalysisStatus?.currentFileName ??
+												{activeUploadProgressItem?.fileName ??
+													compactAnalysisStatus?.currentFileName ??
 													"Waiting for the first result"}
 											</p>
 										</div>
@@ -1097,9 +1430,8 @@ export function UploadWorkspace({
 								: "Drag and drop files here, or click to browse"}
 						</p>
 						<small className="text-sm text-muted-foreground mt-1">
-							Supported: PDF and image files (JPEG, PNG, GIF,
-							WebP, SVG, BMP, TIFF). Up to {MAX_UPLOAD_FILES}{" "}
-							files per upload.
+							Supported: {supportedUploadDescription} Up to{" "}
+							{MAX_UPLOAD_FILES} files per upload.
 						</small>
 						<input
 							ref={inputRef}
@@ -1107,7 +1439,7 @@ export function UploadWorkspace({
 							multiple
 							className="hidden"
 							onChange={onFileChange}
-							accept=".pdf,image/*"
+							accept={supportedUploadAccept}
 						/>
 					</div>
 				)}
@@ -1164,6 +1496,21 @@ export function UploadWorkspace({
 							{status}
 						</small>
 					</div>
+				)}
+
+				{detailMode !== "compact" && uploadProgress.length > 0 && (
+					<section className="mt-4 rounded-xl bg-zinc-50 p-4 ring-1 ring-border/80">
+						<div className="mb-3 flex items-center justify-between gap-3">
+							<h2 className="text-sm font-medium text-foreground">
+								Upload progress
+							</h2>
+							<span className="text-xs text-muted-foreground">
+								{completedUploadProgressCount}/
+								{uploadProgress.length} done
+							</span>
+						</div>
+						<UploadProgressList items={uploadProgress} />
+					</section>
 				)}
 
 				{detailMode === "full" &&

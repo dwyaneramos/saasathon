@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Link,
 	useNavigate,
@@ -14,11 +14,16 @@ import {
 	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import {
+	Check,
+	Code2,
+	Copy,
 	Download,
 	Edit3,
+	Eye,
 	ExternalLink,
 	FileText,
 	Maximize2,
+	MessageCircle,
 	Minimize2,
 	Minus,
 	Plus,
@@ -26,6 +31,14 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
+import {
+	AssistantChatMessage,
+	AssistantComposer,
+	AssistantQuickActions,
+	AssistantTypingIndicator,
+	type AssistantMessage,
+	type AssistantSuggestion,
+} from "@/components/assistant-chat";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { KibiFile } from "@/components/app-sidebar";
@@ -64,6 +77,12 @@ type CategorySummary = {
 
 type CategoriesResponse = {
 	categories?: CategorySummary[];
+};
+
+type FileAssistantResponse = {
+	message: string;
+	suggestedActions?: AssistantSuggestion[];
+	error?: string;
 };
 
 type AppLayoutContext = {
@@ -199,7 +218,22 @@ export default function FileView() {
 	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
+	const [fileContentVersion, setFileContentVersion] = useState(0);
 	const [isFileLoading, setIsFileLoading] = useState(false);
+	const [filePreviewError, setFilePreviewError] = useState<string | null>(
+		null,
+	);
+	const [isFileAssistantOpen, setIsFileAssistantOpen] = useState(false);
+	const [fileAssistantInput, setFileAssistantInput] = useState("");
+	const [fileAssistantMessages, setFileAssistantMessages] = useState<
+		AssistantMessage[]
+	>([]);
+	const [fileAssistantSuggestions, setFileAssistantSuggestions] = useState<
+		AssistantSuggestion[]
+	>([]);
+	const [isFileAssistantLoading, setIsFileAssistantLoading] = useState(false);
+	const fileAssistantScrollRef = useRef<HTMLDivElement>(null);
+	const fileAssistantInputRef = useRef<HTMLTextAreaElement>(null);
 
 	const fileUrl = useMemo(() => {
 		return documentId ? `${apiBaseUrl}/documents/${documentId}/file` : "";
@@ -285,6 +319,7 @@ export default function FileView() {
 		let objectUrl: string | null = null;
 		setIsFileLoading(true);
 		setFileObjectUrl(null);
+		setFilePreviewError(null);
 
 		async function loadFileBlob() {
 			try {
@@ -294,12 +329,14 @@ export default function FileView() {
 				});
 
 				if (!response.ok) {
-					if ([401, 403, 404].includes(response.status)) {
-						navigate("/", { replace: true });
-						return;
-					}
-
-					throw new Error("Could not load file preview.");
+					setFilePreviewError(
+						response.status === 404
+							? "The file record exists, but the stored file content is not available on the server."
+							: response.status === 403
+								? "You can view this file record, but the stored file content is not available to preview."
+								: "Could not load file preview.",
+					);
+					return;
 				}
 
 				const blob = await response.blob();
@@ -310,7 +347,7 @@ export default function FileView() {
 					return;
 				}
 
-				setActionError(
+				setFilePreviewError(
 					err instanceof Error
 						? err.message
 						: "Could not load file preview.",
@@ -330,7 +367,7 @@ export default function FileView() {
 				URL.revokeObjectURL(objectUrl);
 			}
 		};
-	}, [document, fileUrl, navigate]);
+	}, [document, fileContentVersion, fileUrl]);
 
 	useEffect(() => {
 		let ignore = false;
@@ -376,6 +413,26 @@ export default function FileView() {
 		};
 	}, [activeSpaceId, document?.categoryId]);
 
+	useEffect(() => {
+		const container = fileAssistantScrollRef.current;
+		if (!container || fileAssistantMessages.length === 0) return;
+
+		container.scrollTo({
+			top: container.scrollHeight,
+			behavior: "smooth",
+		});
+	}, [fileAssistantMessages, isFileAssistantLoading]);
+
+	useEffect(() => {
+		const element = fileAssistantInputRef.current;
+		if (!element) return;
+
+		element.style.height = "auto";
+		element.style.height = `${Math.min(element.scrollHeight, 96)}px`;
+		element.style.overflowY =
+			element.scrollHeight > 96 ? "auto" : "hidden";
+	}, [fileAssistantInput, isFileAssistantOpen]);
+
 	if (isLoading) {
 		return (
 			<main className="flex min-h-[calc(100svh-var(--header-height))] items-center justify-center text-sm text-muted-foreground">
@@ -409,9 +466,106 @@ export default function FileView() {
 	const canPreview =
 		document.mimeType === "application/pdf" ||
 		document.mimeType.startsWith("image/") ||
+		document.mimeType.startsWith("audio/") ||
+		document.mimeType.startsWith("video/") ||
 		document.mimeType.startsWith("text/") ||
 		document.mimeType.includes("json") ||
-		document.mimeType.includes("xml");
+		document.mimeType.includes("xml") ||
+		isAudioFileName(displayName) ||
+		isVideoFileName(displayName) ||
+		isTextLikeFileName(displayName);
+	const visibleFileAssistantSuggestions =
+		fileAssistantSuggestions.length > 0
+			? fileAssistantSuggestions
+			: [
+					{
+						label: "Summarize",
+						sub: "Explain this file",
+						prompt: `Summarize ${displayName}`,
+					},
+					{
+						label: "Key details",
+						sub: "Pull useful facts",
+						prompt: "What are the key details in this file?",
+					},
+					{
+						label: "Category",
+						sub: categoryName ?? "Review fit",
+						prompt: "Why is this file in this category?",
+					},
+				];
+
+	async function sendFileAssistantMessage(text: string) {
+		const trimmedText = text.trim();
+		if (!trimmedText || isFileAssistantLoading || !documentId) return;
+
+		const userMessage: AssistantMessage = {
+			id: crypto.randomUUID(),
+			role: "user",
+			content: trimmedText,
+			timestamp: new Date(),
+		};
+
+		setFileAssistantMessages((messages) => [...messages, userMessage]);
+		setFileAssistantInput("");
+		setIsFileAssistantLoading(true);
+		setIsFileAssistantOpen(true);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/assistant/file/${documentId}`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...authHeaders(),
+					},
+					body: JSON.stringify({ prompt: trimmedText }),
+				},
+			);
+			const payload = (await response.json().catch(() => null)) as
+				| FileAssistantResponse
+				| null;
+
+			if (!response.ok) {
+				throw new Error(
+					payload?.error ??
+						"Something went wrong. Please try again.",
+				);
+			}
+
+			if (payload?.suggestedActions?.length) {
+				setFileAssistantSuggestions(payload.suggestedActions);
+			}
+
+			setFileAssistantMessages((messages) => [
+				...messages,
+				{
+					id: crypto.randomUUID(),
+					role: "assistant",
+					content:
+						payload?.message ??
+						"I couldn't find enough file context to answer that.",
+					timestamp: new Date(),
+				},
+			]);
+		} catch (err) {
+			setFileAssistantMessages((messages) => [
+				...messages,
+				{
+					id: crypto.randomUUID(),
+					role: "assistant",
+					content:
+						err instanceof Error
+							? err.message
+							: "Something went wrong. Please try again.",
+					timestamp: new Date(),
+				},
+			]);
+		} finally {
+			setIsFileAssistantLoading(false);
+		}
+	}
 
 	async function handleSaveName() {
 		if (!documentId || !document) {
@@ -653,10 +807,14 @@ export default function FileView() {
 								{isDeleting ? "Deleting..." : "Delete"}
 							</Button>
 							<a
-								href={fileObjectUrl ?? undefined}
+								href={
+									canPreview && fileObjectUrl
+										? fileObjectUrl
+										: undefined
+								}
 								target="_blank"
 								rel="noreferrer"
-								aria-disabled={!fileObjectUrl}
+								aria-disabled={!canPreview || !fileObjectUrl}
 								className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-60"
 							>
 								<ExternalLink className="size-4" />
@@ -687,30 +845,143 @@ export default function FileView() {
 
 				<section className="min-h-[480px] flex-1 p-4 md:p-6">
 					{canPreview ? (
-						isFileLoading || !fileObjectUrl ? (
+						isFileLoading ? (
 							<div className="flex h-full min-h-[480px] items-center justify-center rounded-lg border border-border bg-background text-sm text-muted-foreground">
 								Loading preview...
 							</div>
-						) : (
+						) : fileObjectUrl ? (
 							<FilePreview
 								document={document}
 								fileUrl={fileObjectUrl}
 								displayName={displayName}
+								onFileContentSaved={(nextDocument) => {
+									if (nextDocument) {
+										setDocument(nextDocument);
+									}
+									setFileContentVersion(
+										(currentValue) => currentValue + 1,
+									);
+								}}
+							/>
+						) : (
+							<FilePreviewUnavailable
+								message={
+									filePreviewError ??
+									"This file cannot be previewed right now."
+								}
 							/>
 						)
 					) : (
-						<div className="flex h-full flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
-							<FileText className="size-12 text-muted-foreground" />
-							<h2 className="mt-4 text-base font-semibold">
-								Preview unavailable
-							</h2>
-							<p className="mt-2 max-w-md text-sm text-muted-foreground">
-								This file type cannot be previewed inline. Open
-								it in a new tab or download it to view.
-							</p>
-						</div>
+						<FilePreviewUnavailable
+							message={
+								filePreviewError ??
+								"This file type cannot be previewed inline. Download it to view the original file."
+							}
+						/>
 					)}
 				</section>
+
+				<div className="pointer-events-none fixed right-4 bottom-4 z-40 w-[calc(100vw-2rem)] max-w-md md:right-6 md:bottom-6">
+					<div
+						aria-hidden={!isFileAssistantOpen}
+						className={`pointer-events-auto absolute right-0 bottom-0 w-full overflow-hidden rounded-3xl border border-zinc-200/70 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.14)] transition-all duration-300 ease-out ${
+							isFileAssistantOpen
+								? "translate-y-0 opacity-100"
+								: "pointer-events-none translate-y-5 opacity-0"
+						}`}
+					>
+						<div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+							<div className="flex min-w-0 items-center gap-2">
+								<span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500">
+									<MessageCircle className="size-4" />
+								</span>
+								<div className="min-w-0">
+									<p className="truncate text-sm font-semibold text-zinc-900">
+										Ask about this file
+									</p>
+									<p className="truncate text-xs text-zinc-500">
+										{displayName}
+									</p>
+								</div>
+							</div>
+							<button
+								type="button"
+								onClick={() => setIsFileAssistantOpen(false)}
+								className="inline-flex size-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+								aria-label="Close file assistant"
+							>
+								<X className="size-4" />
+							</button>
+						</div>
+						<div
+							ref={fileAssistantScrollRef}
+							className="max-h-[48vh] min-h-48 overflow-y-auto bg-zinc-50 px-4 py-4"
+						>
+							{fileAssistantMessages.length === 0 ? (
+								<p className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm leading-6 text-zinc-500">
+									Ask questions about the current file. I can
+									use its summary, metadata, and any extracted
+									text available.
+								</p>
+							) : (
+								fileAssistantMessages.map((message) => (
+									<AssistantChatMessage
+										key={message.id}
+										message={message}
+										compact
+									/>
+								))
+							)}
+							{isFileAssistantLoading ? (
+								<AssistantTypingIndicator />
+							) : null}
+						</div>
+						<div className="border-t border-zinc-100">
+							<AssistantComposer
+								input={fileAssistantInput}
+								onInputChange={setFileAssistantInput}
+								onSubmit={() =>
+									void sendFileAssistantMessage(
+										fileAssistantInput,
+									)
+								}
+								isLoading={isFileAssistantLoading}
+								placeholder="Ask about this file"
+								textareaRef={fileAssistantInputRef}
+								compact
+							/>
+							<div className="mx-4 h-px bg-zinc-100" />
+							<div className="px-3 py-2">
+								<AssistantQuickActions
+									suggestions={
+										visibleFileAssistantSuggestions
+									}
+									isLoading={false}
+									onSelect={(prompt) =>
+										void sendFileAssistantMessage(
+											prompt,
+										)
+									}
+									spaceLabel={displayName}
+									compact
+								/>
+							</div>
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={() => setIsFileAssistantOpen(true)}
+						aria-hidden={isFileAssistantOpen}
+						className={`pointer-events-auto ml-auto flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-800 shadow-[0_14px_36px_rgba(0,0,0,0.14)] transition-all duration-300 ease-out hover:bg-zinc-50 hover:opacity-100 ${
+							isFileAssistantOpen
+								? "pointer-events-none translate-y-3 opacity-0"
+								: "translate-y-0 opacity-100"
+						}`}
+					>
+						<MessageCircle className="size-4 text-zinc-500" />
+						Ask AI about this file
+					</button>
+				</div>
 
 				{isDeleteModalOpen ? (
 					<div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 p-4 backdrop-blur-xs">
@@ -778,10 +1049,12 @@ function FilePreview({
 	document,
 	fileUrl,
 	displayName,
+	onFileContentSaved,
 }: {
 	document: PublicDocument;
 	fileUrl: string;
 	displayName: string;
+	onFileContentSaved?: (document?: PublicDocument) => void;
 }) {
 	if (
 		document.mimeType === "application/pdf" ||
@@ -796,6 +1069,42 @@ function FilePreview({
 		);
 	}
 
+	if (document.mimeType.startsWith("video/") || isVideoFileName(displayName)) {
+		return (
+			<div className="flex h-full items-center justify-center rounded-lg border border-border bg-black p-4">
+				<video
+					src={fileUrl}
+					controls
+					className="max-h-full max-w-full rounded-md"
+				>
+					<track kind="captions" />
+				</video>
+			</div>
+		);
+	}
+
+	if (document.mimeType.startsWith("audio/") || isAudioFileName(displayName)) {
+		return (
+			<div className="flex h-full items-center justify-center rounded-lg border border-border bg-background p-6">
+				<audio src={fileUrl} controls className="w-full max-w-xl">
+					<track kind="captions" />
+				</audio>
+			</div>
+		);
+	}
+
+	if (isCodeLikeFile(document, displayName)) {
+		return (
+			<CodeFileViewer
+				documentId={document.id}
+				fileUrl={fileUrl}
+				displayName={displayName}
+				mimeType={document.mimeType}
+				onSaved={onFileContentSaved}
+			/>
+	);
+	}
+
 	return (
 		<div className="h-full overflow-hidden rounded-lg border border-border bg-background">
 			<iframe
@@ -803,6 +1112,455 @@ function FilePreview({
 				title={displayName}
 				className="h-full w-full"
 			/>
+		</div>
+	);
+}
+
+function FilePreviewUnavailable({ message }: { message: string }) {
+	return (
+		<div className="flex h-full min-h-[480px] flex-col items-center justify-center rounded-lg border border-border bg-background p-8 text-center">
+			<FileText className="size-12 text-muted-foreground" />
+			<h2 className="mt-4 text-base font-semibold">
+				Preview unavailable
+			</h2>
+			<p className="mt-2 max-w-md text-sm text-muted-foreground">
+				{message}
+			</p>
+		</div>
+	);
+}
+
+function CodeFileViewer({
+	documentId,
+	fileUrl,
+	displayName,
+	mimeType,
+	onSaved,
+}: {
+	documentId: number;
+	fileUrl: string;
+	displayName: string;
+	mimeType: string;
+	onSaved?: (document?: PublicDocument) => void;
+}) {
+	const [source, setSource] = useState("");
+	const [draftSource, setDraftSource] = useState("");
+	const [isLoadingSource, setIsLoadingSource] = useState(true);
+	const [isSavingSource, setIsSavingSource] = useState(false);
+	const [sourceError, setSourceError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
+	const [isEditingSource, setIsEditingSource] = useState(false);
+	const canPreview = supportsCodePreview(displayName, mimeType);
+	const [mode, setMode] = useState<"code" | "preview">("code");
+	const activeSource = isEditingSource ? draftSource : source;
+	const language = languageLabelForFile(displayName, mimeType);
+
+	useEffect(() => {
+		const abortController = new AbortController();
+		setIsLoadingSource(true);
+		setSource("");
+		setDraftSource("");
+		setSourceError(null);
+		setCopied(false);
+		setIsEditingSource(false);
+		setMode("code");
+
+		async function loadSource() {
+			try {
+				const response = await fetch(fileUrl, {
+					signal: abortController.signal,
+				});
+				if (!response.ok) {
+					throw new Error("Could not load source.");
+				}
+
+				const nextSource = await response.text();
+				setSource(nextSource);
+				setDraftSource(nextSource);
+			} catch (err) {
+				if (err instanceof DOMException && err.name === "AbortError") {
+					return;
+				}
+
+				setSourceError(
+					err instanceof Error
+						? err.message
+						: "Could not load source.",
+				);
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsLoadingSource(false);
+				}
+			}
+		}
+
+		void loadSource();
+
+		return () => abortController.abort();
+	}, [fileUrl]);
+
+	const handleCopy = async () => {
+		if (!activeSource) return;
+
+		try {
+			await navigator.clipboard.writeText(activeSource);
+			setCopied(true);
+			window.setTimeout(() => setCopied(false), 1400);
+		} catch {
+			setSourceError("Could not copy code to the clipboard.");
+		}
+	};
+
+	const handleSave = async () => {
+		setIsSavingSource(true);
+		setSourceError(null);
+
+		try {
+			const response = await fetch(
+				`${apiBaseUrl}/documents/${documentId}/file`,
+				{
+					method: "PATCH",
+					headers: {
+						...authHeaders(),
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ content: draftSource }),
+				},
+			);
+			const payload = (await response
+				.json()
+				.catch(() => null)) as {
+				document?: PublicDocument;
+				error?: string;
+			} | null;
+
+			if (!response.ok) {
+				throw new Error(
+					payload?.error ?? "Could not save the file content.",
+				);
+			}
+
+			setSource(draftSource);
+			setIsEditingSource(false);
+			onSaved?.(payload?.document);
+		} catch (err) {
+			setSourceError(
+				err instanceof Error
+					? err.message
+					: "Could not save the file content.",
+			);
+		} finally {
+			setIsSavingSource(false);
+		}
+	};
+
+	const handleCancelEdit = () => {
+		setDraftSource(source);
+		setSourceError(null);
+		setIsEditingSource(false);
+	};
+
+	return (
+		<div className="flex h-full min-h-[480px] flex-col overflow-hidden rounded-lg border border-border bg-background">
+			<div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-3">
+				<div className="flex min-w-0 items-center gap-2">
+					<span className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+						<Code2 className="size-3.5" />
+					</span>
+					<span className="truncate text-sm font-medium text-foreground">
+						{displayName}
+					</span>
+					<span className="hidden rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+						{language}
+					</span>
+				</div>
+				<div className="flex shrink-0 items-center gap-1.5">
+					{canPreview ? (
+						<div className="flex items-center rounded-lg border border-border bg-muted p-0.5">
+							<button
+								type="button"
+								onClick={() => setMode("preview")}
+								className={
+									mode === "preview"
+										? "inline-flex h-7 items-center gap-1 rounded-md bg-background px-2 text-xs font-medium text-foreground"
+										: "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground"
+								}
+							>
+								<Eye className="size-3.5" />
+								Preview
+							</button>
+							<button
+								type="button"
+								onClick={() => setMode("code")}
+								className={
+									mode === "code"
+										? "inline-flex h-7 items-center gap-1 rounded-md bg-background px-2 text-xs font-medium text-foreground"
+										: "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground"
+								}
+							>
+								<Code2 className="size-3.5" />
+								Code
+							</button>
+						</div>
+					) : null}
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={handleCopy}
+						disabled={!activeSource || isLoadingSource}
+					>
+						{copied ? (
+							<Check className="size-3.5" />
+						) : (
+							<Copy className="size-3.5" />
+						)}
+						{copied ? "Copied" : "Copy"}
+					</Button>
+					{isEditingSource ? (
+						<>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={handleCancelEdit}
+								disabled={isSavingSource}
+							>
+								<X className="size-3.5" />
+								Cancel
+							</Button>
+							<Button
+								type="button"
+								variant="accent"
+								size="sm"
+								onClick={() => void handleSave()}
+								disabled={isSavingSource}
+							>
+								<Save className="size-3.5" />
+								{isSavingSource ? "Saving..." : "Save"}
+							</Button>
+						</>
+					) : (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => {
+								setDraftSource(source);
+								setIsEditingSource(true);
+								setMode("code");
+							}}
+							disabled={isLoadingSource}
+						>
+							<Edit3 className="size-3.5" />
+							Edit
+						</Button>
+					)}
+				</div>
+			</div>
+			<div className="min-h-0 flex-1 overflow-auto bg-muted/40">
+				{isLoadingSource ? (
+					<div className="flex h-full min-h-[420px] items-center justify-center text-sm text-muted-foreground">
+						Loading source...
+					</div>
+				) : sourceError ? (
+					<FilePreviewUnavailable message={sourceError} />
+				) : mode === "preview" && canPreview ? (
+					<CodePreview
+						source={activeSource}
+						displayName={displayName}
+						mimeType={mimeType}
+					/>
+				) : (
+					<CodeEditorView
+						value={activeSource}
+						isEditing={isEditingSource}
+						onChange={setDraftSource}
+						displayName={displayName}
+						mimeType={mimeType}
+					/>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function CodeEditorView({
+	value,
+	isEditing,
+	onChange,
+	displayName,
+	mimeType,
+}: {
+	value: string;
+	isEditing: boolean;
+	onChange: (nextValue: string) => void;
+	displayName: string;
+	mimeType: string;
+}) {
+	const language = languageLabelForFile(displayName, mimeType);
+	const lines = value.length ? value.split(/\r?\n/) : [""];
+
+	return (
+		<div className="flex h-full min-h-[420px] flex-col bg-zinc-950 text-zinc-100">
+			<div className="min-h-0 flex-1 overflow-auto">
+				<div className="grid min-h-full min-w-max grid-cols-[auto_minmax(48rem,1fr)] font-mono text-xs leading-5">
+					<div className="select-none border-r border-zinc-800 bg-zinc-900/80 py-4 text-right text-zinc-500">
+						{lines.map((_, index) => (
+							<div key={index} className="px-3 tabular-nums">
+								{index + 1}
+							</div>
+						))}
+					</div>
+					{isEditing ? (
+						<textarea
+							value={value}
+							onChange={(event) => onChange(event.target.value)}
+							spellCheck={false}
+							aria-label={`Edit ${displayName}`}
+							className="min-h-[420px] resize-none bg-transparent py-4 pr-6 pl-4 font-mono text-xs leading-5 text-zinc-100 outline-none selection:bg-zinc-700"
+						/>
+					) : (
+						<pre className="py-4 pr-6 pl-4 text-zinc-100">
+							<code>
+								{lines.map((line, index) => (
+									<span
+										key={index}
+										className="block min-h-5 whitespace-pre"
+									>
+										{line || " "}
+									</span>
+								))}
+							</code>
+						</pre>
+					)}
+				</div>
+			</div>
+			<div className="flex h-9 shrink-0 items-center justify-between border-t border-zinc-800 bg-zinc-900 px-3 text-[11px] text-zinc-500">
+				<span>{isEditing ? "Editing" : "Read only"}</span>
+				<span>{language}</span>
+			</div>
+		</div>
+	);
+}
+
+function CodePreview({
+	source,
+	displayName,
+	mimeType,
+}: {
+	source: string;
+	displayName: string;
+	mimeType: string;
+}) {
+	const extension = getFileExtension(displayName);
+
+	if (extension === "html" || mimeType === "text/html") {
+		return (
+			<iframe
+				srcDoc={source}
+				title={`${displayName} preview`}
+				className="h-full min-h-[420px] w-full border-0 bg-white"
+				sandbox=""
+			/>
+		);
+	}
+
+	if (extension === "csv" || extension === "tsv" || mimeType.includes("csv")) {
+		return <DelimitedTablePreview source={source} delimiter={extension === "tsv" ? "\t" : ","} />;
+	}
+
+	return <MarkdownPreview source={source} />;
+}
+
+function MarkdownPreview({ source }: { source: string }) {
+	return (
+		<div className="mx-auto max-w-3xl bg-background px-6 py-5 text-sm leading-6 text-foreground">
+			{source.split(/\n{2,}/).map((block, index) => {
+				const trimmed = block.trim();
+				if (!trimmed) return null;
+				if (trimmed.startsWith("# ")) {
+					return (
+						<h1 key={index} className="mb-3 text-2xl font-semibold">
+							{trimmed.replace(/^#\s+/, "")}
+						</h1>
+					);
+				}
+				if (trimmed.startsWith("## ")) {
+					return (
+						<h2 key={index} className="mb-2 text-lg font-semibold">
+							{trimmed.replace(/^##\s+/, "")}
+						</h2>
+					);
+				}
+				if (trimmed.startsWith("```")) {
+					return (
+						<pre
+							key={index}
+							className="mb-4 overflow-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100"
+						>
+							<code>{trimmed.replace(/^```\w*\n?/, "").replace(/```$/, "")}</code>
+						</pre>
+					);
+				}
+				return (
+					<p key={index} className="mb-4 whitespace-pre-wrap">
+						{trimmed}
+					</p>
+				);
+			})}
+		</div>
+	);
+}
+
+function DelimitedTablePreview({
+	source,
+	delimiter,
+}: {
+	source: string;
+	delimiter: string;
+}) {
+	const rows = source
+		.split(/\r?\n/)
+		.filter((row) => row.trim())
+		.slice(0, 80)
+		.map((row) => row.split(delimiter).slice(0, 16));
+	const [header, ...body] = rows;
+
+	if (!header) {
+		return <FilePreviewUnavailable message="This data file is empty." />;
+	}
+
+	return (
+		<div className="h-full overflow-auto bg-background p-4">
+			<table className="w-full min-w-max border-collapse text-left text-xs">
+				<thead>
+					<tr>
+						{header.map((cell, index) => (
+							<th
+								key={`${cell}-${index}`}
+								className="border border-border bg-muted px-2 py-1 font-medium text-foreground"
+							>
+								{cell}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody>
+					{body.map((row, rowIndex) => (
+						<tr key={rowIndex}>
+							{header.map((_, cellIndex) => (
+								<td
+									key={cellIndex}
+									className="border border-border px-2 py-1 text-muted-foreground"
+								>
+									{row[cellIndex] ?? ""}
+								</td>
+							))}
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</div>
 	);
 }
@@ -815,6 +1573,174 @@ function documentToKibiFile(document: PublicDocument): KibiFile {
 		filename: document.filename,
 		mimeType: document.mimeType,
 	};
+}
+
+function getFileExtension(name: string) {
+	const extension = name.split(".").pop();
+	return extension && extension !== name ? extension.toLowerCase() : "";
+}
+
+function isCodeLikeFile(document: PublicDocument, name: string) {
+	const extension = getFileExtension(name);
+	return (
+		document.mimeType.startsWith("text/") ||
+		document.mimeType.includes("json") ||
+		document.mimeType.includes("xml") ||
+		[
+			"bash",
+			"c",
+			"cc",
+			"cpp",
+			"cs",
+			"css",
+			"csv",
+			"go",
+			"h",
+			"hpp",
+			"html",
+			"java",
+			"js",
+			"jsx",
+			"json",
+			"kt",
+			"log",
+			"lua",
+			"md",
+			"mdx",
+			"php",
+			"py",
+			"rb",
+			"rs",
+			"scss",
+			"sh",
+			"sql",
+			"swift",
+			"toml",
+			"ts",
+			"tsx",
+			"tsv",
+			"txt",
+			"vue",
+			"xml",
+			"yaml",
+			"yml",
+		].includes(extension)
+	);
+}
+
+function supportsCodePreview(name: string, mimeType: string) {
+	const extension = getFileExtension(name);
+	return (
+		mimeType === "text/html" ||
+		mimeType === "text/markdown" ||
+		mimeType.includes("csv") ||
+		["csv", "html", "md", "mdx", "tsv"].includes(extension)
+	);
+}
+
+function languageLabelForFile(name: string, mimeType: string) {
+	const extension = getFileExtension(name);
+	const labels: Record<string, string> = {
+		bash: "Bash",
+		c: "C",
+		cc: "C++",
+		cpp: "C++",
+		cs: "C#",
+		css: "CSS",
+		csv: "CSV",
+		go: "Go",
+		h: "C/C++",
+		hpp: "C++",
+		html: "HTML",
+		java: "Java",
+		js: "JavaScript",
+		jsx: "React JSX",
+		json: "JSON",
+		kt: "Kotlin",
+		log: "Log",
+		lua: "Lua",
+		md: "Markdown",
+		mdx: "MDX",
+		php: "PHP",
+		py: "Python",
+		rb: "Ruby",
+		rs: "Rust",
+		scss: "SCSS",
+		sh: "Shell",
+		sql: "SQL",
+		swift: "Swift",
+		toml: "TOML",
+		ts: "TypeScript",
+		tsx: "React TSX",
+		tsv: "TSV",
+		txt: "Text",
+		vue: "Vue",
+		xml: "XML",
+		yaml: "YAML",
+		yml: "YAML",
+	};
+
+	return labels[extension] ?? (mimeType.startsWith("text/") ? "Text" : "Code");
+}
+
+function isTextLikeFileName(name: string) {
+	const extension = getFileExtension(name);
+	return Boolean(
+		extension &&
+			[
+				"bash",
+				"c",
+				"cc",
+				"cpp",
+				"cs",
+				"css",
+				"csv",
+				"go",
+				"h",
+				"hpp",
+				"html",
+				"java",
+				"js",
+				"jsx",
+				"json",
+				"kt",
+				"log",
+				"lua",
+				"md",
+				"mdx",
+				"php",
+				"py",
+				"rb",
+				"rs",
+				"scss",
+				"sh",
+				"sql",
+				"swift",
+				"toml",
+				"ts",
+				"tsx",
+				"tsv",
+				"txt",
+				"vue",
+				"xml",
+				"yaml",
+				"yml",
+			].includes(extension),
+	);
+}
+
+function isAudioFileName(name: string) {
+	const extension = name.split(".").pop()?.toLowerCase();
+	return Boolean(
+		extension && ["aac", "flac", "m4a", "mp3", "ogg", "wav"].includes(extension),
+	);
+}
+
+function isVideoFileName(name: string) {
+	const extension = name.split(".").pop()?.toLowerCase();
+	return Boolean(
+		extension && ["avi", "m4v", "mov", "mp4", "mpeg", "webm"].includes(extension),
+	);
 }
 
 function ZoomableFileViewer({

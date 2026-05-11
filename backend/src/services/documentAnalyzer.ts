@@ -43,6 +43,9 @@ const DOWNLOAD_CRITERIA_STOPWORDS = new Set([
 const CATEGORY_CONNECTION_MIN_WEIGHT = 0.08;
 const CATEGORY_CONNECTION_REASON_LIMIT = 5;
 const FILE_TYPE_SEARCH_LIMIT = 100;
+const GENERIC_FILE_TEXT_LIMIT = 80_000;
+
+type DocumentSourceType = "pdf" | "image" | "text" | "spreadsheet" | "code" | "markdown" | "audio" | "video" | "file";
 
 const CATEGORY_CONNECTION_RELATED_TOKENS: Record<string, string[]> = {
   account: ["banking", "finance", "transaction"],
@@ -174,6 +177,11 @@ type DocumentSearchRow = DocumentRow & {
   score: number;
 };
 
+type FileAssistantDocumentRow = DocumentRow & {
+  extracted_text: string;
+  category_name: string | null;
+};
+
 export type DownloadableDocumentRow = DocumentRow & {
   extracted_text: string;
   category_name: string | null;
@@ -226,7 +234,7 @@ export type DocumentAnalysis = {
   summary: string;
   textPreview: string;
   match: CategoryMatch;
-  sourceType: "pdf" | "image";
+  sourceType: DocumentSourceType;
   model: string;
 };
 
@@ -706,6 +714,76 @@ export async function askDashboardAssistant({
   };
 }
 
+export async function askFileAssistant({
+  prompt,
+  documentId,
+}: {
+  prompt?: string;
+  documentId: number;
+}): Promise<DashboardAssistantResponse> {
+  await ensureDocumentSchema();
+
+  const trimmedPrompt = prompt?.trim() ?? "";
+  const document = await getFileAssistantDocument(documentId);
+  if (!document) {
+    throw new HttpError(404, "Document not found");
+  }
+
+  const suggestions = buildFileAssistantSuggestions(document);
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return {
+      message: buildFallbackFileAssistantMessage(trimmedPrompt, document),
+      navigateTo: null,
+      suggestedActions: suggestions,
+      searchResults: [],
+    };
+  }
+
+  const model = process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const body = {
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are Kibi's file assistant. Answer using only the provided file context. Return only valid JSON and never invent file contents.",
+      },
+      {
+        role: "user",
+        content: buildFileAssistantPrompt({
+          prompt: trimmedPrompt,
+          document,
+          suggestions,
+        }),
+      },
+    ],
+    temperature: 0.2,
+    max_tokens: 900,
+  };
+
+  const { payload } = await sendOpenRouterRequest(body, apiKey);
+  const rawContent = payload?.choices?.[0]?.message?.content;
+  if (!rawContent) {
+    throw new HttpError(502, "OpenRouter returned an empty response");
+  }
+
+  const parsed = parseDashboardAssistantJson(rawContent);
+  return {
+    message:
+      cleanString(parsed.message) ||
+      buildFallbackFileAssistantMessage(trimmedPrompt, document),
+    navigateTo: null,
+    suggestedActions: (() => {
+      const normalizedSuggestions = normalizeDashboardSuggestions(
+        parsed.suggestedActions,
+      ).slice(0, 3);
+      return normalizedSuggestions.length > 0 ? normalizedSuggestions : suggestions;
+    })(),
+    searchResults: [],
+  };
+}
+
 export async function renameDocument(documentId: number, name: string) {
   await ensureDocumentSchema();
   const trimmedName = name.trim();
@@ -731,6 +809,77 @@ export async function renameDocument(documentId: number, name: string) {
       created_at`,
     [documentId, trimmedName],
   );
+  return rows[0] ?? null;
+}
+
+export async function updateDocumentStoredContent(
+  documentId: number,
+  content: string,
+) {
+  await ensureDocumentSchema();
+  const existing = await getDocument(documentId);
+  if (!existing) {
+    return null;
+  }
+
+  const fileName = displayDocumentName(existing);
+  const extension = fileExtension(fileName);
+  const fileSize = Buffer.byteLength(content);
+  const sourceType = inferGenericSourceTypeFromNameMime(
+    fileName,
+    existing.mime_type,
+  );
+  const normalizedText = normalizeWhitespace(content);
+  const summary = buildGenericFileSummary({
+    fileName,
+    fileKind: describeGenericSourceType(sourceType, extension),
+    sourceType,
+    extractedText: normalizedText.slice(0, TEXT_PREVIEW_LIMIT),
+    fileSize,
+  });
+  const keywords = normalizeKeywords([
+    ...normalizeSearchTokens(fileName.replace(/\.[^.]+$/, "")),
+    ...normalizeSearchTokens(summary),
+    ...normalizeSearchTokens(normalizedText),
+    sourceType,
+    extension,
+  ]).slice(0, 40);
+
+  const { rows } = await getDb().query<DocumentRow>(
+    `UPDATE documents
+     SET
+      file_size = $2,
+      extracted_text = $3,
+      summary = $4,
+      keywords = $5,
+      metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+        'size', $2::integer,
+        'summary', $4::text,
+        'keywords', $5::text[]
+      )
+     WHERE id = $1
+     RETURNING
+      id,
+      space_id,
+      filename,
+      filepath,
+      file_name,
+      original_file_name,
+      stored_file_name,
+      mime_type,
+      file_size,
+      category_id,
+      summary,
+      keywords,
+      created_at`,
+    [documentId, fileSize, normalizedText, summary, keywords],
+  );
+
+  if (rows[0]?.category_id) {
+    await refreshCategorySummary(rows[0].category_id);
+    await refreshCategoryConnections(rows[0].space_id);
+  }
+
   return rows[0] ?? null;
 }
 
@@ -1026,9 +1175,29 @@ export async function analyzeImage(
   return saveAnalysis(file, "image", modelAnalysis, documentId);
 }
 
+export async function analyzeGenericFile(
+  file: Express.Multer.File,
+  minConfidence = MIN_CONFIDENCE,
+  documentId?: number,
+): Promise<DocumentAnalysis> {
+  await ensureDocumentSchema();
+  const categories = await listCategories(await getDocumentSpaceId(documentId));
+  const sourceType = inferGenericSourceType(file);
+  const extractedText = extractGenericFileText(file, sourceType);
+  const modelAnalysis = buildGenericFileAnalysis({
+    file,
+    sourceType,
+    extractedText,
+    categories,
+    minConfidence,
+  });
+
+  return saveAnalysis(file, sourceType, modelAnalysis, documentId);
+}
+
 async function saveAnalysis(
   file: Express.Multer.File,
-  sourceType: "pdf" | "image",
+  sourceType: DocumentSourceType,
   modelAnalysis: ClaudeAnalysis,
   documentId?: number,
 ) {
@@ -1145,7 +1314,7 @@ async function saveAnalysis(
 function buildDocumentAnalysis(
   documentId: number,
   file: Express.Multer.File,
-  sourceType: "pdf" | "image",
+  sourceType: DocumentSourceType,
   modelAnalysis: ClaudeAnalysis,
   extractedText: string,
   match: CategoryMatch,
@@ -1160,6 +1329,299 @@ function buildDocumentAnalysis(
     sourceType,
     model: modelAnalysis.model,
   };
+}
+
+function fileExtension(fileName: string) {
+  const extension = fileName.split(".").pop();
+  return extension && extension !== fileName ? extension.toLowerCase() : "";
+}
+
+function isCodeFileExtension(extension: string) {
+  return [
+    "bash",
+    "c",
+    "cc",
+    "cpp",
+    "cs",
+    "css",
+    "go",
+    "h",
+    "hpp",
+    "html",
+    "java",
+    "js",
+    "jsx",
+    "json",
+    "kt",
+    "lua",
+    "php",
+    "py",
+    "rb",
+    "rs",
+    "scss",
+    "sh",
+    "sql",
+    "swift",
+    "toml",
+    "ts",
+    "tsx",
+    "vue",
+    "xml",
+    "yaml",
+    "yml",
+  ].includes(extension);
+}
+
+function inferGenericSourceType(file: Express.Multer.File): DocumentSourceType {
+  return inferGenericSourceTypeFromNameMime(file.originalname, file.mimetype);
+}
+
+function inferGenericSourceTypeFromNameMime(
+  fileName: string,
+  rawMimeType: string,
+): DocumentSourceType {
+  const mimeType = rawMimeType.toLowerCase();
+  const extension = fileExtension(fileName);
+
+  if (mimeType.startsWith("audio/") || ["aac", "flac", "m4a", "mp3", "ogg", "wav"].includes(extension)) return "audio";
+  if (mimeType.startsWith("video/") || ["avi", "m4v", "mov", "mp4", "mpeg", "webm"].includes(extension)) return "video";
+  if (["md", "markdown", "mdx"].includes(extension)) return "markdown";
+  if (
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel") ||
+    ["csv", "tsv", "xls", "xlsx"].includes(extension)
+  ) {
+    return "spreadsheet";
+  }
+  if (
+    isCodeFileExtension(extension) ||
+    ["application/json", "application/xml", "text/css", "text/html"].includes(mimeType)
+  ) {
+    return "code";
+  }
+  if (
+    mimeType.startsWith("text/") ||
+    mimeType.includes("wordprocessingml") ||
+    ["txt", "doc", "docx", "rtf", "odt"].includes(extension)
+  ) {
+    return "text";
+  }
+
+  return "file";
+}
+
+function extractGenericFileText(
+  file: Express.Multer.File,
+  sourceType: DocumentSourceType,
+) {
+  const extension = fileExtension(file.originalname);
+  const shouldReadText =
+    ["text", "code", "markdown", "spreadsheet"].includes(sourceType) &&
+    !["doc", "docx", "xls", "xlsx", "odt"].includes(extension);
+
+  if (!shouldReadText) {
+    return "";
+  }
+
+  const slice = file.buffer.subarray(0, GENERIC_FILE_TEXT_LIMIT);
+  const text = slice.toString("utf8");
+  const replacementCharacterCount = (text.match(/\uFFFD/g) ?? []).length;
+  if (replacementCharacterCount > Math.max(8, text.length * 0.02)) {
+    return "";
+  }
+
+  return normalizeWhitespace(text.replace(/\0/g, " "));
+}
+
+function buildGenericFileAnalysis({
+  file,
+  sourceType,
+  extractedText,
+  categories,
+  minConfidence,
+}: {
+  file: Express.Multer.File;
+  sourceType: DocumentSourceType;
+  extractedText: string;
+  categories: CategoryRow[];
+  minConfidence: number;
+}): ClaudeAnalysis {
+  const fileName = file.originalname;
+  const extension = fileExtension(fileName);
+  const fileKind = describeGenericSourceType(sourceType, extension);
+  const textPreview = extractedText.slice(0, TEXT_PREVIEW_LIMIT);
+  const summary = buildGenericFileSummary({
+    fileName,
+    fileKind,
+    sourceType,
+    extractedText: textPreview,
+    fileSize: file.size,
+  });
+  const matchedKeywords = normalizeKeywords([
+    ...normalizeSearchTokens(fileName.replace(/\.[^.]+$/, "")),
+    ...normalizeSearchTokens(summary),
+    ...normalizeSearchTokens(textPreview),
+    sourceType,
+    extension,
+  ]).slice(0, 20);
+  const match = matchGenericFileCategory({
+    categories,
+    tokens: matchedKeywords,
+    summary,
+    extractedText: textPreview,
+    minConfidence,
+  });
+  const suggestedCategoryName =
+    match.category?.name ?? suggestedCategoryForSourceType(sourceType);
+  const suggestedCategoryDescription = match.category
+    ? (getCategoryDescription(match.category) ?? buildGenericCategoryDescription(match.category.name))
+    : buildGenericCategoryDescription(suggestedCategoryName);
+  const needsNewCategory = !match.category;
+
+  return {
+    model: "local-file-inspector",
+    extractedText: textPreview || `${fileKind} named ${fileName}.`,
+    pageCount: 0,
+    summary,
+    category: match.category,
+    confidence: match.confidence,
+    matchedKeywords: match.matchedKeywords,
+    needsNewCategory,
+    suggestedCategoryName,
+    suggestedCategoryDescription,
+    prompt: needsNewCategory
+      ? `Create a category such as "${suggestedCategoryName}" and assign this file to it.`
+      : null,
+  };
+}
+
+function matchGenericFileCategory({
+  categories,
+  tokens,
+  summary,
+  extractedText,
+  minConfidence,
+}: {
+  categories: CategoryRow[];
+  tokens: string[];
+  summary: string;
+  extractedText: string;
+  minConfidence: number;
+}) {
+  const haystack = normalizeSearchTokens(`${summary} ${extractedText} ${tokens.join(" ")}`);
+  const haystackSet = new Set(haystack);
+  const matches = categories
+    .map((category) => {
+      const categoryTokens = normalizeKeywords([
+        category.name,
+        category.summary,
+        getCategoryDescription(category) ?? "",
+        ...getCategoryKeywords(category),
+      ].flatMap((value) => normalizeSearchTokens(value)));
+      const categorySet = new Set(categoryTokens);
+      const overlap = [...categorySet].filter((token) => haystackSet.has(token));
+      const nameTokens = normalizeSearchTokens(category.name);
+      const nameOverlap = nameTokens.filter((token) => haystackSet.has(token)).length;
+      const confidence = clampConfidence(
+        overlap.length / Math.max(4, Math.sqrt(categorySet.size * Math.max(haystackSet.size, 1))) +
+          nameOverlap * 0.18,
+      );
+      return { category, confidence, overlap };
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+  const best = matches[0];
+
+  if (!best || best.confidence < minConfidence) {
+    return { category: null, confidence: best?.confidence ?? 0, matchedKeywords: best?.overlap.slice(0, 8) ?? [] };
+  }
+
+  return {
+    category: best.category,
+    confidence: best.confidence,
+    matchedKeywords: best.overlap.slice(0, 8),
+  };
+}
+
+function buildGenericFileSummary({
+  fileName,
+  fileKind,
+  sourceType,
+  extractedText,
+  fileSize,
+}: {
+  fileName: string;
+  fileKind: string;
+  sourceType: DocumentSourceType;
+  extractedText: string;
+  fileSize: number;
+}) {
+  if (sourceType === "code") {
+    const lineCount = extractedText ? countSourceLines(extractedText) : null;
+    const lineText = lineCount == null ? "" : ` with ${lineCount} line${lineCount === 1 ? "" : "s"}`;
+    return `${fileName} is ${withIndefiniteArticle(fileKind)} (${formatByteSize(fileSize)})${lineText}. The source is available in the file viewer.`;
+  }
+
+  if (extractedText) {
+    return `${fileName} is ${withIndefiniteArticle(fileKind)}. Preview: ${extractedText.slice(0, 260)}`;
+  }
+
+  if (sourceType === "audio") {
+    return `${fileName} is an audio file (${formatByteSize(fileSize)}). Playback is available on the file page.`;
+  }
+
+  if (sourceType === "video") {
+    return `${fileName} is a video file (${formatByteSize(fileSize)}). Playback is available on the file page.`;
+  }
+
+  if (sourceType === "text") {
+    return `${fileName} is ${withIndefiniteArticle(fileKind)} (${formatByteSize(fileSize)}). The file is supported and stored; rich text extraction is not available for this format yet.`;
+  }
+
+  return `${fileName} is ${withIndefiniteArticle(fileKind)} (${formatByteSize(fileSize)}). The file is supported, stored, and available from the file page.`;
+}
+
+function describeGenericSourceType(sourceType: DocumentSourceType, extension: string) {
+  if (sourceType === "code") return `${extension ? `${extension.toUpperCase()} ` : ""}code file`;
+  if (sourceType === "markdown") return "Markdown document";
+  if (sourceType === "spreadsheet") return "spreadsheet or tabular data file";
+  if (sourceType === "audio") return "audio file";
+  if (sourceType === "video") return "video file";
+  if (sourceType === "text") return "text or word-processing document";
+  return "file";
+}
+
+function suggestedCategoryForSourceType(sourceType: DocumentSourceType) {
+  const suggestions: Record<DocumentSourceType, string> = {
+    pdf: "Documents",
+    image: "Images",
+    text: "Text Documents",
+    spreadsheet: "Spreadsheets & Data",
+    code: "Code Files",
+    markdown: "Notes & Markdown",
+    audio: "Audio Files",
+    video: "Video Files",
+    file: "Files",
+  };
+  return suggestions[sourceType];
+}
+
+function buildGenericCategoryDescription(name: string) {
+  return `Files related to ${name.toLowerCase()}.`;
+}
+
+function formatByteSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function countSourceLines(source: string) {
+  const trimmedSource = source.trim();
+  if (!trimmedSource) return 0;
+  return trimmedSource.split(/\r?\n/).length;
+}
+
+function withIndefiniteArticle(value: string) {
+  return `${/^[aeiou]/i.test(value) ? "an" : "a"} ${value}`;
 }
 
 type ClaudeAnalysis = {
@@ -2077,7 +2539,7 @@ function buildDocumentMetadata({
   match,
 }: {
   file: Express.Multer.File;
-  sourceType: "pdf" | "image";
+  sourceType: DocumentSourceType;
   modelAnalysis: ClaudeAnalysis;
   match: CategoryMatch;
 }) {
@@ -2459,6 +2921,130 @@ Rules:
 - Suggested actions must fit the actual workspace state and should do what they say.
 - Do not invent files, categories, keywords, or routes.
 `;
+}
+
+async function getFileAssistantDocument(documentId: number) {
+  const { rows } = await getDb().query<FileAssistantDocumentRow>(
+    `SELECT
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.extracted_text,
+        d.created_at,
+        c.name AS category_name
+     FROM documents d
+     LEFT JOIN document_categories c ON c.id = d.category_id
+     WHERE d.id = $1
+     LIMIT 1`,
+    [documentId],
+  );
+  return rows[0] ?? null;
+}
+
+function buildFileAssistantPrompt({
+  prompt,
+  document,
+  suggestions,
+}: {
+  prompt: string;
+  document: FileAssistantDocumentRow;
+  suggestions: DashboardAssistantSuggestion[];
+}) {
+  const context = {
+    id: document.id,
+    name: displayDocumentName(document),
+    mimeType: document.mime_type,
+    fileSize: document.file_size,
+    categoryName: document.category_name,
+    summary: document.summary,
+    keywords: document.keywords,
+    extractedTextPreview: normalizeWhitespace(document.extracted_text ?? "").slice(0, 14_000),
+    defaultSuggestedActions: suggestions,
+  };
+
+  return `
+Answer the user's question using only this file context.
+
+User prompt: ${prompt || "(no prompt, generate helpful suggested actions only)"}
+
+File context:
+${JSON.stringify(context)}
+
+Return exactly this JSON:
+{
+  "message": "natural language response grounded in this file",
+  "navigateTo": null,
+  "suggestedActions": [
+    {
+      "label": "short button label",
+      "sub": "brief supporting text",
+      "prompt": "the exact prompt this action should send"
+    }
+  ]
+}
+
+Rules:
+- Do not claim to inspect unavailable binary contents beyond the summary/metadata provided.
+- If the file context is thin, say what is available and suggest downloading/opening the file.
+- Keep answers concise and useful.
+- Do not invent facts, filenames, category names, or capabilities.
+`;
+}
+
+function buildFileAssistantSuggestions(
+  document: FileAssistantDocumentRow,
+): DashboardAssistantSuggestion[] {
+  const name = displayDocumentName(document);
+  return [
+    {
+      label: "Summarize",
+      sub: "Explain this file",
+      prompt: `Summarize ${name}`,
+    },
+    {
+      label: "Key details",
+      sub: "Pull out useful facts",
+      prompt: "What are the key details in this file?",
+    },
+    {
+      label: "Category fit",
+      sub: document.category_name ?? "Review organization",
+      prompt: "Why is this file in this category?",
+    },
+  ];
+}
+
+function buildFallbackFileAssistantMessage(
+  prompt: string,
+  document: FileAssistantDocumentRow,
+) {
+  const name = displayDocumentName(document);
+  const summary = document.summary?.trim();
+  const extractedText = normalizeWhitespace(document.extracted_text ?? "");
+
+  if (!prompt) {
+    return summary
+      ? `Ask me about ${name}. I can use its summary and available extracted text.`
+      : `Ask me about ${name}. I can use its metadata, but there is not much extracted text available yet.`;
+  }
+
+  if (summary || extractedText) {
+    const context = [summary, extractedText.slice(0, 600)]
+      .filter(Boolean)
+      .join(" ");
+    return `Based on the available context for ${name}: ${context}`;
+  }
+
+  return `${name} is a ${document.mime_type} file. I do not have extracted text for it yet, so I can only answer from its metadata.`;
 }
 
 function buildSuggestedActions({

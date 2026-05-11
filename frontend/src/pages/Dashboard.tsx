@@ -4,23 +4,24 @@ import {
 	useRef,
 	useState,
 	type DragEvent,
-	type KeyboardEvent,
 } from "react";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import {
-	ArrowUp,
-	FileClock,
-	Bot,
-	FolderClosed,
-	LayoutGrid,
 	RotateCcw,
 	UploadCloud,
 } from "lucide-react";
+import {
+	AssistantChatMessage as ChatMessage,
+	AssistantComposer,
+	AssistantQuickActions as QuickActions,
+	AssistantTypingIndicator as TypingIndicator,
+	type AssistantMessage as Message,
+	type AssistantSuggestion as Suggestion,
+} from "@/components/assistant-chat";
 import { useAuth } from "@/context/AuthContext";
 import { openUploadModalEvent } from "@/components/app-sidebar";
 import { apiBaseUrl } from "@/lib/api";
 import { downloadResponseBlob } from "@/lib/download";
-import { fileIconFor } from "@/lib/file-icons";
 import type { CategorySummary, DocumentSummary } from "@/types/graph";
 
 const fileTreeUpdatedEvent = "kibi:file-tree-updated";
@@ -29,69 +30,6 @@ type AppLayoutContext = {
 	activeSpaceId: number | null;
 	activeSpaceName: string | null;
 };
-
-type Message = {
-	id: string;
-	role: "user" | "assistant";
-	content: string;
-	timestamp: Date;
-};
-
-type Suggestion = {
-	label: string;
-	sub: string;
-	prompt: string;
-};
-
-function quickActionIconForSuggestion(suggestion: Suggestion) {
-	const normalizedLabel = suggestion.label.toLowerCase();
-	const normalizedPrompt = suggestion.prompt.toLowerCase();
-	const normalizedSub = suggestion.sub.toLowerCase();
-
-	if (
-		normalizedLabel.includes("recent file") ||
-		normalizedPrompt.includes("recent file")
-	) {
-		return FileClock;
-	}
-
-	if (
-		normalizedLabel.includes("upload") ||
-		normalizedPrompt.includes("upload") ||
-		normalizedPrompt.includes("import")
-	) {
-		return UploadCloud;
-	}
-
-	if (
-		normalizedLabel.includes("dashboard") ||
-		normalizedPrompt.includes("dashboard") ||
-		normalizedPrompt.includes("assistant home")
-	) {
-		return LayoutGrid;
-	}
-
-	if (
-		normalizedLabel.includes("category") ||
-		normalizedLabel.includes("categories") ||
-		normalizedPrompt.includes("category") ||
-		normalizedPrompt.includes("categories") ||
-		normalizedPrompt.includes("files in")
-	) {
-		return FolderClosed;
-	}
-
-	const fileLikeName =
-		normalizedSub.includes(".") || normalizedLabel.includes("open")
-			? suggestion.sub
-			: suggestion.label;
-
-	return fileIconFor({
-		name: fileLikeName,
-		filename: fileLikeName,
-		mimeType: "",
-	});
-}
 
 type CategoriesResponse = { categories?: CategorySummary[] };
 type DocumentsResponse = { documents?: DocumentSummary[] };
@@ -157,214 +95,6 @@ function productivityPromptForSpace(spaceLabel: string, seed: number) {
 		];
 
 	return template.replace("{spaceLabel}", spaceLabel);
-}
-
-function TypingIndicator() {
-	return (
-		<div className="mb-3 flex items-end gap-2">
-			<div className="flex size-7 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
-				<Bot size={13} strokeWidth={1.5} className="text-zinc-400" />
-			</div>
-			<div className="rounded-xl rounded-bl-md border border-zinc-200 bg-white px-3 py-2">
-				<div className="flex h-4 items-center gap-1.5">
-					<span
-						className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-300"
-						style={{ animationDelay: "0ms" }}
-					/>
-					<span
-						className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-300"
-						style={{ animationDelay: "150ms" }}
-					/>
-					<span
-						className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-300"
-						style={{ animationDelay: "300ms" }}
-					/>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-function InlineMarkdown({ text }: { text: string }) {
-	const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
-
-	return (
-		<>
-			{parts.map((part, index) => {
-				if (part.startsWith("**") && part.endsWith("**")) {
-					return (
-						<strong key={index} className="font-semibold">
-							{part.slice(2, -2)}
-						</strong>
-					);
-				}
-
-				if (part.startsWith("`") && part.endsWith("`")) {
-					return (
-						<code
-							key={index}
-							className="inline-block max-w-full truncate rounded bg-zinc-100 px-1 py-0.5 align-bottom font-mono text-[0.85em] text-zinc-800"
-						>
-							{part.slice(1, -1)}
-						</code>
-					);
-				}
-
-				if (part.startsWith("*") && part.endsWith("*")) {
-					return <em key={index}>{part.slice(1, -1)}</em>;
-				}
-
-				return <span key={index}>{part}</span>;
-			})}
-		</>
-	);
-}
-
-function ChatContent({ content }: { content: string }) {
-	const lines = content.split("\n");
-
-	return (
-		<p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-			{lines.map((line, index) => (
-				<span key={index}>
-					{index > 0 ? "\n" : null}
-					<InlineMarkdown text={line} />
-				</span>
-			))}
-		</p>
-	);
-}
-
-function ChatMessage({ message }: { message: Message }) {
-	const isUser = message.role === "user";
-
-	return (
-		<div
-			className={`mb-3 flex items-end gap-2 ${isUser ? "flex-row-reverse" : ""}`}
-		>
-			{!isUser && (
-				<div className="flex size-7 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
-					<Bot
-						size={13}
-						strokeWidth={1.5}
-						className="text-zinc-400"
-					/>
-				</div>
-			)}
-			<div
-				className={`min-w-0 max-w-[78%] overflow-hidden px-3 py-2 text-sm leading-relaxed ${
-					isUser
-						? "rounded-xl rounded-br-md border border-emerald-300/80 bg-[var(--color-accent)] text-black"
-						: "rounded-xl rounded-bl-md border border-zinc-200 bg-white text-zinc-700"
-				}`}
-			>
-				<ChatContent content={message.content} />
-				<p
-					className={`mt-1 text-[10px] leading-none ${isUser ? "text-right text-black/55" : "text-zinc-400"}`}
-				>
-					{message.timestamp.toLocaleTimeString([], {
-						hour: "2-digit",
-						minute: "2-digit",
-					})}
-				</p>
-			</div>
-		</div>
-	);
-}
-
-function QuickActions({
-	suggestions,
-	isLoading,
-	onSelect,
-	spaceLabel,
-	compact = false,
-}: {
-	suggestions: Suggestion[];
-	isLoading: boolean;
-	onSelect: (prompt: string) => void;
-	spaceLabel: string;
-	compact?: boolean;
-}) {
-	const visibleSuggestions = suggestions.slice(0, 3);
-
-	if (!isLoading && suggestions.length === 0) {
-		return null;
-	}
-
-	if (compact) {
-		return (
-			<div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-				{isLoading
-					? Array.from({ length: 3 }).map((_, index) => (
-							<div
-								key={index}
-								className="flex min-h-12 w-full flex-col justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left sm:min-h-16 sm:rounded-2xl sm:px-4 sm:py-3"
-							>
-								<div className="h-3 w-16 animate-pulse rounded bg-zinc-100 sm:h-4 sm:w-28" />
-								<div className="mt-1.5 hidden h-3 w-full animate-pulse rounded bg-zinc-100 sm:block" />
-								<div className="mt-1 hidden h-3 w-4/5 animate-pulse rounded bg-zinc-100 sm:block" />
-								<p className="mt-1 hidden text-[11px] text-zinc-400 sm:block">
-									Generating actions for {spaceLabel}...
-								</p>
-							</div>
-						))
-					: visibleSuggestions.map((suggestion) => (
-							<button
-								key={suggestion.prompt}
-								onClick={() => onSelect(suggestion.prompt)}
-								className="inline-flex min-h-12 w-full min-w-0 flex-col items-start justify-center rounded-xl border border-zinc-200 bg-white px-2 py-2 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 sm:min-h-20 sm:rounded-2xl sm:px-4 sm:py-3"
-								title={suggestion.sub}
-							>
-								<span className="flex w-full min-w-0 items-start gap-2">
-									{(() => {
-										const Icon =
-											quickActionIconForSuggestion(
-												suggestion,
-											);
-										return (
-											<Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500 sm:size-4" />
-										);
-									})()}
-									<span className="min-w-0 truncate text-[11px] font-medium leading-tight text-zinc-800 sm:text-sm sm:leading-snug">
-										{suggestion.label}
-									</span>
-								</span>
-								<span className="mt-1 hidden w-full min-w-0 truncate text-xs leading-snug text-zinc-500 sm:block">
-									{suggestion.sub}
-								</span>
-							</button>
-						))}
-			</div>
-		);
-	}
-
-	return (
-		<div className="grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
-			{isLoading
-				? Array.from({ length: 3 }).map((_, index) => (
-						<div key={index} className="bg-white p-3">
-							<div className="h-3.5 w-24 animate-pulse rounded bg-zinc-100" />
-							<div className="mt-1.5 h-3 w-32 animate-pulse rounded bg-zinc-100" />
-						</div>
-					))
-				: visibleSuggestions.map((suggestion) => (
-						<button
-							key={suggestion.prompt}
-							onClick={() => onSelect(suggestion.prompt)}
-							className={`group min-w-0 bg-white text-left transition-colors hover:bg-zinc-50 ${
-								compact ? "p-3" : "p-4"
-							}`}
-						>
-							<p className="truncate text-xs font-semibold leading-snug text-zinc-900">
-								{suggestion.label}
-							</p>
-							<p className="mt-1 truncate text-[11px] text-zinc-400">
-								{suggestion.sub}
-							</p>
-						</button>
-					))}
-		</div>
-	);
 }
 
 export default function Dashboard() {
@@ -737,13 +467,6 @@ export default function Dashboard() {
 		}
 	};
 
-	const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-		if (event.key === "Enter" && !event.shiftKey) {
-			event.preventDefault();
-			void sendMessage(input);
-		}
-	};
-
 	const resetConversation = () => {
 		if (isLoading) return;
 		setMessages([]);
@@ -875,48 +598,15 @@ export default function Dashboard() {
 					}`}
 				>
 					<div className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.12)]">
-						<div
-							className={`flex items-end gap-3 transition-all duration-700 ${
-								hasStartedConversation
-									? "px-4 pb-3 pt-3 sm:px-5 sm:pb-4 sm:pt-4"
-									: "px-4 pb-4 pt-4 sm:px-6 sm:pb-5 sm:pt-5 md:px-7 md:pb-6 md:pt-6"
-							}`}
-						>
-							<textarea
-								ref={textareaRef}
-								rows={1}
-								value={input}
-								onChange={(event) =>
-									setInput(event.target.value)
-								}
-								onKeyDown={handleKeyDown}
-								placeholder={`Ask me to find a file, download matching files, or search ${spaceLabel}`}
-								className={`flex-1 resize-none overflow-hidden bg-transparent py-2 leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 transition-all duration-700 ${
-									hasStartedConversation
-										? "text-base md:text-[1.05rem]"
-										: "text-base md:text-lg"
-								}`}
-								style={{ maxHeight: "140px" }}
-							/>
-
-							<div className="flex flex-shrink-0 items-center self-center">
-								<button
-									onClick={() => void sendMessage(input)}
-									disabled={!input.trim() || isLoading}
-									className={`flex items-center justify-center rounded-full bg-[var(--color-accent)] transition-all hover:bg-[var(--color-accent-hover)] active:scale-95 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-gray-300 disabled:opacity-30 ${
-										hasStartedConversation
-											? "h-9 w-9"
-											: "h-10 w-10 md:h-11 md:w-11"
-									}`}
-								>
-									<ArrowUp
-										size={hasStartedConversation ? 14 : 16}
-										strokeWidth={2.5}
-										className="text-black"
-									/>
-								</button>
-							</div>
-						</div>
+						<AssistantComposer
+							input={input}
+							onInputChange={setInput}
+							onSubmit={() => void sendMessage(input)}
+							isLoading={isLoading}
+							placeholder={`Ask me to find a file, download matching files, or search ${spaceLabel}`}
+							textareaRef={textareaRef}
+							compact={hasStartedConversation}
+						/>
 						<div className="mx-4 h-px bg-zinc-100 sm:mx-5" />
 						<div className="px-3 py-2 sm:px-5 sm:py-3">
 							<QuickActions
