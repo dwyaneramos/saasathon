@@ -310,6 +310,44 @@ export default function FileView() {
 	}, [documentId, navigate]);
 
 	useEffect(() => {
+		const handleFileTreeUpdated = (event: Event) => {
+			if (!documentId) return;
+
+			const documentIds =
+				(event as CustomEvent<{ documentIds?: number[] }>).detail
+					?.documentIds ?? [];
+			const numericDocumentId = Number(documentId);
+			if (
+				documentIds.length > 0 &&
+				!documentIds.includes(numericDocumentId)
+			) {
+				return;
+			}
+
+			void fetch(`${apiBaseUrl}/documents/${documentId}`, {
+				headers: authHeaders(),
+			})
+				.then((response) =>
+					response.ok ? response.json() : Promise.reject(),
+				)
+				.then((payload: DocumentResponse) => {
+					if (payload.document) {
+						setDocument(payload.document);
+					}
+				})
+				.catch(() => undefined);
+		};
+
+		window.addEventListener(fileTreeUpdatedEvent, handleFileTreeUpdated);
+		return () => {
+			window.removeEventListener(
+				fileTreeUpdatedEvent,
+				handleFileTreeUpdated,
+			);
+		};
+	}, [documentId]);
+
+	useEffect(() => {
 		if (!document || !fileUrl) {
 			setFileObjectUrl(null);
 			return;
@@ -372,8 +410,8 @@ export default function FileView() {
 	useEffect(() => {
 		let ignore = false;
 
-		async function loadCategoryName() {
-			if (!document?.categoryId || !activeSpaceId) {
+		async function loadCategories() {
+			if (!activeSpaceId || !document) {
 				setCategoryName(null);
 				return;
 			}
@@ -391,8 +429,9 @@ export default function FileView() {
 				const payload = (await response
 					.json()
 					.catch(() => null)) as CategoriesResponse | null;
+				const categories = payload?.categories ?? [];
 				const matchingCategory =
-					payload?.categories?.find(
+					categories.find(
 						(category) => category.id === document.categoryId,
 					) ?? null;
 
@@ -406,7 +445,7 @@ export default function FileView() {
 			}
 		}
 
-		void loadCategoryName();
+		void loadCategories();
 
 		return () => {
 			ignore = true;
@@ -676,6 +715,21 @@ export default function FileView() {
 		}
 	}
 
+	function handleFileDragStart(event: React.DragEvent<HTMLElement>) {
+		if (!document) return;
+
+		event.dataTransfer.effectAllowed = "move";
+		event.dataTransfer.setData(
+			"application/x-kibi-document",
+			JSON.stringify({
+				documentId: document.id,
+				categoryId: document.categoryId,
+				name: displayName,
+			}),
+		);
+		event.dataTransfer.setData("text/plain", displayName);
+	}
+
 	const fileSummary = document.summary?.trim();
 
 	return (
@@ -786,6 +840,15 @@ export default function FileView() {
 								{document.mimeType} ·{" "}
 								{formatFileSize(document.fileSize)}
 							</p>
+							<div
+								draggable
+								onDragStart={handleFileDragStart}
+								className="mt-2 inline-flex cursor-grab items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground active:cursor-grabbing"
+								title="Drag this file onto a category in the sidebar"
+							>
+								<FileText className="size-3.5" />
+								Drag to category
+							</div>
 							{actionError ? (
 								<p className="mt-2 text-xs text-destructive">
 									{actionError}

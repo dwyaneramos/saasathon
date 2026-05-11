@@ -8,6 +8,9 @@ import {
 	ListCollapse,
 	ListTree,
 	Settings,
+	Trash2,
+	X,
+	Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +35,19 @@ import { cn } from "@/lib/utils";
 import { highlightSearchText } from "./search-highlight";
 import type { Category } from "./types";
 
+const documentDragMimeType = "application/x-kibi-document";
+
+type DocumentDragPayload = {
+	documentId?: number;
+	categoryId?: number | null;
+	name?: string;
+	documents?: Array<{
+		documentId: number;
+		categoryId?: number | null;
+		name?: string;
+	}>;
+};
+
 type CategoryItemProps = {
 	category: Category;
 	open: boolean;
@@ -40,10 +56,29 @@ type CategoryItemProps = {
 	hasNewFiles: boolean;
 	isDownloading: boolean;
 	newFileIds: Set<number>;
+	selectedFileIds: Set<number>;
+	selectedDocuments: Array<{
+		documentId: number;
+		categoryId?: number | null;
+		name?: string;
+	}>;
 	onOpenChange: (categoryId: number, open: boolean) => void;
 	onDownloadCategory: (category: Category) => void;
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
+	onSelectFile: (
+		category: Category,
+		file: Category["files"][number],
+		event: React.MouseEvent,
+	) => void;
+	onMoveDocumentsToCategory: (
+		documents: Array<{
+			documentId: number;
+			categoryId?: number | null;
+			name?: string;
+		}>,
+		targetCategory: Category,
+	) => void;
 };
 
 function CategoryItemBase({
@@ -54,12 +89,17 @@ function CategoryItemBase({
 	hasNewFiles,
 	isDownloading,
 	newFileIds,
+	selectedFileIds,
+	selectedDocuments,
 	onOpenChange,
 	onDownloadCategory,
 	onClearCategory,
 	onClearNewFile,
+	onSelectFile,
+	onMoveDocumentsToCategory,
 }: CategoryItemProps) {
 	const [allowCategoryWrap, setAllowCategoryWrap] = React.useState(false);
+	const [isDragTarget, setIsDragTarget] = React.useState(false);
 	const { state, setOpen: setSidebarOpen } = useSidebar();
 
 	React.useEffect(() => {
@@ -84,6 +124,79 @@ function CategoryItemBase({
 
 	const FolderIcon = open ? FolderOpen : FolderClosed;
 	const showCategoryPip = hasNewCategory || hasNewFiles;
+	const getDocumentDragPayload = (event: React.DragEvent) => {
+		const rawPayload = event.dataTransfer.getData(documentDragMimeType);
+		if (!rawPayload) return null;
+
+		try {
+			const payload = JSON.parse(rawPayload) as DocumentDragPayload;
+			return typeof payload.documentId === "number" ? payload : null;
+		} catch {
+			return null;
+		}
+	};
+	const handleCategoryDragOver = (event: React.DragEvent) => {
+		if (!event.dataTransfer.types.includes(documentDragMimeType)) return;
+
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		setIsDragTarget(true);
+	};
+	const handleCategoryDragLeave = (event: React.DragEvent) => {
+		if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+			setIsDragTarget(false);
+		}
+	};
+	const handleCategoryDrop = (event: React.DragEvent) => {
+		const payload = getDocumentDragPayload(event);
+		if (!payload?.documentId) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+		setIsDragTarget(false);
+		onMoveDocumentsToCategory(
+			payload.documents ??
+				[
+					{
+						documentId: payload.documentId,
+						categoryId: payload.categoryId,
+						name: payload.name,
+					},
+				],
+			category,
+		);
+	};
+	const handleFileDragStart = (
+		event: React.DragEvent<HTMLAnchorElement>,
+		file: Category["files"][number],
+	) => {
+		event.dataTransfer.effectAllowed = "move";
+		const draggedDocuments =
+			selectedFileIds.has(file.id) && selectedFileIds.size > 1
+				? selectedDocuments
+				: [
+						{
+							documentId: file.id,
+							categoryId: category.id,
+							name: file.name,
+						},
+					];
+		event.dataTransfer.setData(
+			documentDragMimeType,
+			JSON.stringify({
+				documentId: file.id,
+				categoryId: category.id,
+				name: file.name,
+				documents: draggedDocuments,
+			}),
+		);
+		event.dataTransfer.setData(
+			"text/plain",
+			draggedDocuments.length === 1
+				? file.name
+				: `${draggedDocuments.length} selected files`,
+		);
+	};
 
 	return (
 		<Collapsible
@@ -97,12 +210,17 @@ function CategoryItemBase({
 						tooltip={category.name}
 						className={cn(
 							"hover:bg-muted",
+							isDragTarget &&
+								"bg-(--color-accent)/15 ring-1 ring-(--color-accent)",
 							allowCategoryWrap
 								? "h-auto min-h-8 items-start"
 								: undefined,
 						)}
 						style={{ transition: "none" }}
 						onClick={() => onClearCategory(category)}
+						onDragOver={handleCategoryDragOver}
+						onDragLeave={handleCategoryDragLeave}
+						onDrop={handleCategoryDrop}
 					>
 						<span
 							className={
@@ -169,18 +287,88 @@ function CategoryItemBase({
 								<SidebarMenuSubItem key={file.id}>
 									<SidebarMenuSubButton
 										asChild
-										className="h-auto hover:bg-muted"
+										className={cn(
+											"group/file-row h-auto hover:bg-muted",
+											selectedFileIds.has(file.id) &&
+												"bg-(--color-accent)/15 text-foreground ring-1 ring-(--color-accent)/40",
+										)}
 									>
 										<Link
 											to={`/file/${file.id}`}
 											className="flex items-start gap-2 text-muted-foreground"
-											onClick={() =>
+											draggable
+											onDragStart={(event) =>
+												handleFileDragStart(event, file)
+											}
+											onClick={(event) => {
+												if (
+													event.metaKey ||
+													event.ctrlKey ||
+													event.shiftKey
+												) {
+													event.preventDefault();
+													onSelectFile(
+														category,
+														file,
+														event,
+													);
+													return;
+												}
+
 												onClearNewFile(
 													category.id,
 													file.id,
-												)
-											}
+												);
+											}}
 										>
+											<span
+												role="checkbox"
+												aria-checked={selectedFileIds.has(
+													file.id,
+												)}
+												tabIndex={0}
+												onClick={(event) => {
+													event.preventDefault();
+													event.stopPropagation();
+													onSelectFile(
+														category,
+														file,
+														event,
+													);
+												}}
+												onKeyDown={(event) => {
+													if (
+														event.key !== "Enter" &&
+														event.key !== " "
+													) {
+														return;
+													}
+
+													event.preventDefault();
+													event.currentTarget.click();
+												}}
+												className={cn(
+													"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-border bg-background opacity-0 transition-opacity group-hover/file-row:opacity-100",
+													selectedFileIds.has(
+														file.id,
+													) &&
+														"opacity-100",
+												)}
+												style={
+													selectedFileIds.has(file.id)
+														? {
+																backgroundColor:
+																	"var(--color-accent)",
+																borderColor:
+																	"var(--color-accent)",
+															}
+														: undefined
+												}
+											>
+												{selectedFileIds.has(file.id) ? (
+													<Check className="size-3.5 text-zinc-900" />
+												) : null}
+											</span>
 											<span className="relative mt-0.5 flex shrink-0">
 												{React.createElement(
 													fileIconFor(file),
@@ -250,8 +438,12 @@ const CategoryItem = React.memo(
 		previous.hasNewCategory === next.hasNewCategory &&
 		previous.hasNewFiles === next.hasNewFiles &&
 		previous.isDownloading === next.isDownloading &&
+		previous.selectedFileIds === next.selectedFileIds &&
+		previous.selectedDocuments === next.selectedDocuments &&
 		previous.onOpenChange === next.onOpenChange &&
 		previous.onDownloadCategory === next.onDownloadCategory &&
+		previous.onMoveDocumentsToCategory === next.onMoveDocumentsToCategory &&
+		previous.onSelectFile === next.onSelectFile &&
 		previous.onClearCategory === next.onClearCategory &&
 		previous.onClearNewFile === next.onClearNewFile &&
 		hasSameNewFileMarkers(
@@ -278,6 +470,12 @@ export function FileTree({
 	onClearCategory,
 	onClearNewFile,
 	onDownloadCategory,
+	onSelectFile,
+	onClearSelection,
+	onDeleteSelected,
+	onDownloadSelected,
+	onMoveDocumentsToCategory,
+	selectedFileIds,
 	downloadingCategoryId,
 }: {
 	categories: Category[];
@@ -296,6 +494,23 @@ export function FileTree({
 	onClearCategory: (category: Category) => void;
 	onClearNewFile: (categoryId: number, fileId: number) => void;
 	onDownloadCategory: (category: Category) => void;
+	onSelectFile: (
+		category: Category,
+		file: Category["files"][number],
+		event: React.MouseEvent,
+	) => void;
+	onClearSelection: () => void;
+	onDeleteSelected: () => void;
+	onDownloadSelected: () => void;
+	onMoveDocumentsToCategory: (
+		documents: Array<{
+			documentId: number;
+			categoryId?: number | null;
+			name?: string;
+		}>,
+		targetCategory: Category,
+	) => void;
+	selectedFileIds: Set<number>;
 	downloadingCategoryId: number | null;
 }) {
 	const hasCategories = categories.length > 0;
@@ -303,6 +518,20 @@ export function FileTree({
 		hasCategories &&
 		categories.every((category) => expandedCategoryIds.has(category.id));
 	const ToggleIcon = allExpanded ? ListCollapse : ListTree;
+	const selectedDocuments = React.useMemo(
+		() =>
+			categories.flatMap((category) =>
+				category.files
+					.filter((file) => selectedFileIds.has(file.id))
+					.map((file) => ({
+						documentId: file.id,
+						categoryId: category.id,
+						name: file.name,
+					})),
+			),
+		[categories, selectedFileIds],
+	);
+	const selectedCount = selectedFileIds.size;
 
 	return (
 		<SidebarGroup>
@@ -342,6 +571,43 @@ export function FileTree({
 					</Button>
 				</div>
 			</div>
+			{selectedCount > 0 ? (
+				<div className="mb-2 flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs group-data-[collapsible=icon]:hidden">
+					<span className="min-w-0 flex-1 truncate text-muted-foreground">
+						{selectedCount} selected
+					</span>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onDownloadSelected}
+						aria-label="Download selected files"
+						title="Download selected files"
+					>
+						<Download className="size-3.5" />
+					</Button>
+					<Button
+						type="button"
+						variant="destructive"
+						size="icon-xs"
+						onClick={onDeleteSelected}
+						aria-label="Delete selected files"
+						title="Delete selected files"
+					>
+						<Trash2 className="size-3.5" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						onClick={onClearSelection}
+						aria-label="Clear selected files"
+						title="Clear selected files"
+					>
+						<X className="size-3.5" />
+					</Button>
+				</div>
+			) : null}
 			<SidebarMenu>
 				{isLoading && (
 					<SidebarMenuItem>
@@ -380,10 +646,16 @@ export function FileTree({
 							hasNewFiles={newFileCategoryIds.has(category.id)}
 							isDownloading={downloadingCategoryId === category.id}
 							newFileIds={newFileIds}
+							selectedFileIds={selectedFileIds}
+							selectedDocuments={selectedDocuments}
 							onOpenChange={onCategoryOpenChange}
 							onDownloadCategory={onDownloadCategory}
 							onClearCategory={onClearCategory}
 							onClearNewFile={onClearNewFile}
+							onSelectFile={onSelectFile}
+							onMoveDocumentsToCategory={
+								onMoveDocumentsToCategory
+							}
 						/>
 					))}
 			</SidebarMenu>

@@ -437,6 +437,49 @@ export async function findDocumentsForDownloadCriteria(input: {
     .slice(0, safeLimit);
 }
 
+export async function listDocumentsByIdsForDownload(input: {
+  documentIds: number[];
+  spaceId?: number | null;
+}) {
+  await ensureDocumentSchema();
+  const uniqueIds = [...new Set(input.documentIds)].filter((id) =>
+    Number.isInteger(id) && id > 0,
+  );
+
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const { rows } = await getDb().query<DownloadableDocumentRow>(
+    `SELECT
+        d.id,
+        d.space_id,
+        d.filename,
+        d.filepath,
+        d.file_name,
+        d.original_file_name,
+        d.stored_file_name,
+        d.mime_type,
+        d.file_size,
+        d.category_id,
+        d.summary,
+        d.keywords,
+        d.extracted_text,
+        d.created_at,
+        c.name AS category_name,
+        COALESCE(c.keywords, '{}'::text[]) AS category_keywords
+     FROM documents d
+     LEFT JOIN document_categories c ON c.id = d.category_id
+     WHERE d.id = ANY($1::integer[])
+       AND ($2::integer IS NULL OR d.space_id = $2)
+       AND d.filepath IS NOT NULL
+     ORDER BY array_position($1::integer[], d.id)`,
+    [uniqueIds, input.spaceId ?? null],
+  );
+
+  return rows;
+}
+
 export async function getDocument(documentId: number) {
   await ensureDocumentSchema();
   const { rows } = await getDb().query<DocumentRow>(
@@ -1117,8 +1160,10 @@ export function toPublicDocumentSearchResult(
 export async function assignDocumentCategory(
   documentId: number,
   categoryId: number,
+  options: { refresh?: "sync" | "async" | false } = {},
 ) {
   await ensureDocumentSchema();
+  const refreshMode = options.refresh ?? "sync";
   const previousCategoryId = await getDocumentCategoryId(documentId);
   const { rows } = await getDb().query<{ id: number; space_id: number | null }>(
     `UPDATE documents
@@ -1136,8 +1181,19 @@ export async function assignDocumentCategory(
     return false;
   }
 
-  await refreshCategorySummaries([previousCategoryId, categoryId]);
-  await refreshCategoryConnections(rows[0].space_id);
+  const refreshDerivedCategoryData = async () => {
+    await refreshCategorySummaries([previousCategoryId, categoryId]);
+    await refreshCategoryConnections(rows[0].space_id);
+  };
+
+  if (refreshMode === "sync") {
+    await refreshDerivedCategoryData();
+  } else if (refreshMode === "async") {
+    void refreshDerivedCategoryData().catch((error) => {
+      console.error("Failed to refresh category data after assignment", error);
+    });
+  }
+
   return true;
 }
 

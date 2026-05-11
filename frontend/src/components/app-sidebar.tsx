@@ -261,6 +261,9 @@ export function AppSidebar({
 	const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
 	const [downloadingCategoryId, setDownloadingCategoryId] =
 		React.useState<number | null>(null);
+	const [movingDocumentId, setMovingDocumentId] = React.useState<
+		number | null
+	>(null);
 	const [pendingUploadFiles, setPendingUploadFiles] = React.useState<File[]>(
 		[],
 	);
@@ -283,6 +286,9 @@ export function AppSidebar({
 	const [newFileIds, setNewFileIds] = React.useState<Set<number>>(
 		() => new Set(),
 	);
+	const [selectedFileIds, setSelectedFileIds] = React.useState<Set<number>>(
+		() => new Set(),
+	);
 	const [expandedCategoryIds, setExpandedCategoryIds] = React.useState<
 		Set<number>
 	>(() => new Set());
@@ -291,6 +297,7 @@ export function AppSidebar({
 	);
 	const fileTreeLoadedRef = React.useRef(false);
 	const categoryExpansionInitializedRef = React.useRef(false);
+	const lastSelectedFileIdRef = React.useRef<number | null>(null);
 	const pendingSpaceToastIdRef = React.useRef<number | null>(null);
 
 	const activeSpaceId =
@@ -396,6 +403,16 @@ export function AppSidebar({
 		searchFileTypes,
 		trimmedSearchQuery,
 	]);
+	const visibleFileOrder = React.useMemo(
+		() =>
+			visibleCategories.flatMap((category) =>
+				category.files.map((file) => ({
+					category,
+					file,
+				})),
+			),
+		[visibleCategories],
+	);
 	const validateCategoryName = React.useCallback(
 		(value: string) => {
 			const trimmed = value.trim();
@@ -497,6 +514,61 @@ export function AppSidebar({
 		});
 	}, [categories]);
 
+	const clearSelectedFiles = React.useCallback(() => {
+		setSelectedFileIds(new Set());
+		lastSelectedFileIdRef.current = null;
+	}, []);
+
+	const handleSelectFile = React.useCallback(
+		(
+			_category: Category,
+			file: Category["files"][number],
+			event: React.MouseEvent,
+		) => {
+			setSelectedFileIds((currentIds) => {
+				if (event.shiftKey && lastSelectedFileIdRef.current) {
+					const anchorIndex = visibleFileOrder.findIndex(
+						(item) =>
+							item.file.id === lastSelectedFileIdRef.current,
+					);
+					const targetIndex = visibleFileOrder.findIndex(
+						(item) => item.file.id === file.id,
+					);
+
+					if (anchorIndex >= 0 && targetIndex >= 0) {
+						const [start, end] =
+							anchorIndex <= targetIndex
+								? [anchorIndex, targetIndex]
+								: [targetIndex, anchorIndex];
+						const nextIds = new Set(currentIds);
+						for (const item of visibleFileOrder.slice(
+							start,
+							end + 1,
+						)) {
+							nextIds.add(item.file.id);
+						}
+						return nextIds;
+					}
+				}
+
+				if (event.metaKey || event.ctrlKey) {
+					const nextIds = new Set(currentIds);
+					if (nextIds.has(file.id)) {
+						nextIds.delete(file.id);
+					} else {
+						nextIds.add(file.id);
+					}
+					lastSelectedFileIdRef.current = file.id;
+					return nextIds;
+				}
+
+				lastSelectedFileIdRef.current = file.id;
+				return new Set([file.id]);
+			});
+		},
+		[visibleFileOrder],
+	);
+
 	const handleDownloadCategory = React.useCallback(
 		async (category: Category) => {
 			if (!activeSpaceId) {
@@ -549,6 +621,107 @@ export function AppSidebar({
 		},
 		[activeSpaceId],
 	);
+
+	const handleDownloadSelectedFiles = React.useCallback(async () => {
+		if (selectedFileIds.size === 0) return;
+
+		try {
+			const response = await fetch(`${apiBaseUrl}/documents/download-selected`, {
+				method: "POST",
+				headers: {
+					...authHeaders(),
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					documentIds: [...selectedFileIds],
+					spaceId: activeSpaceId ?? null,
+				}),
+			});
+
+			if (!response.ok) {
+				const payload = (await response.json().catch(() => null)) as {
+					error?: string;
+				} | null;
+				throw new Error(
+					payload?.error ?? "Could not download selected files.",
+				);
+			}
+
+			await downloadResponseBlob(
+				response,
+				`kibi-selected-files-${selectedFileIds.size}.zip`,
+			);
+			toast.success(
+				`Downloading ${selectedFileIds.size} selected file${selectedFileIds.size === 1 ? "" : "s"}`,
+			);
+		} catch (err) {
+			toast.error(
+				err instanceof Error
+					? err.message
+					: "Could not download selected files.",
+			);
+		}
+	}, [activeSpaceId, selectedFileIds]);
+
+	const handleDeleteSelectedFiles = React.useCallback(async () => {
+		if (selectedFileIds.size === 0) return;
+
+		const selectedCount = selectedFileIds.size;
+		const confirmed = window.confirm(
+			`Delete ${selectedCount} selected file${selectedCount === 1 ? "" : "s"}? This cannot be undone.`,
+		);
+		if (!confirmed) return;
+
+		const ids = [...selectedFileIds];
+		const results = await Promise.allSettled(
+			ids.map((documentId) =>
+				fetch(`${apiBaseUrl}/documents/${documentId}`, {
+					method: "DELETE",
+					headers: authHeaders(),
+				}).then(async (response) => {
+					if (!response.ok) {
+						const payload = (await response
+							.json()
+							.catch(() => null)) as { error?: string } | null;
+						throw new Error(
+							payload?.error ?? "Could not delete file.",
+						);
+					}
+				}),
+			),
+		);
+		const deletedIds = ids.filter(
+			(_, index) => results[index].status === "fulfilled",
+		);
+
+		if (deletedIds.length > 0) {
+			setCategories((currentCategories) =>
+				currentCategories.map((category) => ({
+					...category,
+					files: category.files.filter(
+						(file) => !deletedIds.includes(file.id),
+					),
+				})),
+			);
+			setSelectedFileIds((currentIds) => {
+				const nextIds = new Set(currentIds);
+				deletedIds.forEach((id) => nextIds.delete(id));
+				return nextIds;
+			});
+			window.dispatchEvent(
+				new CustomEvent(fileTreeUpdatedEvent, {
+					detail: { documentIds: deletedIds },
+				}),
+			);
+			toast.success(
+				`Deleted ${deletedIds.length} selected file${deletedIds.length === 1 ? "" : "s"}`,
+			);
+		}
+
+		if (deletedIds.length !== ids.length) {
+			toast.error("Some selected files could not be deleted.");
+		}
+	}, [selectedFileIds]);
 
 	const handleSelectSpace = React.useCallback(
 		(space: Space) => {
@@ -816,6 +989,135 @@ export function AppSidebar({
 			}
 		},
 		[activeSpaceId, spacesLoaded],
+	);
+
+	const handleMoveDocumentsToCategory = React.useCallback(
+		async (
+			documents: Array<{
+				documentId: number;
+				categoryId?: number | null;
+				name?: string;
+			}>,
+			targetCategory: Category,
+		) => {
+			if (movingDocumentId !== null) {
+				return;
+			}
+
+			const documentsToMove = documents.filter(
+				(document) => document.categoryId !== targetCategory.id,
+			);
+			if (documentsToMove.length === 0) {
+				toast.info(
+					`Selected file${documents.length === 1 ? " is" : "s are"} already in '${targetCategory.name}'`,
+				);
+				return;
+			}
+
+			setMovingDocumentId(documentsToMove[0].documentId);
+
+			try {
+				const results = await Promise.allSettled(
+					documentsToMove.map((document) =>
+						fetch(
+							`${apiBaseUrl}/documents/${document.documentId}/category`,
+							{
+								method: "PATCH",
+								headers: {
+									...authHeaders(),
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify({
+									categoryId: targetCategory.id,
+								}),
+							},
+						).then(async (response) => {
+							if (!response.ok) {
+								const payload = (await response
+									.json()
+									.catch(() => null)) as {
+									error?: string;
+								} | null;
+								throw new Error(
+									payload?.error ??
+										"Could not move this file.",
+								);
+							}
+						}),
+					),
+				);
+				const movedIds = documentsToMove
+					.filter((_, index) => results[index].status === "fulfilled")
+					.map((document) => document.documentId);
+
+				if (movedIds.length === 0) {
+					throw new Error("Could not move the selected files.");
+				}
+
+				toast.success(
+					`Moved ${movedIds.length} file${movedIds.length === 1 ? "" : "s"} to '${targetCategory.name}'`,
+				);
+				setCategories((currentCategories) => {
+					const movedFiles: Category["files"] = [];
+					const withoutMovedFile = currentCategories.map((category) => {
+						const remainingFiles = category.files.filter((file) => {
+							if (!movedIds.includes(file.id)) return true;
+							movedFiles.push(file);
+							return false;
+						});
+
+						return remainingFiles === category.files
+							? category
+							: { ...category, files: remainingFiles };
+					});
+
+					if (movedFiles.length === 0) {
+						return currentCategories;
+					}
+
+					return withoutMovedFile.map((category) =>
+						category.id === targetCategory.id
+							? {
+									...category,
+									files: [
+										...category.files,
+										...movedFiles,
+									].sort((a, b) =>
+										a.name.localeCompare(b.name),
+									),
+								}
+							: category,
+					);
+				});
+				setSelectedFileIds((currentIds) => {
+					const nextIds = new Set(currentIds);
+					movedIds.forEach((id) => nextIds.delete(id));
+					return nextIds;
+				});
+				setExpandedCategoryIds((currentIds) => {
+					const nextIds = new Set(currentIds);
+					nextIds.add(targetCategory.id);
+					return nextIds;
+				});
+				window.dispatchEvent(
+					new CustomEvent(fileTreeUpdatedEvent, {
+						detail: { documentIds: movedIds },
+					}),
+				);
+				if (movedIds.length !== documentsToMove.length) {
+					toast.error("Some selected files could not be moved.");
+				}
+			} catch (err) {
+				toast.error(
+					err instanceof Error
+						? err.message
+						: "Could not move this file.",
+				);
+			} finally {
+				setMovingDocumentId(null);
+			}
+		},
+		[movingDocumentId],
 	);
 
 	React.useEffect(() => {
@@ -1431,6 +1733,7 @@ export function AppSidebar({
 						newCategoryIds={newCategoryIds}
 						newFileCategoryIds={newFileCategoryIds}
 						newFileIds={newFileIds}
+						selectedFileIds={selectedFileIds}
 						expandedCategoryIds={expandedCategoryIds}
 						onCategoryOpenChange={handleCategoryOpenChange}
 						onManageCategories={openManageCategoriesModal}
@@ -1438,6 +1741,11 @@ export function AppSidebar({
 						onClearCategory={clearCategoryNotification}
 						onClearNewFile={clearNewFile}
 						onDownloadCategory={handleDownloadCategory}
+						onSelectFile={handleSelectFile}
+						onClearSelection={clearSelectedFiles}
+						onDeleteSelected={handleDeleteSelectedFiles}
+						onDownloadSelected={handleDownloadSelectedFiles}
+						onMoveDocumentsToCategory={handleMoveDocumentsToCategory}
 						downloadingCategoryId={downloadingCategoryId}
 					/>
 				</SidebarContent>

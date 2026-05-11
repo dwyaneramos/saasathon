@@ -28,6 +28,7 @@ import {
 	getDocument,
 	listCategories,
 	listCategoryConnections,
+	listDocumentsByIdsForDownload,
 	listDocuments,
 	listDocumentsForCategory,
 	renameDocument,
@@ -378,6 +379,61 @@ router.post(
 	},
 );
 
+router.post(
+	"/documents/download-selected",
+	requireAuth,
+	archiveDownloadRateLimit,
+	async (req: AuthRequest, res) => {
+		const documentIds = Array.isArray(req.body?.documentIds)
+			? req.body.documentIds
+					.map((value: unknown) => Number(value))
+					.filter(
+						(value: number) =>
+							Number.isInteger(value) && value > 0,
+					)
+			: [];
+		if (documentIds.length === 0) {
+			res.status(400).json({ error: "Select files to download." });
+			return;
+		}
+
+		if (documentIds.length > 100) {
+			res.status(400).json({
+				error: "You can download up to 100 selected files at once.",
+			});
+			return;
+		}
+
+		const spaceId = getSpaceIdFromBody(req);
+		if (spaceId === false) {
+			res.status(400).json({ error: "spaceId must be a positive integer" });
+			return;
+		}
+
+		const documents = await listDocumentsByIdsForDownload({
+			documentIds,
+			spaceId,
+		});
+		const accessibleDocuments = [];
+
+		for (const document of documents) {
+			if (
+				typeof document.space_id === "number" &&
+				(await userCanAccessSpace(req.userId!, document.space_id))
+			) {
+				accessibleDocuments.push(document);
+			}
+		}
+
+		await sendDocumentsArchive(
+			res,
+			accessibleDocuments,
+			`kibi-selected-files-${accessibleDocuments.length || documentIds.length}.zip`,
+			"No selected files were available to download.",
+		);
+	},
+);
+
 router.post("/assistant/dashboard", requireAuth, async (req: AuthRequest, res) => {
 	const parsedSpaceId = getSpaceIdFromBody(req);
 	if (parsedSpaceId === false) {
@@ -534,6 +590,59 @@ router.patch(
 		}
 
 		res.json({ document: toPublicDocument(document) });
+	},
+);
+
+router.patch(
+	"/documents/:documentId/category",
+	requireAuth,
+	async (req: AuthRequest, res) => {
+		const documentId = getDocumentIdFromParams(req);
+		if (!documentId) {
+			res.status(400).json({
+				error: "documentId must be a positive integer",
+			});
+			return;
+		}
+
+		const document = await getManageableDocument(req, documentId);
+		if (!document || typeof document.space_id !== "number") {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		const categoryId = getCategoryIdFromBody(req);
+		if (!categoryId) {
+			res.status(400).json({
+				error: "categoryId must be a positive integer",
+			});
+			return;
+		}
+
+		const category = await getManageableCategory(req, categoryId);
+		if (!category || category.space_id !== document.space_id) {
+			res.status(404).json({ error: "Category not found" });
+			return;
+		}
+
+		const assigned = await assignDocumentCategory(documentId, category.id, {
+			refresh: "async",
+		});
+		if (!assigned) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		const updatedDocument = await getDocument(documentId);
+		if (!updatedDocument) {
+			res.status(404).json({ error: "Document not found" });
+			return;
+		}
+
+		res.json({
+			document: toPublicDocument(updatedDocument),
+			category: toPublicCategory(category),
+		});
 	},
 );
 
