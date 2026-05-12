@@ -93,7 +93,7 @@ Martyn Gascoigne - martyngasc@gmail.com <br>
 John Gascoigne <br>
 Bogdans Teplovs <br>
 Dwyane Ramos <br>
-James Taylor <br>
+James Taylor james.oliva.taylor@gmail.com <br>
 Max Moir - mmo199@uclive.ac.nz - maxwmoir@gmail.com <br>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
